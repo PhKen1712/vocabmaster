@@ -69,17 +69,23 @@ jobs:
           WORKSPACE="$(ls -d ios/*.xcworkspace | head -n 1)"
           echo "Workspace: $WORKSPACE"
 
-          xcodebuild -list -workspace "$WORKSPACE"
+          # Tên scheme của app lấy từ chính project, KHÔNG đoán theo thứ tự danh sách.
+          # Workspace CocoaPods sinh ra hàng trăm scheme thư viện (boost, Yoga,
+          # React, ...) xếp alphabet trước scheme app, nên "scheme đầu tiên không
+          # phải Pods-*" sẽ archive nhầm một thư viện và không tạo ra .app nào.
+          PROJECT_DIR="$(ls -d ios/*.xcodeproj | head -n 1)"
+          APP_SCHEME="$(basename "$PROJECT_DIR" .xcodeproj)"
+          echo "Project: $PROJECT_DIR"
+          echo "App scheme: $APP_SCHEME"
 
-          # Các scheme sau dòng "Schemes:"; bỏ qua scheme của CocoaPods (Pods-*)
-          # vì archive chúng sẽ không tạo ra app.
-          SCHEME_LIST="$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{found=1; next} found && NF {print $1}')" || true
-          SCHEME="$(printf '%s\n' "$SCHEME_LIST" | grep -v '^Pods' | head -n 1)" || true
-          if [ -z "$SCHEME" ]; then
-            echo "Không tìm thấy scheme nào trong workspace: $WORKSPACE" >&2
-            printf 'Schemes đọc được:\n%s\n' "$SCHEME_LIST" >&2
+          SCHEME_LIST="$(xcodebuild -list -workspace "$WORKSPACE")" || true
+          printf '%s\n' "$SCHEME_LIST"
+          # xcodebuild in scheme có thụt lề, nên phải cắt khoảng trắng trước khi so khớp.
+          if ! printf '%s\n' "$SCHEME_LIST" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | grep -qx "$APP_SCHEME"; then
+            echo "Không thấy scheme '$APP_SCHEME' trong workspace: $WORKSPACE" >&2
             exit 1
           fi
+          SCHEME="$APP_SCHEME"
           echo "Scheme: $SCHEME"
 
           xcodebuild archive \
@@ -93,13 +99,19 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO
 
+          echo "--- nội dung build/ sau archive ---"
+          ls -la build
+          find build -maxdepth 3 -name '*.xcarchive' -print
+
       - name: Package unsigned IPA
         run: |
           set -euo pipefail
-          APP_PATH="$(find build/VocabMaster.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -n 1)"
+          # Tìm .app trong bất kỳ .xcarchive nào thay vì tin vào một đường dẫn cố định.
+          APP_PATH="$(find build -type d -name '*.app' -path '*/Products/Applications/*' | head -n 1 || true)"
           echo "App: $APP_PATH"
           if [ -z "$APP_PATH" ]; then
-            echo "Không thấy .app trong archive." >&2
+            echo "Không thấy .app trong archive. Nội dung build/:" >&2
+            find build -maxdepth 4 -print >&2 || true
             exit 1
           fi
 
