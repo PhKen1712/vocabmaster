@@ -62,7 +62,11 @@ export function AiStudioScreen() {
     } catch (caught) {
       setError(
         caught instanceof AiError
-          ? AI_ERROR_MESSAGES[caught.code]
+          ? // Lỗi không phân loại được: hiện nguyên văn của Google kèm mã HTTP,
+            // nếu không thì không thể biết phải sửa key, model hay mạng.
+            caught.code === 'unknown'
+            ? caught.message
+            : AI_ERROR_MESSAGES[caught.code]
           : caught instanceof Error
             ? caught.message
             : 'Không gọi được Gemini.',

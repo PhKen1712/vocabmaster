@@ -69,6 +69,11 @@ interface GeminiResponse {
   error?: { message?: string; status?: string; code?: number };
 }
 
+interface ModelsResponse {
+  models?: { name?: string }[];
+  error?: { message?: string; status?: string };
+}
+
 function mapHttpError(status: number, message: string): AiError {
   if (status === 401 || status === 403 || /API key not valid|API_KEY_INVALID/i.test(message)) {
     return new AiError('invalid_key', message || 'API key không hợp lệ.');
@@ -79,7 +84,83 @@ function mapHttpError(status: number, message: string): AiError {
   if (status >= 500) {
     return new AiError('server', message || 'Gemini tạm thời không phản hồi.', true);
   }
-  return new AiError('unknown', message || `Gemini trả về lỗi ${status}.`);
+  // Giữ mã HTTP trong thông báo: nếu không, lỗi 404 (sai tên model) bị hiển thị
+  // thành một câu chung chung và người dùng không biết phải sửa gì.
+  return new AiError(
+    'unknown',
+    message ? `Gemini trả về lỗi ${status}: ${message}` : `Gemini trả về lỗi ${status}.`,
+  );
+}
+
+export interface KeyCheck {
+  ok: boolean;
+  detail: string;
+}
+
+/**
+ * Kiểm tra key và model mà không tốn token sinh nội dung: gọi endpoint liệt kê
+ * model để biết key có hợp lệ và model đang cấu hình có thật hay không.
+ */
+export async function checkApiKey(model = defaultModel()): Promise<KeyCheck> {
+  const apiKey = await loadApiKey();
+  if (!apiKey) {
+    return { ok: false, detail: 'Chưa có API key. Dán key rồi bấm "Lưu key".' };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(API_BASE, {
+      headers: { 'x-goog-api-key': apiKey },
+      signal: controller.signal,
+    });
+  } catch {
+    return {
+      ok: false,
+      detail: 'Không kết nối được tới Gemini. Kiểm tra mạng (thử 4G) rồi bấm lại.',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let payload: ModelsResponse = {};
+  try {
+    payload = (await response.json()) as ModelsResponse;
+  } catch {
+    payload = {};
+  }
+
+  const message = payload.error?.message?.trim();
+  if (!response.ok) {
+    const detail = message ? `HTTP ${response.status} · ${message}` : `HTTP ${response.status}`;
+    if (response.status === 401 || response.status === 403) {
+      return { ok: false, detail: `Key bị Google từ chối · ${detail}` };
+    }
+    if (response.status === 429) {
+      return { ok: false, detail: `Tạm hết hạn mức · ${detail}` };
+    }
+    return { ok: false, detail };
+  }
+
+  const names = (payload.models ?? [])
+    .map((item) => (item.name ?? '').replace(/^models\//, ''))
+    .filter((name) => name.length > 0);
+  const wanted = model.trim().replace(/^models\//, '');
+
+  if (wanted && !names.includes(wanted)) {
+    const sample = names
+      .filter((name) => name.includes('2.5') || name.includes('flash'))
+      .slice(0, 3)
+      .join(', ');
+    return {
+      ok: false,
+      detail: `Key hợp lệ nhưng model "${wanted}" không tồn tại. Thử: ${sample || 'gemini-2.5-flash'}.`,
+    };
+  }
+
+  return { ok: true, detail: `Key hợp lệ · model "${wanted}" khả dụng.` };
 }
 
 export async function generateVocabulary(

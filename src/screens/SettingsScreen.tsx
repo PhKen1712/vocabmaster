@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
-import { clearApiKey, hasApiKey, saveApiKey } from '../ai/gemini';
+import { checkApiKey, clearApiKey, hasApiKey, saveApiKey } from '../ai/gemini';
 import { exportBackupFile, exportCsvFile, importCsvWords, pickTextFile, restoreBackup } from '../db/backup';
 import { getCounts } from '../db/words';
 import { resetDatabase } from '../db/database';
@@ -38,6 +38,8 @@ export function SettingsScreen() {
   const [keyStatus, setKeyStatus] = useState<'loading' | 'missing' | 'saved'>('loading');
   const [keyInput, setKeyInput] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ ok: boolean; detail: string } | null>(null);
   const [notificationStatus, setNotificationStatus] = useState<string>('…');
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -71,6 +73,21 @@ export function SettingsScreen() {
       );
     } catch (error) {
       setKeyError(error instanceof Error ? error.message : 'Không lưu được key.');
+    }
+  };
+
+  const verifyKey = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    try {
+      setCheckResult(await checkApiKey(settings.aiModel));
+    } catch (error) {
+      setCheckResult({
+        ok: false,
+        detail: error instanceof Error ? error.message : 'Không kiểm tra được key.',
+      });
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -307,6 +324,24 @@ export function SettingsScreen() {
           Nếu model không còn khả dụng, đổi sang model khác trong Google AI Studio. Hạn mức miễn
           phí thay đổi theo thời gian và theo model.
         </AppText>
+
+        <PrimaryButton
+          label={checking ? 'Đang kiểm tra…' : 'Kiểm tra key + model'}
+          variant="ghost"
+          style={{ marginTop: spacing.md }}
+          disabled={checking || keyStatus !== 'saved'}
+          onPress={() => void verifyKey()}
+        />
+        {checkResult ? (
+          <AppText
+            variant="caption"
+            color={checkResult.ok ? colors.success : colors.danger}
+            style={{ marginTop: spacing.xs }}
+          >
+            {checkResult.ok ? '✓ ' : '✗ '}
+            {checkResult.detail}
+          </AppText>
+        ) : null}
       </Card>
 
       <SectionHeader title="Học tập" />
