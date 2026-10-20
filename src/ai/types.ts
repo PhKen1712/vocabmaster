@@ -28,6 +28,11 @@ export interface AiResult {
   suggestions: AiSuggestion[];
   rejected: string[];
   model: string;
+  /**
+   * Set when the configured model was retired and Gemini ran with another
+   * model instead, so the UI can explain the switch.
+   */
+  fallbackFrom?: string | null;
   /** True when Gemini returned nothing parseable. */
   empty: boolean;
 }
@@ -39,6 +44,7 @@ export type AiErrorCode =
   | 'network'
   | 'server'
   | 'invalid_response'
+  | 'model_unavailable'
   | 'unknown';
 
 export class AiError extends Error {
@@ -60,5 +66,7 @@ export const AI_ERROR_MESSAGES: Record<AiErrorCode, string> = {
   network: 'Không kết nối được tới Gemini. Kiểm tra mạng rồi thử lại.',
   server: 'Gemini đang gặp lỗi tạm thời. Thử lại sau.',
   invalid_response: 'Gemini trả về dữ liệu không đúng định dạng. Không có từ nào được lưu.',
+  model_unavailable:
+    'Model Gemini đang chọn không còn khả dụng. Vào Cài đặt → Gemini AI, bấm "Kiểm tra key + model" rồi chọn model mới.',
   unknown: 'Không tạo được từ bằng Gemini. Bạn vẫn có thể thêm từ thủ công.',
 };

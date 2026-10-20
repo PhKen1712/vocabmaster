@@ -335,8 +335,8 @@
       "how_to_verify": "Speak a target word in Session; inspect transcript and error code"
     },
     {
-      "capability": "Gemini model gemini-2.5-flash is available for this key",
-      "how_to_verify": "Generate 3 words in AI Studio; switch model on 404"
+      "capability": "Gemini generation works with the configured model, or auto-switches when Google retires it",
+      "how_to_verify": "Generate 3 words in AI Studio; on 404 the app retries with an available model and Settings → check key + model offers a one-tap switch"
     },
     {
       "capability": "Notifications fire at the scheduled weekly time",

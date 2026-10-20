@@ -251,3 +251,41 @@ code widget vẫn nguyên trong repo để bật lại khi có tài khoản tr�
 - Chưa `git init`/commit/push — cần tài khoản GitHub của người dùng.
 - Chưa chạy workflow thật trên GitHub: chưa có log build macOS, chưa có `.ipa`.
 - Chưa cài lên iPhone: chưa xác nhận Sideloadly ký được, chưa kiểm tra app chạy.
+
+## 2026-10-21 — Phiên 4: Google ngừng `gemini-2.5-flash` (lỗi 404) — tự chuyển model
+
+### Triệu chứng thật trên iPhone
+
+AI Studio báo: `Gemini trả về lỗi 404: This model models/gemini-2.5-flash is no longer
+available to new users. Please update your code to use models/gemini-3.8-flash…`
+Key còn hợp lệ; chỉ tên model đã bị Google ngừng cấp cho key mới.
+
+### Sửa
+
+- `src/types.ts`: `DEFAULT_AI_MODEL = 'gemini-3.8-flash'` (model Google chỉ định trong lỗi),
+  `RETIRED_AI_MODELS` gồm `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash`.
+- `src/db/settings.ts`: `sanitizeAiModel` — cài đặt cũ còn lưu model đã ngừng được nâng lên
+  model mặc định khi đọc, nên người dùng nâng cấp app không còn gặp 404 mà phải sửa tay.
+- `src/ai/gemini.ts`:
+  - `rankModels`: xếp model còn dùng được (mới nhất, `flash`, bỏ `lite`/`preview`/embedding).
+  - `generateVocabulary`: gặp 404/NOT_FOUND thì hỏi `GET /v1beta/models`, thử lại **một lần**
+    với model tốt nhất; trả `fallbackFrom` để UI giải thích; không có model thay thế thì
+    báo `model_unavailable` kèm câu của Google và nơi sửa.
+  - `checkApiKey`: trả thêm `suggestedModel` khi model đang cấu hình không tồn tại.
+- `src/screens/SettingsScreen.tsx`: nút **"Dùng <model>"** đổi model một lần bấm rồi kiểm tra lại.
+- `src/screens/AiStudioScreen.tsx`: banner cảnh báo khi đã tự đổi model; lỗi
+  `model_unavailable` hiện nguyên văn thay vì câu chung.
+- `src/screens/WordFormScreen.tsx`: cùng cách hiện lỗi đó ở nút gợi ý AI.
+
+### Đã kiểm chứng trong phiên
+
+- `npm run typecheck` — 0 lỗi.
+- `npm test` — **52/52 pass**, 6 suite. Test mới: thứ hạng model, tự chuyển model (3 request:
+  404 → danh sách model → thành công), không có model thay thế thì `model_unavailable`,
+  `checkApiKey` gợi ý model, `sanitizeAiModel` nâng model đã ngừng.
+- `node scripts/verify.mjs` — ALL PASS.
+
+### Chưa kiểm chứng
+
+- Chưa gọi Gemini thật bằng key của người dùng với `gemini-3.8-flash`; cần build mới và
+  thử "Tạo bộ từ" trên iPhone.

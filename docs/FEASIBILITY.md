@@ -209,7 +209,7 @@ Gemini key, sẽ phát sinh chi phí hosting — dự án này **không** dùng 
 | Widget màn hình khóa hiển thị | Thêm accessory widget trên iPhone |
 | Apple ID miễn phí có chặn App Group thật không | Thử build với Personal Team — dự kiến lỗi entitlement |
 | `expo-widgets` API `createWidget`/`updateSnapshot` đúng như docs | Typecheck + build; nếu sai, sửa theo `node_modules/expo-widgets` |
-| Gemini model `gemini-2.5-flash` còn khả dụng | Gọi thử trong app; đổi model trong Cài đặt nếu 404 |
+| Gemini model `gemini-3.8-flash` còn khả dụng | Gọi thử trong app; app tự chuyển model nếu 404, Cài đặt → "Kiểm tra key + model" để lưu model mới |
 | iOS có voice en-GB trên máy | Cài Settings → Accessibility → Spoken Content |
 | Nhận diện on-device hoạt động | Thử trên iPhone thật, xem lỗi cụ thể |
 

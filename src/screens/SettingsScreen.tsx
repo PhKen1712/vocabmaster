@@ -3,7 +3,7 @@ import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
-import { checkApiKey, clearApiKey, hasApiKey, saveApiKey } from '../ai/gemini';
+import { checkApiKey, clearApiKey, hasApiKey, saveApiKey, type KeyCheck } from '../ai/gemini';
 import { exportBackupFile, exportCsvFile, importCsvWords, pickTextFile, restoreBackup } from '../db/backup';
 import { getCounts } from '../db/words';
 import { resetDatabase } from '../db/database';
@@ -17,7 +17,7 @@ import { speak } from '../speech/tts';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
-import type { ThemeMode } from '../types';
+import { DEFAULT_AI_MODEL, type ThemeMode } from '../types';
 import { useNavigation } from '../navigation/NavigationProvider';
 
 const WEEKDAYS = [
@@ -39,9 +39,12 @@ export function SettingsScreen() {
   const [keyInput, setKeyInput] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [checkResult, setCheckResult] = useState<KeyCheck | null>(null);
   const [notificationStatus, setNotificationStatus] = useState<string>('…');
   const [busy, setBusy] = useState<string | null>(null);
+
+  // Model Google đề xuất khi model đang cấu hình đã bị ngừng.
+  const suggestedModel = checkResult && !checkResult.ok ? checkResult.suggestedModel ?? null : null;
 
   const refreshKeyStatus = useCallback(async () => {
     const exists = await hasApiKey();
@@ -76,11 +79,11 @@ export function SettingsScreen() {
     }
   };
 
-  const verifyKey = async () => {
+  const verifyKey = async (model = settings.aiModel) => {
     setChecking(true);
     setCheckResult(null);
     try {
-      setCheckResult(await checkApiKey(settings.aiModel));
+      setCheckResult(await checkApiKey(model));
     } catch (error) {
       setCheckResult({
         ok: false,
@@ -89,6 +92,12 @@ export function SettingsScreen() {
     } finally {
       setChecking(false);
     }
+  };
+
+  // One tap instead of making the learner copy a model name by hand.
+  const useSuggestedModel = async (model: string) => {
+    await updateSettings({ aiModel: model });
+    await verifyKey(model);
   };
 
   const removeKey = () => {
@@ -317,12 +326,13 @@ export function SettingsScreen() {
         <Input
           value={settings.aiModel}
           onChangeText={(value) => void updateSettings({ aiModel: value })}
-          placeholder="gemini-2.5-flash"
+          placeholder={DEFAULT_AI_MODEL}
           style={{ marginTop: spacing.xs }}
         />
         <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
-          Nếu model không còn khả dụng, đổi sang model khác trong Google AI Studio. Hạn mức miễn
-          phí thay đổi theo thời gian và theo model.
+          Google định kỳ ngừng các model cũ. Nếu model ở trên bị ngừng, app tự chuyển sang model
+          khả dụng; bấm "Kiểm tra key + model" để xem và lưu lại tên model mới. Hạn mức miễn phí
+          thay đổi theo thời gian và theo model.
         </AppText>
 
         <PrimaryButton
@@ -341,6 +351,13 @@ export function SettingsScreen() {
             {checkResult.ok ? '✓ ' : '✗ '}
             {checkResult.detail}
           </AppText>
+        ) : null}
+        {suggestedModel ? (
+          <PrimaryButton
+            label={`Dùng ${suggestedModel}`}
+            style={{ marginTop: spacing.sm }}
+            onPress={() => void useSuggestedModel(suggestedModel)}
+          />
         ) : null}
       </Card>
 

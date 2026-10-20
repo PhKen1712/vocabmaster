@@ -186,6 +186,22 @@ export interface Settings {
   aiModel: string;
 }
 
+/**
+ * Model Gemini mặc định.
+ *
+ * Google đã ngừng cấp `gemini-2.5-flash` cho key mới: gọi model đó trả về 404
+ * "no longer available to new users". Đổi sang model Google chỉ định trong
+ * thông báo lỗi. Khi Google ngừng model này, app tự chuyển model khả dụng
+ * (xem `generateVocabulary`) nên không cần cài lại bản mới.
+ */
+export const DEFAULT_AI_MODEL = 'gemini-3.8-flash';
+
+/**
+ * Model đã bị Google ngừng. Cài đặt cũ còn lưu những tên này sẽ được nâng lên
+ * `DEFAULT_AI_MODEL` khi đọc, nếu không người dùng nâng cấp app vẫn gặp lỗi 404.
+ */
+export const RETIRED_AI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
+
 export const DEFAULT_SETTINGS: Settings = {
   track: 'general',
   level: 2,
@@ -199,7 +215,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reminderWeekdays: [2, 3, 4, 5, 6, 7, 1],
   onboardingDone: false,
   widgetTrack: 'general',
-  aiModel: 'gemini-2.5-flash',
+  aiModel: DEFAULT_AI_MODEL,
 };
 
 export interface DailyStats {

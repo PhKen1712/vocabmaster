@@ -70,7 +70,7 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 | EAS prebuild sinh đúng 2 widget target + App Group | Build trên EAS, xem log prebuild và `ios/ExpoWidgetsTarget` |
 | `@expo/ui` `Text` nhận số/nhiều children trong runtime widget | Mở widget trên iPhone, xem layout |
 | iOS có on-device English speech model trên máy người dùng | Chạy luyện nói, đọc mã lỗi nếu `requiresOnDeviceRecognition` fail |
-| `gemini-2.5-flash` còn hiệu lực với key của người dùng | Tạo 3 từ trong AI Studio; đổi model nếu 404 |
+| `gemini-3.8-flash` còn hiệu lực với key của người dùng | Tạo 3 từ trong AI Studio; nếu 404, app tự đổi model và Cài đặt → "Kiểm tra key + model" để lưu |
 | Backup JSON/CSV khôi phục đúng | Xuất → xoá → khôi phục → so số từ |
 | Thông báo nhắc học bắn đúng giờ | Đặt nhắc gần + thử trên máy |
 

@@ -32,6 +32,7 @@ export function AiStudioScreen() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modelNote, setModelNote] = useState<string | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
 
@@ -39,6 +40,7 @@ export function AiStudioScreen() {
     if (!db) return;
     setLoading(true);
     setError(null);
+    setModelNote(null);
     setRejected([]);
     try {
       const existing = await listWords(db, { track, limit: 300 });
@@ -56,6 +58,11 @@ export function AiStudioScreen() {
       );
       setDrafts(result.suggestions.map((item) => ({ ...item, include: true })));
       setRejected(result.rejected);
+      if (result.fallbackFrom) {
+        setModelNote(
+          `Model "${result.fallbackFrom}" đã bị Google ngừng nên lần này dùng "${result.model}". Vào Cài đặt → Gemini AI để lưu model mới.`,
+        );
+      }
       if (result.suggestions.length === 0) {
         setError('Gemini không trả về từ nào dùng được. Thử đổi chủ đề hoặc giảm số lượng.');
       }
@@ -64,7 +71,7 @@ export function AiStudioScreen() {
         caught instanceof AiError
           ? // Lỗi không phân loại được: hiện nguyên văn của Google kèm mã HTTP,
             // nếu không thì không thể biết phải sửa key, model hay mạng.
-            caught.code === 'unknown'
+            caught.code === 'unknown' || caught.code === 'model_unavailable'
             ? caught.message
             : AI_ERROR_MESSAGES[caught.code]
           : caught instanceof Error
@@ -227,6 +234,12 @@ export function AiStudioScreen() {
             title="Không tạo được bộ từ"
             body={`${error} Học và ôn tập offline vẫn hoạt động bình thường.`}
           />
+        </View>
+      ) : null}
+
+      {modelNote ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Banner tone="warning" title="Đã tự đổi model Gemini" body={modelNote} />
         </View>
       ) : null}
 

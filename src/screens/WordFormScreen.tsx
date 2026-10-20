@@ -152,7 +152,10 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
     } catch (caught) {
       setError(
         caught instanceof AiError
-          ? AI_ERROR_MESSAGES[caught.code]
+          ? // These two explain exactly what to fix; the generic map would hide it.
+            caught.code === 'unknown' || caught.code === 'model_unavailable'
+            ? caught.message
+            : AI_ERROR_MESSAGES[caught.code]
           : caught instanceof Error
             ? caught.message
             : 'Không gọi được Gemini.',

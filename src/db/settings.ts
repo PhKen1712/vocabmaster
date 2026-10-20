@@ -1,6 +1,24 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { DEFAULT_SETTINGS, LEVELS, type Settings, type Track } from '../types';
+import {
+  DEFAULT_AI_MODEL,
+  DEFAULT_SETTINGS,
+  LEVELS,
+  RETIRED_AI_MODELS,
+  type Settings,
+  type Track,
+} from '../types';
+
+/**
+ * A model name saved by an older build can point at a model Google has retired;
+ * such settings get the current default instead of failing on every AI request.
+ */
+export function sanitizeAiModel(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_AI_MODEL;
+  const name = value.trim().replace(/^models\//, '');
+  if (!name) return DEFAULT_AI_MODEL;
+  return RETIRED_AI_MODELS.includes(name) ? DEFAULT_AI_MODEL : name;
+}
 
 const SETTINGS_KEY = 'settings';
 
@@ -45,10 +63,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     reminderWeekdays: weekdays.length > 0 ? weekdays.sort((a, b) => a - b) : DEFAULT_SETTINGS.reminderWeekdays,
     onboardingDone: Boolean(value.onboardingDone),
     widgetTrack: asTrack(value.widgetTrack, DEFAULT_SETTINGS.widgetTrack),
-    aiModel:
-      typeof value.aiModel === 'string' && value.aiModel.trim().length > 0
-        ? value.aiModel.trim()
-        : DEFAULT_SETTINGS.aiModel,
+    aiModel: sanitizeAiModel(value.aiModel),
   };
 }
 

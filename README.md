@@ -50,7 +50,8 @@ npm start
 1. Lấy API key tại https://aistudio.google.com/apikey
 2. Trong app: **Cài đặt → Gemini AI → dán key → Lưu key**.
 3. Key được lưu trong Keychain của iPhone, không nằm trong mã nguồn/Git/backup.
-4. Có thể đổi model (mặc định `gemini-2.5-flash`) nếu model cũ không còn khả dụng.
+4. Model mặc định là `gemini-3.8-flash`. Nếu Google ngừng model đó, app tự chuyển sang model
+   còn khả dụng và báo trong AI Studio; bấm **Kiểm tra key + model** trong Cài đặt để lưu lại.
 5. Không có key: mọi chức năng học, ôn, tìm kiếm, nhập CSV, widget vẫn hoạt động.
 
 **Cảnh báo bảo mật:** app gọi Gemini trực tiếp từ iPhone. Key lưu trên máy có thể bị lộ nếu
