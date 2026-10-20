@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>VocabMaster syntax check</title>
+    <style>
+      body { font: 13px/1.5 ui-monospace, Menlo, monospace; padding: 16px; background: #0e1220; color: #e8ecff; }
+      h1 { font-size: 16px; }
+      .ok { color: #4cd6a0; }
+      .bad { color: #ff8794; }
+      pre { white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>VocabMaster — file parse check</h1>
+    <pre id="log">starting…</pre>
+    <script>
+      const log = (message, cls = '') => {
+        const el = document.getElementById('log');
+        const span = document.createElement('span');
+        span.className = cls;
+        span.textContent = message + '\n';
+        el.appendChild(span);
+      };
+
+      const FILES = [
+        'package.json', 'app.json', 'eas.json', 'tsconfig.json',
+        'App.tsx', 'index.ts', 'babel.config.js',
+        'src/types.ts', 'src/lib/text.ts', 'src/lib/date.ts', 'src/lib/ids.ts',
+        'src/data/seed.ts',
+        'src/db/schema.ts', 'src/db/database.ts', 'src/db/words.ts', 'src/db/reviews.ts',
+        'src/db/activity.ts', 'src/db/settings.ts', 'src/db/backup.ts',
+        'src/srs/fsrs.ts', 'src/quiz/generator.ts', 'src/quiz/grading.ts',
+        'src/streak/streak.ts',
+        'src/ai/types.ts', 'src/ai/prompt.ts', 'src/ai/schema.ts', 'src/ai/gemini.ts',
+        'src/speech/tts.ts', 'src/speech/pronunciation.ts', 'src/speech/useSpeechCheck.ts',
+        'src/notifications/reminders.ts',
+        'src/widgets/snapshot.ts', 'src/widgets/sync.ts',
+        'widgets/DailyWordWidget.tsx', 'widgets/ReviewGlanceWidget.tsx',
+        'src/state/AppProvider.tsx', 'src/navigation/NavigationProvider.tsx',
+        'src/theme/tokens.ts', 'src/theme/ThemeProvider.tsx',
+        'src/components/ui.tsx', 'src/components/patterns.tsx', 'src/components/TabBar.tsx',
+        'src/screens/OnboardingScreen.tsx', 'src/screens/TodayScreen.tsx',
+        'src/screens/StudyScreen.tsx', 'src/screens/WordsScreen.tsx',
+        'src/screens/WordDetailScreen.tsx', 'src/screens/WordFormScreen.tsx',
+        'src/screens/AiStudioScreen.tsx', 'src/screens/SessionScreen.tsx',
+        'src/screens/StatsScreen.tsx', 'src/screens/SettingsScreen.tsx',
+        'src/screens/PlacementScreen.tsx',
+        'src/srs/__tests__/fsrs.test.ts', 'src/quiz/__tests__/quiz.test.ts',
+        'src/streak/__tests__/streak.test.ts', 'src/lib/__tests__/text.test.ts',
+        'CHECKPOINT.json', 'CHECKPOINT.md', 'CHANGELOG.md', 'NEXT_SESSION.md', 'README.md',
+        'docs/FEASIBILITY.md', 'docs/ARCHITECTURE.md', 'docs/BUILD_AND_INSTALL.md',
+        'docs/TEST_PLAN.md', 'scripts/setup.mjs', 'scripts/validate-checkpoint.mjs',
+      ];
+
+      async function readFile(path) {
+        const candidates = [path, `../${path}`, `../../${path}`, `/@fs/${path}`];
+        for (const candidate of candidates) {
+          try {
+            const response = await fetch(candidate, { cache: 'no-store' });
+            if (response.ok) {
+              const text = await response.text();
+              if (!text.startsWith('<!doctype html') || path.endsWith('.md')) return { text, candidate };
+            }
+          } catch {
+            /* try next */
+          }
+        }
+        return null;
+      }
+
+      (async () => {
+        let ok = 0;
+        let missing = 0;
+        for (const path of FILES) {
+          const result = await readFile(path);
+          if (!result) {
+            missing += 1;
+            log(`MISSING ${path}`, 'bad');
+            continue;
+          }
+          if (path.endsWith('.json')) {
+            try {
+              JSON.parse(result.text);
+              ok += 1;
+              log(`JSON OK  ${path} (${result.candidate})`, 'ok');
+            } catch (error) {
+              log(`JSON BAD ${path}: ${error.message}`, 'bad');
+            }
+          } else {
+            ok += 1;
+            log(`READ     ${path} (${result.text.length} chars, via ${result.candidate})`, 'ok');
+          }
+        }
+        log(`\nDone. readable=${ok} missing=${missing}`);
+      })();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,125 @@
+name: iOS unsigned IPA (free Apple ID)
+
+# Build một .ipa KHÔNG ký trên macOS runner của GitHub, để tải về Windows và ký
+# bằng Apple ID miễn phí qua Sideloadly. Không cần tài khoản Apple trả phí,
+# không cần Mac.
+#
+# Vì Apple ID miễn phí không có App Groups, workflow bỏ plugin expo-widgets
+# (widget extension) trước khi prebuild. Toàn bộ code widget vẫn nằm trong repo.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+
+permissions:
+  contents: read
+
+jobs:
+  build-unsigned-ipa:
+    runs-on: macos-26
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci
+
+      - name: Verify typecheck and unit tests
+        run: |
+          set -euo pipefail
+          npm run typecheck
+          npm test -- --ci
+
+      - name: Strip widget extension (free Apple ID has no App Groups)
+        run: node scripts/prepare-free-build.mjs
+
+      - name: Show Xcode and CocoaPods versions
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+          pod --version
+
+      - name: Prebuild iOS project
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --clean --no-install
+          ls -la ios
+
+      - name: Install CocoaPods
+        run: |
+          set -euo pipefail
+          cd ios
+          pod install --repo-update
+
+      - name: Archive unsigned app
+        run: |
+          set -euo pipefail
+          WORKSPACE="$(ls -d ios/*.xcworkspace | head -n 1)"
+          echo "Workspace: $WORKSPACE"
+
+          xcodebuild -list -workspace "$WORKSPACE"
+
+          # Các scheme sau dòng "Schemes:"; bỏ qua scheme của CocoaPods (Pods-*)
+          # vì archive chúng sẽ không tạo ra app.
+          SCHEME_LIST="$(xcodebuild -list -workspace "$WORKSPACE" | awk '/Schemes:/{found=1; next} found && NF {print $1}')" || true
+          SCHEME="$(printf '%s\n' "$SCHEME_LIST" | grep -v '^Pods' | head -n 1)" || true
+          if [ -z "$SCHEME" ]; then
+            echo "Không tìm thấy scheme nào trong workspace: $WORKSPACE" >&2
+            printf 'Schemes đọc được:\n%s\n' "$SCHEME_LIST" >&2
+            exit 1
+          fi
+          echo "Scheme: $SCHEME"
+
+          xcodebuild archive \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$PWD/build/VocabMaster.xcarchive" \
+            -derivedDataPath "$PWD/build/DerivedData" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Package unsigned IPA
+        run: |
+          set -euo pipefail
+          APP_PATH="$(find build/VocabMaster.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -n 1)"
+          echo "App: $APP_PATH"
+          if [ -z "$APP_PATH" ]; then
+            echo "Không thấy .app trong archive." >&2
+            exit 1
+          fi
+
+          rm -rf build/ipa
+          mkdir -p build/ipa/Payload
+          cp -R "$APP_PATH" build/ipa/Payload/
+
+          (
+            cd build/ipa
+            /usr/bin/zip -qry "$GITHUB_WORKSPACE/VocabMaster-unsigned.ipa" Payload
+          )
+
+          ls -lh VocabMaster-unsigned.ipa
+          # Chỉ để in ra log: không được làm fail job nếu defaults không đọc được.
+          defaults read "$PWD/$APP_PATH/Info" CFBundleIdentifier || echo "(không đọc được CFBundleIdentifier)"
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: VocabMaster-unsigned-ipa
+          path: VocabMaster-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 14

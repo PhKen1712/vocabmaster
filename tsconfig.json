@@ -1,0 +1,12 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "noFallthroughCasesInSwitch": true,
+    "jsx": "react-jsx",
+    // Chỉ rõ global của test runner; TS 6 không tự nạp @types/jest cho file test.
+    "types": ["jest"]
+  },
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", "ios", "android"]
+}

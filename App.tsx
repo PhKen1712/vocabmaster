@@ -1,0 +1,177 @@
+import React from 'react';
+import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+
+import { AppText, Banner, Screen } from './src/components/ui';
+import { TabBar } from './src/components/TabBar';
+import {
+  NavigationProvider,
+  useNavigation,
+  type TabName,
+} from './src/navigation/NavigationProvider';
+import { AppProvider, useApp } from './src/state/AppProvider';
+import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
+import { spacing } from './src/theme/tokens';
+import { configureNotificationHandler } from './src/notifications/reminders';
+import { OnboardingScreen } from './src/screens/OnboardingScreen';
+import { TodayScreen } from './src/screens/TodayScreen';
+import { StudyScreen } from './src/screens/StudyScreen';
+import { WordsScreen } from './src/screens/WordsScreen';
+import { StatsScreen } from './src/screens/StatsScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
+import { WordDetailScreen } from './src/screens/WordDetailScreen';
+import { WordFormScreen } from './src/screens/WordFormScreen';
+import { AiStudioScreen } from './src/screens/AiStudioScreen';
+import { SessionScreen } from './src/screens/SessionScreen';
+import { PlacementScreen } from './src/screens/PlacementScreen';
+
+configureNotificationHandler();
+
+const TAB_NAMES: TabName[] = ['today', 'study', 'words', 'stats', 'settings'];
+
+function isTabRoute(name: string): name is TabName {
+  return TAB_NAMES.includes(name as TabName);
+}
+
+function Splash() {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.splash, { backgroundColor: colors.background }]}>
+      <View style={[styles.logo, { backgroundColor: colors.primary }]}>
+        <AppText variant="title" color={colors.onPrimary}>
+          VM
+        </AppText>
+      </View>
+      <AppText variant="headline" style={{ marginTop: spacing.lg }}>
+        VocabMaster
+      </AppText>
+      <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
+    </View>
+  );
+}
+
+function BootError({ message }: { message: string }) {
+  return (
+    <Screen>
+      <Banner
+        tone="danger"
+        title="Không mở được dữ liệu"
+        body="Dữ liệu hiện có không bị xoá. Hãy đóng hẳn ứng dụng rồi mở lại. Nếu lỗi lặp lại, xuất bản sao lưu từ bản cài trước đó và cài lại ứng dụng."
+      />
+      <Banner tone="warning" title="Chi tiết kỹ thuật" body={message} />
+      <AppText variant="caption" color="#8C94AD" style={{ marginTop: spacing.md }}>
+        Ghi lại thông báo trên và đưa cho AI tiếp theo trong phiên làm việc mới; checkpoint có
+        hướng dẫn vị trí file cơ sở dữ liệu.
+      </AppText>
+    </Screen>
+  );
+}
+
+function RootContent() {
+  const { ready, bootError, settings } = useApp();
+  const { current, goToTab, stack } = useNavigation();
+  const { colors } = useTheme();
+
+  if (!ready) return <Splash />;
+  if (bootError) return <BootError message={bootError} />;
+
+  if (!settings.onboardingDone && current.name !== 'placement') {
+    return <OnboardingScreen />;
+  }
+
+  const showTabBar = isTabRoute(current.name) && stack.length === 1;
+
+  let content: React.ReactNode = null;
+  switch (current.name) {
+    case 'today':
+      content = <TodayScreen />;
+      break;
+    case 'study':
+      content = <StudyScreen />;
+      break;
+    case 'words':
+      content = <WordsScreen />;
+      break;
+    case 'stats':
+      content = <StatsScreen />;
+      break;
+    case 'settings':
+      content = <SettingsScreen />;
+      break;
+    case 'word':
+      content = <WordDetailScreen id={current.id} />;
+      break;
+    case 'wordForm':
+      content = <WordFormScreen id={current.id} draft={current.draft} />;
+      break;
+    case 'ai':
+      content = <AiStudioScreen />;
+      break;
+    case 'session':
+      content = <SessionScreen config={current.config} />;
+      break;
+    case 'placement':
+      content = <PlacementScreen />;
+      break;
+    default:
+      content = <TodayScreen />;
+  }
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.flex, { backgroundColor: colors.background }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <View style={styles.flex}>{content}</View>
+      {showTabBar ? (
+        <TabBar active={current.name as TabName} onChange={(tab) => goToTab(tab)} />
+      ) : null}
+    </KeyboardAvoidingView>
+  );
+}
+
+function ThemedApp() {
+  const { settings } = useApp();
+  const { isDark } = useTheme();
+
+  return (
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <NavigationProvider>
+        <RootContent />
+      </NavigationProvider>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <AppProvider>
+        <ThemeGate />
+      </AppProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function ThemeGate() {
+  const { settings } = useApp();
+  return (
+    <ThemeProvider mode={settings.themeMode}>
+      <ThemedApp />
+    </ThemeProvider>
+  );
+}
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  logo: {
+    width: 76,
+    height: 76,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});

@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Expo / native output
+.expo/
+dist/
+web-build/
+ios/
+android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.secrets.json
+
+# Local device backups / exports
+backups/
+exports/
+
+# Tests / tooling
+coverage/
+tools/verify-report.txt
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Free-build artifact backup (widget stripped)
+app.json.free-build.bak
+
+# Xcode archive/package output from CI packaging steps
+build/

@@ -1,0 +1,605 @@
+{
+  "project_name": "VocabMaster",
+  "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
+  "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
+  "checkpoint_version": 1,
+  "last_updated": "2026-10-20",
+  "current_phase": "Phase 1-6 code written; typecheck + 36 unit tests green; iOS build and device verification not run",
+  "current_branch": null,
+  "current_commit": null,
+  "tech_stack": [
+    "React Native 0.88.0",
+    "Expo SDK 58 (expo ~58.0.14)",
+    "TypeScript ~6.0.3 (strict)",
+    "expo-sqlite",
+    "expo-widgets ~58.0.20",
+    "@expo/ui ~58.0.20",
+    "expo-secure-store",
+    "expo-speech",
+    "expo-speech-recognition ~58.0.0",
+    "expo-notifications",
+    "expo-file-system (legacy API)",
+    "expo-document-picker",
+    "expo-sharing",
+    "expo-dev-client (installed by scripts/setup.mjs)",
+    "EAS Build (planned, not configured)",
+    "Jest + jest-expo (tests written, not run)"
+  ],
+  "completed_features": [
+    {
+      "name": "SQLite schema, migration transaction, seed 40 words",
+      "status": "implemented",
+      "evidence": "src/db/schema.ts, src/db/database.ts, src/data/seed.ts"
+    },
+    {
+      "name": "Word CRUD, search, favorites, per-track duplicate detection",
+      "status": "implemented",
+      "evidence": "src/db/words.ts"
+    },
+    {
+      "name": "JSON backup/restore (merge/replace) and CSV import/export",
+      "status": "implemented",
+      "evidence": "src/db/backup.ts"
+    },
+    {
+      "name": "FSRS-5 scheduler with learning steps and lapse handling",
+      "status": "implemented",
+      "evidence": "src/srs/fsrs.ts"
+    },
+    {
+      "name": "Nine quiz kinds with validated options and fallback",
+      "status": "implemented",
+      "evidence": "src/quiz/generator.ts"
+    },
+    {
+      "name": "Answer grading with normalization and near-miss",
+      "status": "implemented",
+      "evidence": "src/quiz/grading.ts"
+    },
+    {
+      "name": "Study session UI with self-rating and retry of missed words",
+      "status": "implemented",
+      "evidence": "src/screens/SessionScreen.tsx"
+    },
+    {
+      "name": "General/IELTS tracks, seven levels, daily goal, placement check, accuracy-based level suggestion",
+      "status": "implemented",
+      "evidence": "src/screens/StudyScreen.tsx, src/screens/PlacementScreen.tsx, src/types.ts"
+    },
+    {
+      "name": "Streak based on completed daily goal with grace period",
+      "status": "implemented",
+      "evidence": "src/streak/streak.ts, src/db/activity.ts"
+    },
+    {
+      "name": "Statistics dashboard",
+      "status": "implemented",
+      "evidence": "src/screens/StatsScreen.tsx"
+    },
+    {
+      "name": "Text to speech with en-US/en-GB voice selection",
+      "status": "implemented",
+      "evidence": "src/speech/tts.ts"
+    },
+    {
+      "name": "Speech recognition speaking practice (word match only)",
+      "status": "implemented",
+      "evidence": "src/speech/useSpeechCheck.ts, src/speech/pronunciation.ts"
+    },
+    {
+      "name": "Gemini client, secure key storage, validation, preview and inline editing",
+      "status": "implemented",
+      "evidence": "src/ai/gemini.ts, src/ai/schema.ts, src/screens/AiStudioScreen.tsx"
+    },
+    {
+      "name": "Home Screen and Lock Screen widgets with data sync",
+      "status": "implemented",
+      "evidence": "widgets/DailyWordWidget.tsx, widgets/ReviewGlanceWidget.tsx, src/widgets/sync.ts"
+    },
+    {
+      "name": "Weekly local study reminders",
+      "status": "implemented",
+      "evidence": "src/notifications/reminders.ts"
+    },
+    {
+      "name": "Light/dark theme and shared design system",
+      "status": "implemented",
+      "evidence": "src/theme/tokens.ts, src/theme/ThemeProvider.tsx, src/components/ui.tsx"
+    },
+    {
+      "name": "Onboarding and settings screens",
+      "status": "implemented",
+      "evidence": "src/screens/OnboardingScreen.tsx, src/screens/SettingsScreen.tsx"
+    },
+    {
+      "name": "Unit tests for FSRS, quiz, streak and text helpers",
+      "status": "implemented",
+      "evidence": "src/srs/__tests__, src/quiz/__tests__, src/streak/__tests__, src/lib/__tests__"
+    },
+    {
+      "name": "Checkpoint system, setup script, validator, documentation",
+      "status": "implemented",
+      "evidence": "CHECKPOINT.md, CHECKPOINT.json, CHANGELOG.md, NEXT_SESSION.md, README.md, docs/, scripts/"
+    },
+    {
+      "name": "Typecheck, unit tests, expo-doctor and config plugin composition",
+      "status": "tested",
+      "evidence": "npm run typecheck exit 0; npm test -- --ci: 36/36 tests in 4 suites; npx expo-doctor 20/20; npx expo config --type prebuild exit 0 with both widgets composed"
+    },
+    {
+      "name": "Free sideload path: unsigned IPA built on GitHub Actions macOS, signed with a free Apple ID",
+      "status": "implemented",
+      "evidence": "Workflow YAML parsed with js-yaml; scripts/prepare-free-build.mjs strip+restore verified (app.json restored byte-identical, expo config --type prebuild still exit 0 without the widget plugin); not yet run on GitHub"
+    }
+  ],
+  "in_progress_features": [
+    {
+      "name": "Widget native verification",
+      "status": "blocked",
+      "status_detail": "code_implemented_never_built",
+      "evidence": "widgets/, app.json expo-widgets plugin",
+      "blocked_by": "Apple Developer Program + EAS build + iPhone"
+    },
+    {
+      "name": "Pronunciation feedback",
+      "status": "implemented",
+      "status_detail": "word_match_only_no_phoneme_scoring",
+      "evidence": "src/speech/pronunciation.ts"
+    },
+    {
+      "name": "Gemini end-to-end",
+      "status": "implemented",
+      "status_detail": "client_written_never_called",
+      "evidence": "src/ai/gemini.ts"
+    },
+    {
+      "name": "Checkpoint consistency verification",
+      "status": "implemented",
+      "status_detail": "validator_written_not_run",
+      "evidence": "scripts/validate-checkpoint.mjs"
+    }
+  ],
+  "pending_features": [
+    {
+      "name": "Git repository and first commit",
+      "status": "planned",
+      "reason": "terminal unavailable"
+    },
+    {
+      "name": "EAS project init and credentials",
+      "status": "planned",
+      "reason": "requires Expo/Apple accounts"
+    },
+    {
+      "name": "iOS development build and installation",
+      "status": "planned",
+      "reason": "requires Apple Developer Program and EAS"
+    },
+    {
+      "name": "On-device widget verification (home and lock screen)",
+      "status": "planned",
+      "reason": "requires installed build"
+    },
+    {
+      "name": "On-device speech recognition verification",
+      "status": "planned",
+      "reason": "requires installed build and microphone permission"
+    },
+    {
+      "name": "Automatic periodic local backup",
+      "status": "planned",
+      "reason": "not implemented by design in v0.1"
+    },
+    {
+      "name": "Widget tap deep link to a specific screen",
+      "status": "planned",
+      "reason": "no documented API in expo-widgets; widget opens app only"
+    }
+  ],
+  "known_bugs": [
+    {
+      "id": "env-002",
+      "severity": "blocker",
+      "description": "Expo SDK 58 refuses npx expo prebuild --platform ios on Windows (\"Run npx expo prebuild again from macOS or Linux\"), so the native widget target and App Group entitlements cannot be generated or inspected on this machine.",
+      "workaround": "Run prebuild and the build on EAS (macOS workers) or on a Mac; the JS/config side is already verified."
+    }
+  ],
+  "resolved_bugs": [
+    {
+      "id": "bug-001",
+      "description": "backup.ts fallback settings object could drift from DEFAULT_SETTINGS.",
+      "fix": "Use { ...DEFAULT_SETTINGS } instead of a hand-written literal."
+    },
+    {
+      "id": "bug-002",
+      "description": "Static widget imports could crash app startup when the native module is absent.",
+      "fix": "Lazy require inside try/catch in src/widgets/sync.ts."
+    },
+    {
+      "id": "bug-003",
+      "description": "tts.ts compared voice.quality against string literals that may not match the SDK type.",
+      "fix": "Compare String(voice.quality) with a regex instead."
+    },
+    {
+      "id": "bug-004",
+      "description": "Stray empty ChipRow JSX in WordFormScreen.",
+      "fix": "Removed the block and the unused import."
+    },
+    {
+      "id": "bug-005",
+      "description": "src/speech/useSpeechCheck.ts imported 'expo-speech-recognition' and app.json registered its config plugin, but the package was missing from package.json dependencies, so tsc would fail with TS2307 and expo prebuild could not resolve the plugin.",
+      "fix": "Added \"expo-speech-recognition\": \"~58.0.0\" to dependencies (npm registry latest is 58.0.0). Verified the name/version exists via https://registry.npmjs.org/expo-speech-recognition/latest; install not yet run in this session."
+    },
+    {
+      "id": "bug-006",
+      "description": "Risk that 'expo-file-system/legacy' no longer exists in SDK 58.",
+      "fix": "Checked the installed package (expo-file-system 58.0.10): package.json exports './legacy', and build/legacy/index.d.ts re-exports cacheDirectory, documentDirectory, writeAsStringAsync, EncodingType. tsconfig uses moduleResolution bundler, so the subpath resolves."
+    },
+    {
+      "id": "bug-007",
+      "description": "tsconfig.json used baseUrl, which TypeScript 6 reports as TS5101 error (deprecated in TS 7).",
+      "fix": "Removed baseUrl and the unused \"@/*\" paths (grep showed no @/ imports); tsc now exits 0."
+    },
+    {
+      "id": "bug-008",
+      "description": "All 4 Jest suites failed to run: Cannot find module babel-preset-expo (babel.config.js presets it, but it was not installed).",
+      "fix": "npx expo install babel-preset-expo (SDK-compatible version added to devDependencies)."
+    },
+    {
+      "id": "bug-009",
+      "description": "src/db/reviews.ts called db.execAsync(sql, [params]) but expo-sqlite execAsync takes exactly one argument (TS2554).",
+      "fix": "Switched that statement to db.runAsync(sql, nowIso())."
+    },
+    {
+      "id": "bug-010",
+      "description": "app.json contained newArchEnabled, rejected by the Expo SDK 58 config schema (expo-doctor failure).",
+      "fix": "Removed the field; the New Architecture is the only architecture in SDK 58."
+    },
+    {
+      "id": "bug-011",
+      "description": "Jest globals (describe/it/expect) were unresolved by tsc under TypeScript 6, because @types/jest was not picked up for files under __tests__.",
+      "fix": "Added \"types\": [\"jest\"] to tsconfig compilerOptions (explicit ambient types, not a suppression)."
+    }
+  ],
+  "verified_capabilities": [
+    {
+      "capability": "Write files to C:\\Users\\Lenovo\\Desktop\\VocabMaster",
+      "verified": true,
+      "evidence": "Files created successfully on disk in this session"
+    },
+    {
+      "capability": "Official expo-widgets support for Home Screen and Lock Screen families",
+      "verified": true,
+      "evidence": "https://docs.expo.dev/versions/latest/sdk/widgets/ (docs state ~58.0.20, accessoryCircular/Rectangular/Inline)"
+    },
+    {
+      "capability": "EAS Free plan includes 15 iOS builds per month",
+      "verified": true,
+      "evidence": "https://expo.dev/pricing"
+    },
+    {
+      "capability": "Apple free account limited to 10 App IDs, 3 devices, 3 apps, 7-day profiles",
+      "verified": true,
+      "evidence": "https://developer.apple.com/help/account/basics/about-your-developer-account/"
+    },
+    {
+      "capability": "expo-file-system/legacy subpath export with the legacy API used by src/db/backup.ts",
+      "verified": true,
+      "evidence": "node_modules/expo-file-system/package.json exports './legacy'; build/legacy/index.d.ts declares cacheDirectory, writeAsStringAsync, EncodingType"
+    },
+    {
+      "capability": "App Groups unavailable to free Personal Team (documented capability rule)",
+      "verified": false,
+      "evidence": "Apple capability docs; not reproduced with a build on this project"
+    },
+    {
+      "capability": "TypeScript compiles with zero errors",
+      "verified": true,
+      "evidence": "npx tsc --noEmit (TypeScript 6.0.3) exit 0 on 2026-10-20"
+    },
+    {
+      "capability": "Unit tests pass",
+      "verified": true,
+      "evidence": "jest --ci --runInBand: 4/4 suites, 36/36 tests passed on 2026-10-20"
+    },
+    {
+      "capability": "Dependency versions align with Expo SDK 58",
+      "verified": true,
+      "evidence": "npx expo-doctor 20/20 checks passed"
+    },
+    {
+      "capability": "expo-widgets config plugin composes both widgets with the App Group id",
+      "verified": true,
+      "evidence": "npx expo config --type prebuild exit 0: DailyWordWidget (systemSmall/Medium/Large) + ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), group.com.vocabmaster.personal"
+    }
+  ],
+  "unverified_capabilities": [
+    {
+      "capability": "Mobile app launches on iPhone",
+      "how_to_verify": "Install development build and open app"
+    },
+    {
+      "capability": "Widget extension is generated by expo prebuild",
+      "how_to_verify": "Run expo prebuild on macOS/Linux or EAS, then inspect ios/ExpoWidgetsTarget and the App Group entitlement"
+    },
+    {
+      "capability": "Widget reads real study data via App Group",
+      "how_to_verify": "Paid Apple account build; add word; observe widget count"
+    },
+    {
+      "capability": "Lock Screen accessory widgets render",
+      "how_to_verify": "Add accessory widget on iPhone"
+    },
+    {
+      "capability": "Speech recognition works and on-device model exists",
+      "how_to_verify": "Speak a target word in Session; inspect transcript and error code"
+    },
+    {
+      "capability": "Gemini model gemini-2.5-flash is available for this key",
+      "how_to_verify": "Generate 3 words in AI Studio; switch model on 404"
+    },
+    {
+      "capability": "Notifications fire at the scheduled weekly time",
+      "how_to_verify": "Schedule near-future reminder on iPhone"
+    },
+    {
+      "capability": "CSV/JSON backup round-trips without data loss",
+      "how_to_verify": "Export, reset, restore, compare counts"
+    }
+  ],
+  "test_results": {
+    "last_run": "2026-10-20",
+    "status": "typecheck_and_unit_tests_pass",
+    "reason": "Git Bash installed; node scripts/verify.mjs ran npm install, tsc, jest --ci and checkpoint validation.",
+    "typecheck": {
+      "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
+      "exit_code": 0,
+      "errors": 0
+    },
+    "unit_tests": {
+      "command": "npm test -- --ci",
+      "exit_code": 0,
+      "suites_passed": 4,
+      "suites_failed": 0,
+      "tests_passed": 36,
+      "tests_failed": 0
+    },
+    "expo_doctor": {
+      "command": "npx expo-doctor",
+      "exit_code": 0,
+      "result": "20/20 checks passed"
+    },
+    "config_plugins": {
+      "command": "npx expo config --type prebuild --json",
+      "exit_code": 0,
+      "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
+    },
+    "commands_pending": [
+      "npx expo prebuild --platform ios (blocked on Windows: Expo refuses to generate the iOS project outside macOS/Linux)",
+      "EAS build + install on iPhone",
+      "Device verification of widget / speech / notifications / Gemini"
+    ],
+    "suites_written": [
+      "src/srs/__tests__/fsrs.test.ts",
+      "src/quiz/__tests__/quiz.test.ts",
+      "src/streak/__tests__/streak.test.ts",
+      "src/lib/__tests__/text.test.ts"
+    ],
+    "device_tests": {
+      "status": "not_run",
+      "reason": "No installed build / no connected iPhone in this session"
+    },
+    "build_tests": {
+      "status": "not_run",
+      "reason": "No EAS project or Apple credentials configured; iOS prebuild cannot run on Windows"
+    }
+  },
+  "important_files": [
+    {
+      "path": "App.tsx",
+      "role": "Providers, splash, onboarding gate, routing, tab bar"
+    },
+    {
+      "path": "app.json",
+      "role": "Expo config, bundle id, widget target, microphone/speech permissions"
+    },
+    {
+      "path": "package.json",
+      "role": "Dependencies and scripts (setup, typecheck, test)"
+    },
+    {
+      "path": "src/types.ts",
+      "role": "Shared domain types and default settings"
+    },
+    {
+      "path": "src/db/schema.ts",
+      "role": "SQLite DDL, migrations, row mappers"
+    },
+    {
+      "path": "src/db/database.ts",
+      "role": "Open database, migrate, seed, reset"
+    },
+    {
+      "path": "src/db/words.ts",
+      "role": "Word CRUD, search, counts, study plan"
+    },
+    {
+      "path": "src/db/reviews.ts",
+      "role": "Atomic review recording"
+    },
+    {
+      "path": "src/db/activity.ts",
+      "role": "Daily stats and streak queries"
+    },
+    {
+      "path": "src/db/backup.ts",
+      "role": "JSON backup/restore and CSV import/export"
+    },
+    {
+      "path": "src/srs/fsrs.ts",
+      "role": "FSRS-5 scheduler"
+    },
+    {
+      "path": "src/quiz/generator.ts",
+      "role": "Question generation from real words"
+    },
+    {
+      "path": "src/quiz/grading.ts",
+      "role": "Answer grading and near-miss"
+    },
+    {
+      "path": "src/streak/streak.ts",
+      "role": "Pure streak calculation"
+    },
+    {
+      "path": "src/ai/gemini.ts",
+      "role": "Gemini API client and secure key storage"
+    },
+    {
+      "path": "src/ai/schema.ts",
+      "role": "Validation of untrusted AI JSON"
+    },
+    {
+      "path": "src/speech/tts.ts",
+      "role": "On-device text to speech"
+    },
+    {
+      "path": "src/speech/useSpeechCheck.ts",
+      "role": "Speech recognition hook"
+    },
+    {
+      "path": "src/state/AppProvider.tsx",
+      "role": "App-wide database, settings and stats state"
+    },
+    {
+      "path": "src/navigation/NavigationProvider.tsx",
+      "role": "Typed stack and tab navigation"
+    },
+    {
+      "path": "src/widgets/snapshot.ts",
+      "role": "Widget props builders"
+    },
+    {
+      "path": "src/widgets/sync.ts",
+      "role": "Push real data to widgets"
+    },
+    {
+      "path": "widgets/DailyWordWidget.tsx",
+      "role": "Home Screen widget UI"
+    },
+    {
+      "path": "widgets/ReviewGlanceWidget.tsx",
+      "role": "Lock Screen widget UI"
+    },
+    {
+      "path": "src/screens/SessionScreen.tsx",
+      "role": "Study session flow"
+    },
+    {
+      "path": "src/screens/TodayScreen.tsx",
+      "role": "Daily dashboard"
+    },
+    {
+      "path": "src/screens/SettingsScreen.tsx",
+      "role": "Gemini key, reminders, widgets, backup"
+    },
+    {
+      "path": "docs/FEASIBILITY.md",
+      "role": "Feasibility report with sources and costs"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "role": "Architecture and data flow"
+    },
+    {
+      "path": "docs/BUILD_AND_INSTALL.md",
+      "role": "Windows to iPhone build guide"
+    },
+    {
+      "path": "docs/TEST_PLAN.md",
+      "role": "Automated and on-device test checklist"
+    },
+    {
+      "path": "README.md",
+      "role": "User documentation"
+    },
+    {
+      "path": "CHECKPOINT.md",
+      "role": "Main handoff document"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "role": "Session change log"
+    },
+    {
+      "path": "NEXT_SESSION.md",
+      "role": "Next-session quick start"
+    },
+    {
+      "path": "scripts/setup.mjs",
+      "role": "Dependency bootstrap"
+    },
+    {
+      "path": "scripts/validate-checkpoint.mjs",
+      "role": "Checkpoint consistency and secret scan"
+    },
+    {
+      "path": ".github/workflows/ios-unsigned.yml",
+      "role": "GitHub Actions macOS build of an unsigned .ipa for free-Apple-ID sideloading (widget stripped)"
+    },
+    {
+      "path": "scripts/prepare-free-build.mjs",
+      "role": "Strip/restore the expo-widgets plugin for the free-account build"
+    },
+    {
+      "path": "docs/FREE_SIDELOAD.md",
+      "role": "Step-by-step free install path: GitHub Actions + Sideloadly, limits, troubleshooting"
+    },
+    {
+      "path": "docs/GITHUB_SETUP.md",
+      "role": "Step-by-step GitHub account, 2FA, repo, PAT and Actions run for the free sideload path"
+    }
+  ],
+  "next_steps": [
+    "Push the repo to GitHub and run the iOS unsigned IPA workflow; download the artifact and install with Sideloadly (docs/FREE_SIDELOAD.md).",
+    "git init and commit the initial project (no secrets); .gitignore already excludes .env, ios/ and build output.",
+    "Decide on Apple Developer Program (99 USD/year) - required for App Groups and therefore for a widget that shows real study data.",
+    "Create the EAS project and run a development build; that runs expo prebuild on macOS and must generate both widget targets plus the App Group.",
+    "Install on iPhone and verify per docs/TEST_PLAN.md, especially 2.6 (widgets), 2.3 (study session), speech and notifications.",
+    "Record real device results in test_results.device_tests; do not mark anything verified_on_device until it is observed."
+  ],
+  "blocked_by": [
+    {
+      "blocker": "No Apple Developer Program membership",
+      "needs": "User approval and 99 USD/year enrollment",
+      "blocks": [
+        "App Groups",
+        "widget reading real data",
+        "ad hoc installation via EAS"
+      ]
+    },
+    {
+      "blocker": "No iPhone connected to this session",
+      "needs": "User installs the build and adds widgets",
+      "blocks": [
+        "verified_on_device status"
+      ]
+    }
+  ],
+  "environment_requirements": {
+    "os": "Windows 10/11",
+    "required_tools": [
+      "Git for Windows (Git Bash)",
+      "Node.js 22.13+ or 24/26 LTS",
+      "npm"
+    ],
+    "accounts": [
+      "Expo account (free) for EAS Build",
+      "Apple Developer Program (paid) for App Groups and device distribution",
+      "Google AI Studio API key (optional, entered in app)"
+    ],
+    "node_engine": "^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0",
+    "ios_target": "iOS 18+",
+    "secrets_policy": "GEMINI key in iOS Keychain only; EXPO_TOKEN/APPLE_ID/APPLE_APP_PASSWORD only in CI secret store, never in repository"
+  }
+}

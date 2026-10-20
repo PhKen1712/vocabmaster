@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "VocabMaster",
+    "slug": "vocabmaster",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "vocabmaster",
+    "userInterfaceStyle": "automatic",
+    "platforms": ["ios"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.vocabmaster.personal",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-notifications",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "VocabMaster dùng micro để bạn đọc từ và tự nghe lại phần luyện nói.",
+          "speechRecognitionPermission": "VocabMaster dùng nhận diện giọng nói để kiểm tra bạn đã đọc đúng từ hay chưa."
+        }
+      ],
+      [
+        "expo-widgets",
+        {
+          "groupIdentifier": "group.com.vocabmaster.personal",
+          "widgets": [
+            {
+              "name": "DailyWordWidget",
+              "displayName": "Từ vựng hôm nay",
+              "description": "Từ cần học, số từ cần ôn và tiến độ mục tiêu trong ngày.",
+              "ios": {
+                "supportedFamilies": ["systemSmall", "systemMedium", "systemLarge"],
+                "initialLayout": "widgets/DailyWordWidget.tsx"
+              }
+            },
+            {
+              "name": "ReviewGlanceWidget",
+              "displayName": "Ôn tập nhanh",
+              "description": "Số từ cần ôn và chuỗi ngày học trên màn hình khóa.",
+              "ios": {
+                "supportedFamilies": ["accessoryCircular", "accessoryRectangular", "accessoryInline"],
+                "initialLayout": "widgets/ReviewGlanceWidget.tsx"
+              }
+            }
+          ]
+        }
+      ]
+    ]
+  }
+}
