@@ -148,12 +148,17 @@ Muốn đổi/xoá token: cùng trang đó → **Delete**. Không cần token ch
 | | Private | Public |
 |---|---|---|
 | Người khác xem code | Không | **Có** |
-| Thời gian Actions miễn phí | **2.000 phút/tháng**, macOS tính **10×** | Miễn phí, không giới hạn |
-| Một build macOS ~30 phút tốn | **~300 phút** | 0 |
-| Số build/tháng (không trả tiền) | **~6 lần** | Không giới hạn |
+| Thời gian Actions miễn phí | **2.000 phút/tháng** | Miễn phí, không giới hạn |
+| Một build macOS ~13 phút tốn | Thực đo trên repo này: **~20 phút** (xem ghi chú) | 0 |
+| Số build/tháng (không trả tiền) | **hàng chục lần** | Không giới hạn |
+
+Ghi chú về hệ số macOS: tài liệu GitHub ghi macOS tính **10×**, nhưng trang
+**Settings → Billing** của repo này ghi **20,7 phút** cho hai lần chạy tổng ~15,6 phút
+(một 12m07 bị huỷ, một 3m32 fail) — tức gần **1×**. Cứ theo con số ở trang Billing, đừng
+theo ước tính.
 
 Gợi ý: chọn **Private**. Bạn chỉ cần build khi **sửa code**; gia hạn 7 ngày chỉ là cài lại
-file `.ipa` đã tải, **không cần build lại**. 6 lần/tháng là đủ.
+file `.ipa` đã tải, **không cần build lại**.
 
 Nếu sau này cần build nhiều, đổi sang Public trong **Settings → General → Danger Zone →
 Change visibility**.

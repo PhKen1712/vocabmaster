@@ -18,12 +18,18 @@ Apple ID miễn phí trên Windows.
 |---|---|
 | Tài khoản GitHub | Miễn phí. Repo nên để **Private**. |
 | iPhone iOS 16+ | Bật **Developer Mode** (bắt buộc từ iOS 16). |
-| Windows + iTunes & iCloud | Tải **từ apple.com**, không dùng bản Microsoft Store. |
+| Windows + iTunes | Bắt buộc — bộ driver Apple Mobile Device nằm trong bản **tải từ apple.com**, không phải bản Microsoft Store. |
+| iCloud for Windows | Chỉ cần khi Sideloadly báo lỗi `anisette` / `NP_E_CONN_FAILED` / không đăng nhập được Apple ID. |
 | Sideloadly | Bản mới nhất từ sideloadly.io. |
 | Apple ID miễn phí | Không cần trả phí, nhưng có giới hạn ở mục 7. |
 
-Cài iTunes và iCloud, mở iTunes một lần, cắm iPhone, bấm **Trust** trên máy và
-trên điện thoại.
+Link tải đã kiểm tra là còn sống:
+
+- iTunes 64-bit: https://www.apple.com/itunes/download/win64 → `iTunes64Setup.exe`
+- iCloud: https://updates.cdn-apple.com/2020/windows/001-39935-20200911-1A70AA56-F448-11EA-8CC0-99D41950005E/iCloudSetup.exe
+
+Cài iTunes, mở nó một lần rồi đóng (không cần đăng nhập), cắm iPhone, bấm **Trust**
+trên điện thoại. Sau đó mở Sideloadly — ô chọn thiết bị phải hiện tên iPhone.
 
 ---
 
@@ -32,7 +38,7 @@ trên điện thoại.
 Nếu **chưa có tài khoản GitHub**, làm theo `docs/GITHUB_SETUP.md` trước (tạo tài khoản, bật
 2FA, tạo repo, tạo token) — mục đó có bảng sự cố riêng cho phần đăng ký/đẩy code.
 
-Chưa có Git repo trong thư mục dự án. Chạy trong PowerShell:
+Nếu thư mục dự án **chưa** có `.git` (kiểm tra bằng `git status`), chạy trong PowerShell:
 
 ```powershell
 cd "C:\Users\Lenovo\Desktop\VocabMaster"
@@ -42,6 +48,8 @@ git commit -m "VocabMaster: Expo SDK 58 app, FSRS, widgets, Gemini"
 git remote add origin https://github.com/<TÊN-BẠN>/vocabmaster.git
 git push -u origin main
 ```
+
+Nếu đã có `.git` rồi thì **bỏ qua** khối trên, chỉ cần `git push -u origin main`.
 
 Trước khi commit, kiểm tra nhanh:
 
