@@ -36,6 +36,7 @@ export function AiStudioScreen() {
   const [error, setError] = useState<AiErrorView | null>(null);
   const [modelNote, setModelNote] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
+  const [elapsed, setElapsed] = useState(0);
   const [requestedCount, setRequestedCount] = useState(0);
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
@@ -44,6 +45,26 @@ export function AiStudioScreen() {
   // Leaving the screen cancels the request instead of letting it finish in the
   // background and update a screen the learner can no longer see.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // A visible second counter: a long call should look busy, not frozen.
+  useEffect(() => {
+    if (!loading) {
+      setElapsed(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const id = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [loading]);
+
+  const cancel = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setLoading(false);
+    setProgress(null);
+  }, []);
 
   const generate = useCallback(async () => {
     if (!db || loading) return;
@@ -257,7 +278,16 @@ export function AiStudioScreen() {
             style={{ marginTop: spacing.sm, textAlign: 'center' }}
           >
             {progress}
+            {elapsed > 0 ? ` · ${elapsed}s` : ''}
           </AppText>
+        ) : null}
+        {loading ? (
+          <PrimaryButton
+            label="Huỷ"
+            variant="ghost"
+            style={{ marginTop: spacing.sm }}
+            onPress={cancel}
+          />
         ) : null}
       </Card>
 

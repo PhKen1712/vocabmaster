@@ -33,7 +33,7 @@ import {
 
 const API_KEY_NAME = 'gemini_api_key';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-const REQUEST_TIMEOUT_MS = 40_000;
+export const REQUEST_TIMEOUT_MS = 25_000;
 const LIST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_MODEL = DEFAULT_AI_MODEL;
@@ -328,9 +328,13 @@ interface PostResult {
 }
 
 /**
- * One HTTP call. Distinguishes "the network died", "we waited too long" and
- * "the caller navigated away", which all abort in similar ways at the fetch
- * layer but need different messages and retry decisions.
+ * One HTTP call.
+ *
+ * The call is raced against its own deadline and against the caller's abort
+ * signal. Racing — instead of only calling `controller.abort()` — is what
+ * guarantees the promise settles: if a platform `fetch` ignored the signal, the
+ * screen would otherwise stay on "Gemini đang tạo…" forever. This is the
+ * "đơ" symptom, so it gets a hard guarantee rather than a hope.
  */
 async function postGenerate(
   request: AiRequest,
@@ -339,24 +343,44 @@ async function postGenerate(
   signal: AbortSignal | undefined,
   maxOutputTokens: number,
   attempt = 1,
+  timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<PostResult> {
   const controller = new AbortController();
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, REQUEST_TIMEOUT_MS);
-  const forwardAbort = () => controller.abort();
-  if (signal) {
-    if (signal.aborted) {
-      clearTimeout(timeout);
-      throw new AiError('cancelled', 'Đã huỷ yêu cầu.', { stage: 'request' });
-    }
-    signal.addEventListener('abort', forwardAbort);
-  }
-
   const started = Date.now();
-  try {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let detachAbort: (() => void) | undefined;
+
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(
+        new AiError(
+          'timeout',
+          `Gemini không trả lời trong ${Math.round(timeoutMs / 1000)} giây nên yêu cầu đã bị huỷ.`,
+          { stage: 'request' },
+        ),
+      );
+    }, timeoutMs);
+  });
+  // If the network wins the race, this rejection must not surface as unhandled.
+  deadline.catch(() => undefined);
+
+  const cancelled = new Promise<never>((_, reject) => {
+    if (!signal) return;
+    const onAbort = () => {
+      controller.abort();
+      reject(new AiError('cancelled', 'Đã huỷ yêu cầu.', { stage: 'request' }));
+    };
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    detachAbort = () => signal.removeEventListener('abort', onAbort);
+  });
+  cancelled.catch(() => undefined);
+
+  const perform = async (): Promise<PostResult> => {
     const response = await fetch(`${API_BASE}/${encodeURIComponent(model)}:generateContent`, {
       method: 'POST',
       headers: {
@@ -384,35 +408,46 @@ async function postGenerate(
       payload = {};
     }
     return { response, payload, durationMs: Date.now() - started };
+  };
+
+  try {
+    return await Promise.race([perform(), deadline, cancelled]);
   } catch (error) {
     const durationMs = Date.now() - started;
+    if (error instanceof AiError) {
+      recordDiagnostic({
+        phase: 'request',
+        outcome: 'error',
+        model,
+        attempt,
+        durationMs,
+        code: error.code,
+        detail: error.message,
+      });
+      throw error;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
+    const code = signal?.aborted ? 'cancelled' : 'network';
     recordDiagnostic({
       phase: 'request',
       outcome: 'error',
       model,
       attempt,
       durationMs,
-      code: signal?.aborted ? 'cancelled' : timedOut ? 'timeout' : 'network',
+      code,
       detail: redactSecrets(message),
     });
-    if (signal?.aborted) {
+    if (code === 'cancelled') {
       throw new AiError('cancelled', 'Đã huỷ yêu cầu.', { stage: 'request' });
-    }
-    if (timedOut) {
-      throw new AiError(
-        'timeout',
-        `Gemini không trả lời trong ${Math.round(REQUEST_TIMEOUT_MS / 1000)} giây nên yêu cầu đã bị huỷ.`,
-        { stage: 'request', detail: redactSecrets(message) },
-      );
     }
     throw new AiError('network', 'Không kết nối được tới Gemini.', {
       stage: 'request',
       detail: redactSecrets(message),
     });
   } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', forwardAbort);
+    if (timer) clearTimeout(timer);
+    detachAbort?.();
   }
 }
 
@@ -421,6 +456,8 @@ export interface GenerateOptions {
   /** Lets the screen cancel the request when the learner leaves. */
   signal?: AbortSignal;
   attempts?: number;
+  /** Per-attempt deadline. Defaults to REQUEST_TIMEOUT_MS; tests use a tiny one. */
+  timeoutMs?: number;
   /** Injected in tests so retries do not really wait. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
   random?: () => number;
@@ -495,6 +532,7 @@ async function runGenerate(
       options.signal,
       tokenBudget(request.count),
       attemptsMade || 1,
+      options.timeoutMs ?? REQUEST_TIMEOUT_MS,
     );
     const meta = errorMeta(call.payload);
     const retryAfterMs = parseRetryAfter(readHeader(call.response, 'retry-after'));
@@ -694,6 +732,9 @@ async function runGenerate(
         // Unusable model output gets exactly one second chance, then we stop
         // instead of paying for more calls that the learner cannot use.
         if (OUTPUT_CODES.has(error.code)) return attempt === 1;
+        // A timeout costs the learner a full 25 s of waiting; retrying every
+        // timeout would double that for no new information.
+        if (error.code === 'timeout') return attempt === 1;
         return RETRYABLE_CODES.has(error.code);
       },
       onRetry: ({ attempt, attempts, delayMs, error }) => {

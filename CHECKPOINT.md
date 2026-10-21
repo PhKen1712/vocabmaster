@@ -2,7 +2,7 @@
 
 - **checkpoint_version:** 1
 - **last_updated:** 2026-10-22
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + **gia cố Gemini (lỗi/retry/validate/log) ngày 2026-10-22** — **typecheck 0 lỗi, 104/104 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + **gia cố Gemini (lỗi/retry/validate/log) ngày 2026-10-22** — **typecheck 0 lỗi, 107/107 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · `5163a05` + thay đổi AI ngày 2026-10-22 (chưa commit)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
@@ -228,6 +228,7 @@ Nguồn đầy đủ: `docs/FEASIBILITY.md`.
 | 404 model bị ngừng vẫn lộ ra UI dạng lỗi chung | `mapHttpError` gộp 404 vào `unknown` | **Đã sửa** — phân loại `model_unavailable`, tự liệt kê model còn dùng được và thử lại 1 lần |
 | Nhấn "Tạo bộ từ" hai lần tạo hai request | Không có khoá single-flight ở tầng dịch vụ | **Đã sửa** — cùng request dùng chung promise; request khác bị từ chối với mã `busy` |
 | Không biết lỗi ở bước nào | Không có log | **Đã sửa** — `src/ai/diagnostics.ts` + panel "Lần gọi Gemini gần đây" trong Cài đặt (không chứa key) |
+| Màn hình "đơ" ở "Gemini đang tạo…" | `setLoading(true)` + `await fetch` chỉ dựa vào `AbortController`; không có deadline thật, nếu `fetch` không settle thì UI không bao giờ thoát | **Đã sửa** — race với deadline 25 s và tín hiệu huỷ (luôn settle), timeout chỉ retry 1 lần, đồng hồ giây + nút **Huỷ** |
 
 ## 13. Lỗi còn tồn tại
 
@@ -261,7 +262,7 @@ hạn môi trường, không phải lỗi code:**
 |---|---|---|
 | Install | `npm install` | exit 0 |
 | Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npm test -- --ci` | **9/9 suite, 104/104 test pass** (thêm 68 test cho AI) |
+| Unit test | `npm test -- --ci` | **9/9 suite, 107/107 test pass** (thêm 71 test cho AI) |
 | Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
 | Expo doctor | `npx expo-doctor` | **20/20 check pass** |
 | Config plugin | `npx expo config --type prebuild` | **exit 0** — 2 widget + group id compose đúng |

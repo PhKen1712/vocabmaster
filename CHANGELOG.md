@@ -40,18 +40,31 @@ Người dùng báo "Tạo bộ từ" lúc được lúc không, có lúc chỉ 
   dòng mã lỗi, tiến trình "thử lại lần 2/3 sau 1.2 giây…", cảnh báo thiếu từ và cảnh báo dữ liệu.
 - `src/screens/SettingsScreen.tsx` — card **"Lần gọi Gemini gần đây"** + nút xoá log.
 
+### Chống "đơ" (bổ sung sau khi người dùng hỏi "đã sửa được chưa")
+
+Code cũ có thể treo vô hạn ở trạng thái "Gemini đang tạo…": `setLoading(true)` rồi `await fetch`,
+chỉ dựa vào `AbortController` chứ không có deadline thật. Nếu `fetch` của React Native không trả về
+hoặc không tôn trọng abort, promise không bao giờ settle và UI không có cách nào thoát.
+
+- `src/ai/gemini.ts`: mỗi lần gọi được **race** với deadline 25 giây và với tín hiệu huỷ của người dùng.
+  Dù `fetch` treo, promise **luôn** kết thúc (`timeout` hoặc `cancelled`). Timeout chỉ được thử lại
+  **một** lần để không bắt người dùng chờ 75 giây.
+- `src/screens/AiStudioScreen.tsx`: hiện đồng hồ `· 12s` trong lúc chờ và có nút **Huỷ** gọi abort ngay.
+- Rời màn hình đã tự huỷ request (có từ trước), giờ được bảo đảm kể cả khi `fetch` treo.
+
 ### Đã kiểm thử thật (2026-10-22)
 
 | Bước | Kết quả |
 |---|---|
 | `npm run typecheck` | exit 0, 0 lỗi |
-| `npm test -- --ci` | **9/9 suite, 104/104 test pass** (68 test mới cho AI) |
+| `npm test -- --ci` | **9/9 suite, 107/107 test pass** (71 test mới cho AI) |
 | `node scripts/validate-checkpoint.mjs` | hợp lệ (44 file trong `important_files`) |
 | `node scripts/verify.mjs` | xem `tools/verify-report.txt` |
 
 Test AI dùng `fetch` giả: 503 → thành công, 401 không retry, 429 theo ngày không retry,
 MAX_TOKENS → `json_parse` + 1 lần thử lại, count 25 bị chặn trước khi gọi mạng, hai request giống nhau
-dùng chung 1 lời gọi, request khác nhận `busy`, diagnostics không chứa `AIza`, salvage JSON bị cắt.
+dùng chung 1 lời gọi, request khác nhận `busy`, diagnostics không chứa `AIza`, salvage JSON bị cắt,
+`fetch` treo → `timeout` sau deadline, huỷ giữa lúc `fetch` treo → `cancelled` ngay.
 
 ### Chưa kiểm chứng
 

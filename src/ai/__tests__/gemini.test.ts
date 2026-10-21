@@ -7,7 +7,14 @@ jest.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'whenUnlockedThisDeviceOnly',
 }));
 
-import { checkApiKey, generateVocabulary, rankModels, resetGenerationState, tokenBudget } from '../gemini';
+import {
+  REQUEST_TIMEOUT_MS,
+  checkApiKey,
+  generateVocabulary,
+  rankModels,
+  resetGenerationState,
+  tokenBudget,
+} from '../gemini';
 import { clearDiagnostics, getDiagnostics } from '../diagnostics';
 import { AiError, type AiRequest } from '../types';
 
@@ -366,6 +373,40 @@ describe('generateVocabulary retry and failure handling', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(first.suggestions[0]?.term).toBe(second.suggestions[0]?.term);
+  });
+
+  it('stops waiting as soon as the learner cancels, even if fetch never answers', async () => {
+    // A fetch that ignores its abort signal is the worst case: the old screen
+    // stayed on "Gemini đang tạo…" forever.
+    globalThis.fetch = jest.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+    const controller = new AbortController();
+
+    const pending = generateVocabulary(request, {
+      model: 'gemini-3.8-flash',
+      signal: controller.signal,
+      sleep: noSleep,
+    });
+    await Promise.resolve();
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ code: 'cancelled' });
+  });
+
+  it('reports a timeout instead of hanging when the request never answers', async () => {
+    globalThis.fetch = jest.fn(() => new Promise<Response>(() => undefined)) as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, {
+        model: 'gemini-3.8-flash',
+        attempts: 1,
+        timeoutMs: 20,
+        sleep: noSleep,
+      }),
+    ).rejects.toMatchObject({ code: 'timeout' });
+  });
+
+  it('uses a 25 second deadline by default', () => {
+    expect(REQUEST_TIMEOUT_MS).toBe(25_000);
   });
 
   it('refuses a different request while one is already running', async () => {
