@@ -5,29 +5,21 @@ import { AppText, Banner, Card, PrimaryButton, ProgressBar, Screen } from '../co
 import { ScreenHeader } from '../components/patterns';
 import { listWords } from '../db/words';
 import { gradeAnswer } from '../quiz/grading';
-import { generateQuestions } from '../quiz/generator';
+import { buildPlacementQuestions, isAnswerable, recommendLevel } from '../quiz/placement';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
-import { LEVEL_SHORT, type Level, type QuizQuestion } from '../types';
+import { LEVEL_SHORT, type QuizQuestion } from '../types';
 
 /**
  * Placement is a self-check, not an exam. It samples one word from each
  * available level, then recommends a starting level. The learner always keeps
  * the final choice, and can skip this entirely.
+ *
+ * Question building lives in `src/quiz/placement.ts` so it can be unit tested,
+ * including the rule that every question must have selectable options.
  */
-
-export function recommendLevel(correct: number, total: number): Level {
-  if (total <= 0) return 1;
-  const ratio = correct / total;
-  if (ratio >= 0.95) return 5;
-  if (ratio >= 0.8) return 4;
-  if (ratio >= 0.6) return 3;
-  if (ratio >= 0.4) return 2;
-  if (ratio >= 0.2) return 1;
-  return 0;
-}
 
 export function PlacementScreen() {
   const { db, settings, updateSettings } = useApp();
@@ -47,16 +39,7 @@ export function PlacementScreen() {
     setLoading(true);
     try {
       const pool = await listWords(db, { track: settings.track, limit: 300 });
-      const perLevel = new Map<Level, QuizQuestion>();
-      for (const word of pool) {
-        if (perLevel.has(word.level)) continue;
-        const [question] = generateQuestions([word], pool, {
-          kinds: ['en_to_vi', 'typing'],
-          limit: 1,
-        });
-        if (question) perLevel.set(word.level, question);
-      }
-      setQuestions([...perLevel.values()].sort((a, b) => a.word.level - b.word.level));
+      setQuestions(buildPlacementQuestions(pool));
     } finally {
       setLoading(false);
     }
@@ -67,9 +50,10 @@ export function PlacementScreen() {
   }, [load]);
 
   const question = questions[index] ?? null;
+  const answerable = isAnswerable(question);
 
   const choose = (optionId: string) => {
-    if (!question || answered) return;
+    if (!answerable || answered) return;
     const result = gradeAnswer(question, { optionId });
     setPicked(optionId);
     setAnswered(true);
@@ -222,7 +206,22 @@ export function PlacementScreen() {
         })}
       </View>
 
-      {answered ? (
+      {!answerable ? (
+        <>
+          <View style={{ marginTop: spacing.lg }}>
+            <Banner
+              tone="warning"
+              title="Câu này thiếu lựa chọn"
+              body="Không có đáp án để chọn nên câu này được bỏ qua, không tính điểm."
+            />
+          </View>
+          <PrimaryButton
+            label={index + 1 >= questions.length ? 'Xem kết quả' : 'Bỏ qua câu này'}
+            onPress={next}
+            style={{ marginTop: spacing.md }}
+          />
+        </>
+      ) : answered ? (
         <PrimaryButton
           label={index + 1 >= questions.length ? 'Xem kết quả' : 'Câu tiếp theo'}
           onPress={next}

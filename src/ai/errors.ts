@@ -212,8 +212,9 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Gemini phản hồi quá lâu',
-        body: 'Yêu cầu vượt quá thời gian chờ nên đã được huỷ, không có từ nào được lưu.',
-        hint: 'Giảm số từ cần tạo (5–8 từ) rồi thử lại.',
+        body:
+          google || 'Yêu cầu vượt quá thời gian chờ nên đã được huỷ, không có từ nào được lưu.',
+        hint: 'Giảm số từ cần tạo (5–8 từ) rồi bấm "Thử lại". Lần chờ này không được tự lặp lại.',
         canRetry: true,
         diagnostic,
       };

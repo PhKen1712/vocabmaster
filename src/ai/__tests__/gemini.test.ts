@@ -405,8 +405,23 @@ describe('generateVocabulary retry and failure handling', () => {
     ).rejects.toMatchObject({ code: 'timeout' });
   });
 
-  it('uses a 25 second deadline by default', () => {
-    expect(REQUEST_TIMEOUT_MS).toBe(25_000);
+  it('uses a 20 second deadline by default', () => {
+    expect(REQUEST_TIMEOUT_MS).toBe(20_000);
+  });
+
+  it('does not retry a timeout: the learner already waited the deadline', async () => {
+    const fetchMock = jest.fn(() => new Promise<Response>(() => undefined));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, {
+        model: 'gemini-3.8-flash',
+        timeoutMs: 20,
+        sleep: noSleep,
+      }),
+    ).rejects.toMatchObject({ code: 'timeout' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('refuses a different request while one is already running', async () => {

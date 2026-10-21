@@ -3,7 +3,7 @@
 ## 1. Dự án đang ở đâu
 
 - **Đã xanh (chạy thật ngày 2026-10-22):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
-  **104/104 test pass trong 9 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
+  **114/114 test pass trong 10 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
   `expo-doctor` 20/20, `expo config --type prebuild` compose đúng 2 widget + App Group.
 - **Mới nhất (2026-10-22):** toàn bộ lớp Gemini được gia cố — `src/ai/errors.ts`, `retry.ts`,
   `diagnostics.ts`, `gemini.ts`, `schema.ts` + UI. Đọc `CHANGELOG.md` mục 2026-10-22 trước khi sửa AI.

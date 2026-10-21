@@ -56,8 +56,9 @@ npm start
    JSON bị cắt, dữ liệu không hợp lệ) thay vì báo chung "lỗi tạm thời". Lỗi tạm thời (5xx, mất mạng,
    timeout, rate limit) được tự thử lại tối đa 3 lần với exponential backoff + jitter; key sai và hạn
    mức thì **không** thử lại. Câu báo lỗi có nút **Thử lại** khi phù hợp và dòng "Kỹ thuật" ghi mã lỗi
-   + HTTP status. Trong lúc chờ có đồng hồ giây và nút **Huỷ**; mỗi lần gọi có deadline 25 giây nên
-   màn hình không thể treo vô hạn (rời màn hình cũng tự huỷ request).
+   + HTTP status. Trong lúc chờ có đồng hồ giây và nút **Huỷ**; mỗi lần gọi có deadline 20 giây nên
+   màn hình không thể treo vô hạn (rời màn hình cũng tự huỷ request). Lỗi timeout **không** được tự
+   thử lại vì làm vậy chỉ khiến bạn chờ thêm rồi vẫn nhận đúng một thông báo.
 6. **Cài đặt → Gemini AI → "Lần gọi Gemini gần đây"** ghi lại các lần gọi trong bộ nhớ của phiên
    hiện tại: giai đoạn (request → response → parse → validate), HTTP status, mã lỗi, model, thời gian.
    Không có API key, không có nội dung bạn học, không gửi đi đâu.
@@ -169,7 +170,7 @@ VocabMaster/
 ## Kiểm thử
 
 ```bash
-npm test              # 9 bộ unit test, 104 test
+npm test              # 10 bộ unit test, 114 test
 npm run typecheck     # TypeScript strict
 node scripts/validate-checkpoint.mjs
 ```

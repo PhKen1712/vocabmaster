@@ -33,7 +33,7 @@ import {
 
 const API_KEY_NAME = 'gemini_api_key';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
-export const REQUEST_TIMEOUT_MS = 25_000;
+export const REQUEST_TIMEOUT_MS = 20_000;
 const LIST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_MODEL = DEFAULT_AI_MODEL;
@@ -732,9 +732,10 @@ async function runGenerate(
         // Unusable model output gets exactly one second chance, then we stop
         // instead of paying for more calls that the learner cannot use.
         if (OUTPUT_CODES.has(error.code)) return attempt === 1;
-        // A timeout costs the learner a full 25 s of waiting; retrying every
-        // timeout would double that for no new information.
-        if (error.code === 'timeout') return attempt === 1;
+        // A timeout already cost the learner the full deadline. Retrying it
+        // doubles the wait and then reports the same thing, which is exactly
+        // the "retry nhiều rồi bảo quá lâu" experience. Fail fast instead.
+        if (error.code === 'timeout') return false;
         return RETRYABLE_CODES.has(error.code);
       },
       onRetry: ({ attempt, attempts, delayMs, error }) => {

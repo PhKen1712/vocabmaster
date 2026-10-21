@@ -46,18 +46,33 @@ Code cũ có thể treo vô hạn ở trạng thái "Gemini đang tạo…": `se
 chỉ dựa vào `AbortController` chứ không có deadline thật. Nếu `fetch` của React Native không trả về
 hoặc không tôn trọng abort, promise không bao giờ settle và UI không có cách nào thoát.
 
-- `src/ai/gemini.ts`: mỗi lần gọi được **race** với deadline 25 giây và với tín hiệu huỷ của người dùng.
-  Dù `fetch` treo, promise **luôn** kết thúc (`timeout` hoặc `cancelled`). Timeout chỉ được thử lại
-  **một** lần để không bắt người dùng chờ 75 giây.
+- `src/ai/gemini.ts`: mỗi lần gọi được **race** với deadline **20 giây** và với tín hiệu huỷ của người dùng.
+  Dù `fetch` treo, promise **luôn** kết thúc (`timeout` hoặc `cancelled`). Timeout **không** được thử lại:
+  chờ thêm một vòng deadline nữa rồi vẫn báo "quá lâu" là đúng cái cảm giác người dùng phản ánh.
 - `src/screens/AiStudioScreen.tsx`: hiện đồng hồ `· 12s` trong lúc chờ và có nút **Huỷ** gọi abort ngay.
 - Rời màn hình đã tự huỷ request (có từ trước), giờ được bảo đảm kể cả khi `fetch` treo.
+
+### Sửa lỗi "kiểm tra đầu vào không hiện đáp án"
+
+Người dùng báo màn hình kiểm tra đầu vào bị lỗi, không hiện đáp án.
+
+- Nguyên nhân: `PlacementScreen` cho phép hai kind `en_to_vi` và `typing`. Câu `typing` có
+  `options: null` vì đó là câu gõ tay, nhưng màn hình **chỉ render nút chọn** và chỉ hiện nút
+  "Câu tiếp theo" sau khi đã trả lời. Khi rơi vào câu `typing`, người dùng thấy câu hỏi trống trơn và
+  không có cách nào đi tiếp. Xác suất ~50% mỗi cấp độ vì generator xoay vòng kind ngẫu nhiên.
+- Sửa: `src/quiz/placement.ts` (mới) — chỉ dùng kind trắc nghiệm, mỗi cấp độ thử tối đa 6 từ để tìm
+  câu có ≥ 2 lựa chọn, cấp độ không tạo được thì **bỏ qua** thay vì tạo màn hình cụt. `recommendLevel`
+  chuyển sang đây để test được.
+- Lưới an toàn trong UI: nếu câu hiện tại vẫn thiếu lựa chọn, hiện banner + nút **"Bỏ qua câu này"**.
+- Test mới `src/quiz/__tests__/placement.test.ts`: 7/7 cấp độ trả về đúng 1 câu, mọi câu đều có
+  ≥ 2 lựa chọn và chứa đáp án đúng, từ đơn độc không tạo câu cụt.
 
 ### Đã kiểm thử thật (2026-10-22)
 
 | Bước | Kết quả |
 |---|---|
 | `npm run typecheck` | exit 0, 0 lỗi |
-| `npm test -- --ci` | **9/9 suite, 107/107 test pass** (71 test mới cho AI) |
+| `npm test -- --ci` | **10/10 suite, 114/114 test pass** |
 | `node scripts/validate-checkpoint.mjs` | hợp lệ (44 file trong `important_files`) |
 | `node scripts/verify.mjs` | xem `tools/verify-report.txt` |
 
