@@ -68,6 +68,16 @@ npm start
 máy jailbreak hoặc bị mở khoá. Với app cá nhân, đây là đánh đổi để tránh chi phí backend.
 Không dán key vào chat, ảnh chụp màn hình, commit, hay file checkpoint.
 
+## Kho từ đi kèm (offline)
+
+App tự nạp một kho từ đã kiểm tra sẵn khi cài/cập nhật: hiện **134 từ** (94 General, 40 IELTS),
+không cần key, không gọi mạng. Kế hoạch mở rộng lên **2.500 General + 2.500 IELTS**, số từ giảm dần
+khi level tăng. Chi tiết phân bổ, tiêu chí chọn từ, nguồn dữ liệu miễn phí và giấy phép:
+[docs/WORD_BANK.md](docs/WORD_BANK.md).
+
+Từ mới được thêm bằng `INSERT OR IGNORE` theo khoá `(normalized_term, track)`, nên khi cập nhật app:
+từ đã có **không bị sửa**, nghĩa bạn đã chỉnh **không bị ghi đè**, tiến độ FSRS **không mất**.
+
 ## Build iOS và cài lên iPhone
 
 **Có hai đường, khác nhau về tiền và widget:**
@@ -170,7 +180,7 @@ VocabMaster/
 ## Kiểm thử
 
 ```bash
-npm test              # 10 bộ unit test, 114 test
+npm test              # 11 bộ unit test, 125 test
 npm run typecheck     # TypeScript strict
 node scripts/validate-checkpoint.mjs
 ```

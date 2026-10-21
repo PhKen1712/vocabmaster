@@ -3,10 +3,12 @@
 ## 1. Dự án đang ở đâu
 
 - **Đã xanh (chạy thật ngày 2026-10-22):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
-  **114/114 test pass trong 10 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
+  **125/125 test pass trong 11 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
   `expo-doctor` 20/20, `expo config --type prebuild` compose đúng 2 widget + App Group.
-- **Mới nhất (2026-10-22):** toàn bộ lớp Gemini được gia cố — `src/ai/errors.ts`, `retry.ts`,
-  `diagnostics.ts`, `gemini.ts`, `schema.ts` + UI. Đọc `CHANGELOG.md` mục 2026-10-22 trước khi sửa AI.
+- **Mới nhất (2026-10-22):** lớp Gemini được gia cố (`src/ai/errors.ts`, `retry.ts`, `diagnostics.ts`,
+  `gemini.ts`, `schema.ts` + UI), sửa lỗi kiểm tra đầu vào không có đáp án (`src/quiz/placement.ts`),
+  và bắt đầu kho từ bundle: 134/5.000 từ trong `src/data/packs.ts` (`SEED_VERSION = '2'`).
+  Đọc `CHANGELOG.md` mục 2026-10-22 và `docs/WORD_BANK.md` trước khi sửa AI/kho từ.
 - **Chưa chạy:** gọi Gemini thật bằng key người dùng sau thay đổi 2026-10-22; `expo prebuild` cho iOS
   (Expo chặn trên Windows); EAS build; kiểm chứng widget/speech/notification trên máy thật.
 - **Toàn bộ code trên đĩa** tại `C:\Users\Lenovo\Desktop\VocabMaster`.
@@ -25,6 +27,7 @@
 4. Cuối `CHANGELOG.md` — việc đã làm theo từng phiên.
 5. `docs/FEASIBILITY.md` — vì sao widget cần tài khoản trả giá.
 6. `docs/ARCHITECTURE.md`, `docs/TEST_PLAN.md`.
+7. `docs/WORD_BANK.md` — phân bổ 2.500 + 2.500, tiêu chí chọn từ, nguồn miễn phí và giấy phép.
 
 ## 3. Lệnh kiểm tra (chạy đầu tiên mỗi phiên)
 

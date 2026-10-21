@@ -2,7 +2,7 @@
 
 - **checkpoint_version:** 1
 - **last_updated:** 2026-10-22
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + **gia cố Gemini (lỗi/retry/validate/log) ngày 2026-10-22** — **typecheck 0 lỗi, 114/114 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + **Gemini reliability + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 (2026-10-22)** — **typecheck 0 lỗi, 125/125 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · `5163a05` + thay đổi AI ngày 2026-10-22 (chưa commit)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
@@ -122,7 +122,7 @@ VocabMaster/
 Trạng thái chính xác: **implemented cho toàn bộ; phần logic lõi (FSRS, quiz, streak, text, DB
 schema) ở mức tested qua unit test; không có gì verified_on_device**.
 
-- SQLite schema v1 + migration transaction + seed 40 từ (20 General, 20 IELTS).
+- SQLite schema v1 + migration transaction + seed 40 từ viết tay + **kho bundle 134 từ** (94 General, 40 IELTS) nạp theo `SEED_VERSION` bằng `INSERT OR IGNORE` — chỉ thêm từ mới, không sửa từ/tiến độ đã có (`docs/WORD_BANK.md`).
 - CRUD từ vựng, tìm kiếm, yêu thích, chống trùng theo `(term, track)`, cảnh báo trùng chéo track.
 - Nhập CSV (header linh hoạt, ngoặc kép, lỗi từng dòng), xuất CSV, xuất/khôi phục JSON
   (merge/replace, transaction, giữ dữ liệu khi lỗi).
@@ -131,7 +131,7 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
   cloze chỉ khi câu ví dụ chứa từ.
 - Chấm điểm bỏ qua hoa/thường, dấu câu, khoảng trắng; near-miss; chấp nhận “to + verb”.
 - Buổi học: tiến độ, phản hồi, tự đánh giá Lại/Khó/Nhớ/Dễ, lưu transaction, làm lại từ sai.
-- Hai track + 7 cấp độ, mục tiêu ngày, kiểm tra đầu vào 6 câu (gợi ý, bỏ qua được).
+- Hai track + 7 cấp độ, mục tiêu ngày, kiểm tra đầu vào theo cấp độ — **chỉ câu có lựa chọn**, có nút bỏ qua (2026-10-22 sửa lỗi màn hình không hiện đáp án).
 - Gợi ý điều chỉnh độ khó dựa trên accuracy 7 ngày (tăng/giảm 1 cấp, người dùng bấm xác nhận).
 - Streak theo ngày đạt mục tiêu, có ân hạn trước nửa đêm, best streak, lịch sử hoạt động.
 - Thống kê: streak, accuracy 7 ngày, 14 ngày hoạt động, phân bố cấp độ, trạng thái ghi nhớ, từ hay sai.
@@ -146,7 +146,7 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 4 bộ unit test (FSRS, quiz, streak, text).
+- 11 bộ unit test (FSRS, quiz, streak, text, settings, AI ×4, placement, word packs).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -263,7 +263,7 @@ hạn môi trường, không phải lỗi code:**
 |---|---|---|
 | Install | `npm install` | exit 0 |
 | Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npm test -- --ci` | **10/10 suite, 114/114 test pass** (AI + placement) |
+| Unit test | `npm test -- --ci` | **11/11 suite, 125/125 test pass** (AI, placement, word packs) |
 | Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
 | Expo doctor | `npx expo-doctor` | **20/20 check pass** |
 | Config plugin | `npx expo config --type prebuild` | **exit 0** — 2 widget + group id compose đúng |
@@ -361,7 +361,8 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 | Chưa xác minh | Cách xác minh |
 |---|---|
 | Code compile | `npm run typecheck` |
-| Unit test pass | `npm test` (10 file, 114 test) |
+| Unit test pass | `npm test` (11 file, 125 test) |
+| Kho từ nạp đúng, không ghi đè từ đã sửa | Cài bản mới lên máy có dữ liệu cũ, đếm từ + kiểm tra từ đã sửa nghĩa |
 | Gemini retry/backoff/validate | `npm test -- src/ai` — mock fetch, không gọi API thật |
 | Prebuild tạo widget target | `npx expo prebuild --platform ios --clean`, xem `ios/` |
 | App Group hoạt động | Build bằng tài khoản trả phí, xem Signing & Capabilities |
@@ -378,7 +379,7 @@ Yêu cầu lớn của người dùng chia 7 giai đoạn. Trạng thái thật:
 |---|---|---|
 | 1. Kiểm tra & chẩn đoán | đọc code, xác định framework/DB/luồng Gemini, tìm nguyên nhân lỗi chập chờn | **xong** (xem mục 12) |
 | 2. Sửa Gemini API | phân loại lỗi, retry/backoff, validate, chống trùng, log | **code + test xong**, chưa kiểm chứng thiết bị |
-| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **chưa làm** (đã có `definitionEn`/`meaningVi` trong DB) |
+| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **đang làm** — kho bundle 134/5.000 từ, xem `docs/WORD_BANK.md`; phần song ngữ/nguồn chưa làm |
 | 4. Nâng cấp học tập | thêm chế độ học, câu ví dụ, thống kê cá nhân hóa | **một phần** — đã có 9 dạng quiz, FSRS, từ yếu |
 | 5. Dịch thuật | khu vực dịch câu + giải thích ngữ cảnh | **chưa làm** |
 | 6. Minigame bắn thiên thạch | arcade từ dữ liệu đã lưu | **chưa làm** |

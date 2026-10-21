@@ -4,7 +4,7 @@
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
   "last_updated": "2026-10-22",
-  "current_phase": "Phases 1-6 code written; Gemini reliability layer added 2026-10-22 (typed errors, bounded retries, truncation recovery, diagnostics, hard 20 s deadline, no timeout retry) and the placement test no longer dead-ends. Typecheck 0 errors, 114/114 unit tests. iOS build installed by the user; in-app behaviour of the newest build not yet re-tested on device.",
+  "current_phase": "Phases 1-6 code written; Gemini reliability layer (typed errors, retries, 20 s hard deadline, no timeout retry, diagnostics) and the placement dead-end fix landed on 2026-10-22. Bundled word bank started: 134 hand-checked words (94 general + 40 IELTS) with level targets for 2500+2500, loaded through SEED_VERSION 2. Typecheck 0 errors, 125/125 unit tests.",
   "current_branch": "main",
   "current_commit": "5163a05 + uncommitted AI hardening (2026-10-22); remote phamkenn/vocabmaster (private)",
   "tech_stack": [
@@ -150,6 +150,11 @@
       "name": "Placement test always renders answerable questions",
       "status": "tested",
       "evidence": "src/quiz/placement.ts restricts placement to en_to_vi/vi_to_en with >= 2 options, skips levels that cannot produce options, PlacementScreen shows a skip fallback; src/quiz/__tests__/placement.test.ts covers all 7 levels, the lonely-word case and recommendLevel thresholds"
+    },
+    {
+      "name": "Bundled offline word packs with level targets",
+      "status": "tested",
+      "evidence": "src/data/packs.ts (94 general + 40 IELTS rows, TARGET_DISTRIBUTION 2500 per track, decreasing by level), src/db/database.ts SEED_VERSION 2 with INSERT OR IGNORE, docs/WORD_BANK.md, src/data/__tests__/packs.test.ts (duplicates, Vietnamese meaning, level bands, example contains the term, distribution sums)"
     }
   ],
   "in_progress_features": [
@@ -180,6 +185,11 @@
     }
   ],
   "pending_features": [
+    {
+      "name": "Expand the bundled packs from 134 to 2500 general + 2500 IELTS",
+      "status": "planned",
+      "reason": "authoring batches of 200-300 reviewed words; infrastructure and quality tests already exist"
+    },
     {
       "name": "Bilingual explanation mode (Vietnamese / English / both) when studying a word",
       "status": "planned",
@@ -351,7 +361,7 @@
     {
       "capability": "Unit tests pass",
       "verified": true,
-      "evidence": "jest --ci --runInBand: 10/10 suites, 114/114 tests passed on 2026-10-22 (AI layer, placement, FSRS, quiz, streak, settings, text)"
+      "evidence": "jest --ci --runInBand: 11/11 suites, 125/125 tests passed on 2026-10-22 (AI layer, placement, word packs, FSRS, quiz, streak, settings, text)"
     },
     {
       "capability": "Dependency versions align with Expo SDK 58",
@@ -372,6 +382,11 @@
       "capability": "Every placement question has selectable options",
       "verified": true,
       "evidence": "src/quiz/__tests__/placement.test.ts builds questions for all 7 levels and asserts >= 2 options containing the correct answer; a lone word yields no question instead of an unanswerable one"
+    },
+    {
+      "capability": "Bundled word packs contain valid, non-duplicated content",
+      "verified": true,
+      "evidence": "src/data/__tests__/packs.test.ts asserts no duplicate (term, track), no overlap with SEED_WORDS, real Vietnamese meanings, valid levels inside the pack band, examples containing the target term, and 2500 targets that decrease by level"
     }
   ],
   "unverified_capabilities": [
@@ -411,7 +426,7 @@
   "test_results": {
     "last_run": "2026-10-22",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npm run typecheck exit 0; npm test -- --ci: 10/10 suites, 114/114 tests. AI error handling and placement questions are tested with mocks, never with the live API.",
+    "reason": "npm run typecheck exit 0; npm test -- --ci: 11/11 suites, 125/125 tests. AI error handling, placement questions and word-pack content are tested with mocks/data, never with the live API.",
     "typecheck": {
       "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
       "exit_code": 0,
@@ -420,9 +435,9 @@
     "unit_tests": {
       "command": "npm test -- --ci",
       "exit_code": 0,
-      "suites_passed": 10,
+      "suites_passed": 11,
       "suites_failed": 0,
-      "tests_passed": 114,
+      "tests_passed": 125,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -450,7 +465,8 @@
       "src/ai/__tests__/errors.test.ts",
       "src/ai/__tests__/retry.test.ts",
       "src/ai/__tests__/schema.test.ts",
-      "src/quiz/__tests__/placement.test.ts"
+      "src/quiz/__tests__/placement.test.ts",
+      "src/data/__tests__/packs.test.ts"
     ],
     "device_tests": {
       "status": "not_run",
@@ -660,14 +676,26 @@
     {
       "path": "src/ai/diagnostics.ts",
       "role": "In-memory AI call log shown in Settings (no key, no user content)"
+    },
+    {
+      "path": "src/data/packs.ts",
+      "role": "Bundled word packs (general + IELTS rows) and level targets"
+    },
+    {
+      "path": "src/data/__tests__/packs.test.ts",
+      "role": "Content-quality tests for the bundled packs"
+    },
+    {
+      "path": "docs/WORD_BANK.md",
+      "role": "5000-word bank plan: distribution, selection rules, free data sources, licences"
     }
   ],
   "next_steps": [
-    "Run node scripts/verify.mjs on the final tree, commit and push, then install the newest artifact once (cancel older runs to save macOS minutes).",
-    "On the iPhone: run Kiểm tra đầu vào to confirm every question shows options and the test reaches the result screen.",
-    "In AI Studio: generate 8 words; on a timeout the app must stop after ~20 s with a clear message (no second silent retry).",
-    "If a Gemini call fails, open Settings -> \"Lần gọi Gemini gần đây\" and record phase/HTTP status/code in test_results.device_tests.",
-    "Only then continue with phases 3-6 of the upgrade plan (bilingual explanations, provenance, translation workspace, minigame)."
+    "Run node scripts/verify.mjs, then commit; one build carries the Gemini fixes, the placement fix and the first word-pack tranche.",
+    "On the iPhone: run Kiểm tra đầu vào (every question must show options), then open Từ vựng and confirm the 134 bundled words are present without touching existing edits.",
+    "Expand the packs in 200-300 word batches: general A1/A2 first, then B1/B2, then IELTS by topic; npm test blocks duplicates and bad meanings.",
+    "Add IPA for packed words from CMUdict (public licence) rather than inventing it.",
+    "Continue phases 3-6 of the upgrade plan (bilingual explanations, provenance, translation workspace, minigame)."
   ],
   "blocked_by": [
     {

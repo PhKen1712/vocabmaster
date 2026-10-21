@@ -72,7 +72,7 @@ Người dùng báo màn hình kiểm tra đầu vào bị lỗi, không hiện 
 | Bước | Kết quả |
 |---|---|
 | `npm run typecheck` | exit 0, 0 lỗi |
-| `npm test -- --ci` | **10/10 suite, 114/114 test pass** |
+| `npm test -- --ci` | **11/11 suite, 125/125 test pass** |
 | `node scripts/validate-checkpoint.mjs` | hợp lệ (44 file trong `important_files`) |
 | `node scripts/verify.mjs` | xem `tools/verify-report.txt` |
 
@@ -81,9 +81,29 @@ MAX_TOKENS → `json_parse` + 1 lần thử lại, count 25 bị chặn trước
 dùng chung 1 lời gọi, request khác nhận `busy`, diagnostics không chứa `AIza`, salvage JSON bị cắt,
 `fetch` treo → `timeout` sau deadline, huỷ giữa lúc `fetch` treo → `cancelled` ngay.
 
+### Kho từ đi kèm — bắt đầu (134/5.000)
+
+Người dùng muốn 2.500 General + 2.500 IELTS có sẵn trong máy, level càng cao càng ít từ, ưu tiên từ
+trọng dụng. Đã làm hạ tầng + lô đầu tiên:
+
+- **Mới** `src/data/packs.ts` — định dạng `PackRow` gọn (term, nghĩa, từ loại, level, chủ đề, định
+  nghĩa, ví dụ), `TARGET_DISTRIBUTION` cho cả hai track (mỗi track 2.500, giảm dần theo level),
+  94 từ General + 40 từ IELTS đã viết tay.
+- `src/db/database.ts` — `SEED_VERSION = '2'`, gộp `SEED_WORDS` + pack, vẫn `INSERT OR IGNORE` theo
+  unique index `(normalized_term, track)` nên không sửa từ cũ, không mất tiến độ FSRS.
+- **Mới** `docs/WORD_BANK.md` — phân bổ theo level, tiêu chí chọn từ, so sánh API miễn phí
+  (Free Dictionary API, Datamuse, CMUdict, wordfreq, Wiktionary, Gemini build-time) và giấy phép
+  (Oxford 3000/5000 có bản quyền; dataset EN–VI trôi nổi thường không rõ giấy phép).
+- **Mới** test `src/data/__tests__/packs.test.ts` — chặn từ trùng trong track và với seed, nghĩa rỗng
+  hoặc trùng từ tiếng Anh, level sai, ví dụ không chứa từ, tổng phân bổ khác 2.500.
+
+Chưa có IPA cho lô này: thà để trống (UI dùng TTS) hơn là bịa phiên âm.
+
 ### Chưa kiểm chứng
 
 - **Chưa có lần gọi Gemini thật nào** bằng key người dùng sau thay đổi này.
+- Kho từ mới **chưa chạy trên máy**: 134 từ mới được nạp khi cài bản build tiếp theo; chưa kiểm tra
+  thời gian nạp và việc giữ nguyên từ người dùng đã sửa trên dữ liệu thật.
 - Chưa cài bản build mới; hành vi `AbortController` của React Native trên máy thật chưa đo.
 - Body 429 thật của Gemini (theo phút vs theo ngày) chưa đối chiếu.
 

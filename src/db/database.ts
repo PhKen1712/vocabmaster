@@ -1,6 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
-import { SEED_WORDS } from '../data/seed';
+import { packRowsToSeedWords } from '../data/packs';
+import { SEED_WORDS, type SeedWord } from '../data/seed';
 import { nowIso, newId } from '../lib/ids';
 import { normalizeTerm } from '../lib/text';
 import { MIGRATIONS, WORD_COLUMNS, wordInsertValues } from './schema';
@@ -8,6 +9,18 @@ import type { Word } from '../types';
 
 const DATABASE_NAME = 'vocabmaster.db';
 const SEED_FLAG_KEY = 'seed_version';
+
+/**
+ * Bumping this version makes the app top up the bundled packs on upgrade.
+ * Inserts use INSERT OR IGNORE against the unique (normalized_term, track)
+ * index, so existing rows, edits and learning progress are never touched.
+ */
+export const SEED_VERSION = '2';
+
+/** Hand-checked starter words plus every bundled pack, in insert order. */
+export function bundledWords(): SeedWord[] {
+  return [...SEED_WORDS, ...packRowsToSeedWords()];
+}
 
 let databasePromise: Promise<SQLite.SQLiteDatabase> | null = null;
 
@@ -82,7 +95,7 @@ export async function seedDatabase(db: SQLite.SQLiteDatabase): Promise<number> {
     'SELECT value FROM app_settings WHERE key = ?;',
     [SEED_FLAG_KEY],
   );
-  const seedVersion = '1';
+  const seedVersion = SEED_VERSION;
   if (flag?.value === seedVersion) return 0;
 
   const createdAt = nowIso();
@@ -91,7 +104,7 @@ export async function seedDatabase(db: SQLite.SQLiteDatabase): Promise<number> {
 
   let inserted = 0;
   await db.withTransactionAsync(async () => {
-    for (const seed of SEED_WORDS) {
+    for (const seed of bundledWords()) {
       const word = buildSeedWord(
         {
           ...seed,
