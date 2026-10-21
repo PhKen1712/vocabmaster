@@ -52,7 +52,15 @@ npm start
 3. Key được lưu trong Keychain của iPhone, không nằm trong mã nguồn/Git/backup.
 4. Model mặc định là `gemini-3.8-flash`. Nếu Google ngừng model đó, app tự chuyển sang model
    còn khả dụng và báo trong AI Studio; bấm **Kiểm tra key + model** trong Cài đặt để lưu lại.
-5. Không có key: mọi chức năng học, ôn, tìm kiếm, nhập CSV, widget vẫn hoạt động.
+5. Khi Gemini lỗi, app phân loại nguyên nhân (key sai, hết hạn mức, mạng, timeout, model bị ngừng,
+   JSON bị cắt, dữ liệu không hợp lệ) thay vì báo chung "lỗi tạm thời". Lỗi tạm thời (5xx, mất mạng,
+   timeout, rate limit) được tự thử lại tối đa 3 lần với exponential backoff + jitter; key sai và hạn
+   mức thì **không** thử lại. Câu báo lỗi có nút **Thử lại** khi phù hợp và dòng "Kỹ thuật" ghi mã lỗi
+   + HTTP status.
+6. **Cài đặt → Gemini AI → "Lần gọi Gemini gần đây"** ghi lại các lần gọi trong bộ nhớ của phiên
+   hiện tại: giai đoạn (request → response → parse → validate), HTTP status, mã lỗi, model, thời gian.
+   Không có API key, không có nội dung bạn học, không gửi đi đâu.
+7. Không có key: mọi chức năng học, ôn, tìm kiếm, nhập CSV, widget vẫn hoạt động.
 
 **Cảnh báo bảo mật:** app gọi Gemini trực tiếp từ iPhone. Key lưu trên máy có thể bị lộ nếu
 máy jailbreak hoặc bị mở khoá. Với app cá nhân, đây là đánh đổi để tránh chi phí backend.
@@ -149,14 +157,18 @@ VocabMaster/
 | Widget không đổi số liệu | Mở app lại; iOS trễ refresh; kiểm tra App Group trong Signing |
 | Không phát âm thanh | Tắt chế độ im lặng; tăng âm lượng; cài voice trong Cài đặt iOS |
 | Micro không nhận | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói |
-| Gemini 429 | Chờ vài phút; giảm số từ; kiểm tra hạn mức model |
+| Gemini 429 | Chờ vài phút; giảm số từ; kiểm tra hạn mức model. Nếu là hạn mức theo ngày, app báo riêng và không tự thử lại |
 | Gemini 403 | Key sai hoặc chưa bật Gemini API |
+| Gemini 503 / "đang bận" | App đã tự thử lại 3 lần; chờ khoảng 1 phút rồi bấm **Thử lại** |
+| "Gemini phản hồi quá lâu" | Giảm số từ cần tạo (5–8 từ) rồi thử lại |
+| "Không đọc được JSON" / "dữ liệu không dùng được" | Câu trả lời bị cắt hoặc bị chặn; bấm **Thử lại** với ít từ hơn |
+| Không biết lỗi ở đâu | Cài đặt → Gemini AI → **Lần gọi Gemini gần đây** (mã lỗi + HTTP status từng bước) |
 | Không mở được DB sau cập nhật | Đóng hẳn app, mở lại; migration rollback giữ dữ liệu cũ |
 
 ## Kiểm thử
 
 ```bash
-npm test              # 4 bộ unit test
+npm test              # 9 bộ unit test, 104 test
 npm run typecheck     # TypeScript strict
 node scripts/validate-checkpoint.mjs
 ```

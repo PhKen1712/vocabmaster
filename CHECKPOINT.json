@@ -3,10 +3,10 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-20",
-  "current_phase": "Phase 1-6 code written; typecheck + 36 unit tests green; iOS build and device verification not run",
-  "current_branch": null,
-  "current_commit": null,
+  "last_updated": "2026-10-22",
+  "current_phase": "Phases 1-6 code written; Gemini reliability layer added 2026-10-22 (typed errors, bounded retries, truncation recovery, diagnostics). Typecheck 0 errors, 104/104 unit tests. iOS build installed by the user; in-app Gemini behaviour not yet re-tested on device.",
+  "current_branch": "main",
+  "current_commit": "5163a05 + uncommitted AI hardening (2026-10-22); remote phamkenn/vocabmaster (private)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -130,9 +130,30 @@
       "name": "Free sideload path: unsigned IPA built on GitHub Actions macOS, signed with a free Apple ID",
       "status": "implemented",
       "evidence": "Workflow YAML parsed with js-yaml; scripts/prepare-free-build.mjs strip+restore verified (app.json restored byte-identical, expo config --type prebuild still exit 0 without the widget plugin); not yet run on GitHub"
+    },
+    {
+      "name": "Gemini failure taxonomy, bounded retries and response validation",
+      "status": "tested",
+      "evidence": "src/ai/errors.ts (HTTP/network classification, Retry-After, secret redaction), src/ai/retry.ts (exponential backoff + jitter, abortable), src/ai/schema.ts (truncation salvage, POS/level/example warnings), src/ai/gemini.ts (finishReason, token budget, single-flight, model fallback). 68 AI tests in 4 suites; all mocked, no live API call."
+    },
+    {
+      "name": "AI diagnostics panel inside Settings",
+      "status": "tested",
+      "evidence": "src/ai/diagnostics.ts (in-memory ring buffer, no key/no user content) + \"Lần gọi Gemini gần đây\" card in SettingsScreen; covered by gemini.test.ts assertions that diagnostics never contain the API key."
+    },
+    {
+      "name": "GitHub Actions macOS build of an unsigned IPA, installed with a free Apple ID",
+      "status": "implemented",
+      "evidence": "Workflow .github/workflows/ios-unsigned.yml produced installable artifacts; the user installed a build on the iPhone and sent screenshots. Run status is not queryable from this session (private repo)."
     }
   ],
   "in_progress_features": [
+    {
+      "name": "Gemini end-to-end on device",
+      "status": "implemented",
+      "status_detail": "logic_tested_with_mocks_not_called_on_device",
+      "evidence": "src/ai/gemini.ts + 68 mocked tests. Not exercised against the live API with the user key in this session."
+    },
     {
       "name": "Widget native verification",
       "status": "blocked",
@@ -147,12 +168,6 @@
       "evidence": "src/speech/pronunciation.ts"
     },
     {
-      "name": "Gemini end-to-end",
-      "status": "implemented",
-      "status_detail": "client_written_never_called",
-      "evidence": "src/ai/gemini.ts"
-    },
-    {
       "name": "Checkpoint consistency verification",
       "status": "implemented",
       "status_detail": "validator_written_not_run",
@@ -161,9 +176,29 @@
   ],
   "pending_features": [
     {
-      "name": "Git repository and first commit",
+      "name": "Bilingual explanation mode (Vietnamese / English / both) when studying a word",
       "status": "planned",
-      "reason": "terminal unavailable"
+      "reason": "data already stored (meaningVi, definitionEn); UI preference not built yet"
+    },
+    {
+      "name": "Vocabulary provenance and verification status per word",
+      "status": "planned",
+      "reason": "needs a schema migration; must not label AI output as Cambridge-verified"
+    },
+    {
+      "name": "Translation workspace (sentence + context explanation, save words/sentences)",
+      "status": "planned",
+      "reason": "new screen, uses the same Gemini service layer"
+    },
+    {
+      "name": "Asteroid arcade minigame built from stored words",
+      "status": "planned",
+      "reason": "no game engine yet; evaluate React Native Animated before adding a library"
+    },
+    {
+      "name": "Extra study modes (context, collocation, sentence building)",
+      "status": "planned",
+      "reason": "quiz generator already covers 9 question types; extend rather than duplicate"
     },
     {
       "name": "EAS project init and credentials",
@@ -202,6 +237,12 @@
       "severity": "blocker",
       "description": "Expo SDK 58 refuses npx expo prebuild --platform ios on Windows (\"Run npx expo prebuild again from macOS or Linux\"), so the native widget target and App Group entitlements cannot be generated or inspected on this machine.",
       "workaround": "Run prebuild and the build on EAS (macOS workers) or on a Mac; the JS/config side is already verified."
+    },
+    {
+      "id": "ai-003",
+      "severity": "medium",
+      "description": "Gemini retry, classification and validation paths are covered by mocked tests only; no live API call has been made with the user key since the 2026-10-22 changes.",
+      "workaround": "Install the new build, run Settings -> \"Kiểm tra key + model\", then AI Studio -> \"Tạo bộ từ\" and read Settings -> \"Lần gọi Gemini gần đây\"."
     }
   ],
   "resolved_bugs": [
@@ -300,7 +341,7 @@
     {
       "capability": "Unit tests pass",
       "verified": true,
-      "evidence": "jest --ci --runInBand: 4/4 suites, 36/36 tests passed on 2026-10-20"
+      "evidence": "jest --ci --runInBand: 9/9 suites, 104/104 tests passed on 2026-10-22 (68 of them cover the AI layer with a mocked fetch)"
     },
     {
       "capability": "Dependency versions align with Expo SDK 58",
@@ -311,6 +352,11 @@
       "capability": "expo-widgets config plugin composes both widgets with the App Group id",
       "verified": true,
       "evidence": "npx expo config --type prebuild exit 0: DailyWordWidget (systemSmall/Medium/Large) + ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), group.com.vocabmaster.personal"
+    },
+    {
+      "capability": "Gemini errors are classified and only transient ones are retried",
+      "verified": true,
+      "evidence": "src/ai/errors.ts + src/ai/retry.ts; tests assert 503 retries, 401/429-do-not-retry, backoff/jitter/Retry-After and abort behaviour"
     }
   ],
   "unverified_capabilities": [
@@ -335,8 +381,8 @@
       "how_to_verify": "Speak a target word in Session; inspect transcript and error code"
     },
     {
-      "capability": "Gemini generation works with the configured model, or auto-switches when Google retires it",
-      "how_to_verify": "Generate 3 words in AI Studio; on 404 the app retries with an available model and Settings → check key + model offers a one-tap switch"
+      "capability": "Gemini generation works on device with the configured model, retries transient 5xx and recovers from a truncated answer",
+      "how_to_verify": "Install the 2026-10-22 build; generate 8 words; simulate a failure by using airplane mode; read Settings -> \"Lần gọi Gemini gần đây\" to confirm phase, HTTP status and error code"
     },
     {
       "capability": "Notifications fire at the scheduled weekly time",
@@ -348,9 +394,9 @@
     }
   ],
   "test_results": {
-    "last_run": "2026-10-20",
+    "last_run": "2026-10-22",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "Git Bash installed; node scripts/verify.mjs ran npm install, tsc, jest --ci and checkpoint validation.",
+    "reason": "npm run typecheck exit 0; npm test -- --ci: 9/9 suites, 104/104 tests. AI error handling is tested with a mocked fetch, never with the live API.",
     "typecheck": {
       "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
       "exit_code": 0,
@@ -359,9 +405,9 @@
     "unit_tests": {
       "command": "npm test -- --ci",
       "exit_code": 0,
-      "suites_passed": 4,
+      "suites_passed": 9,
       "suites_failed": 0,
-      "tests_passed": 36,
+      "tests_passed": 104,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -375,15 +421,20 @@
       "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
     },
     "commands_pending": [
-      "npx expo prebuild --platform ios (blocked on Windows: Expo refuses to generate the iOS project outside macOS/Linux)",
-      "EAS build + install on iPhone",
+      "npm run verify on the final tree (documentation edits included)",
+      "Install the 2026-10-22 build and generate a word set with the real key",
       "Device verification of widget / speech / notifications / Gemini"
     ],
     "suites_written": [
       "src/srs/__tests__/fsrs.test.ts",
       "src/quiz/__tests__/quiz.test.ts",
       "src/streak/__tests__/streak.test.ts",
-      "src/lib/__tests__/text.test.ts"
+      "src/lib/__tests__/text.test.ts",
+      "src/db/__tests__/settings.test.ts",
+      "src/ai/__tests__/gemini.test.ts",
+      "src/ai/__tests__/errors.test.ts",
+      "src/ai/__tests__/retry.test.ts",
+      "src/ai/__tests__/schema.test.ts"
     ],
     "device_tests": {
       "status": "not_run",
@@ -392,6 +443,26 @@
     "build_tests": {
       "status": "not_run",
       "reason": "No EAS project or Apple credentials configured; iOS prebuild cannot run on Windows"
+    },
+    "ai_checks": {
+      "status": "mocked_only",
+      "covered": [
+        "503 then success retries once (attempts = 2)",
+        "401 invalid key is not retried",
+        "daily quota 429 is not retried",
+        "truncated MAX_TOKENS answer reports json_parse and retries once",
+        "request validation rejects count > 20 before any network call",
+        "identical concurrent requests share one HTTP call; a different one gets busy",
+        "diagnostics never include the API key",
+        "backoff growth, jitter band, Retry-After cap, abort during wait",
+        "classification of 400/401/403/404/429/5xx + unknown",
+        "truncated JSON salvage keeps complete items"
+      ],
+      "not_covered": [
+        "any live Gemini call with a real key",
+        "behaviour of the real Gemini 429 body for per-minute vs per-day quota",
+        "on-device React Native AbortController behaviour"
+      ]
     }
   },
   "important_files": [
@@ -558,15 +629,26 @@
     {
       "path": "docs/GITHUB_SETUP.md",
       "role": "Step-by-step GitHub account, 2FA, repo, PAT and Actions run for the free sideload path"
+    },
+    {
+      "path": "src/ai/errors.ts",
+      "role": "Gemini/network error classification, Retry-After parsing, secret redaction"
+    },
+    {
+      "path": "src/ai/retry.ts",
+      "role": "Exponential backoff with jitter, abortable sleep, retry predicate"
+    },
+    {
+      "path": "src/ai/diagnostics.ts",
+      "role": "In-memory AI call log shown in Settings (no key, no user content)"
     }
   ],
   "next_steps": [
-    "Push the repo to GitHub and run the iOS unsigned IPA workflow; download the artifact and install with Sideloadly (docs/FREE_SIDELOAD.md).",
-    "git init and commit the initial project (no secrets); .gitignore already excludes .env, ios/ and build output.",
-    "Decide on Apple Developer Program (99 USD/year) - required for App Groups and therefore for a widget that shows real study data.",
-    "Create the EAS project and run a development build; that runs expo prebuild on macOS and must generate both widget targets plus the App Group.",
-    "Install on iPhone and verify per docs/TEST_PLAN.md, especially 2.6 (widgets), 2.3 (study session), speech and notifications.",
-    "Record real device results in test_results.device_tests; do not mark anything verified_on_device until it is observed."
+    "Run node scripts/verify.mjs once more, then commit and push the AI reliability changes.",
+    "Install the new build on the iPhone; Settings -> Gemini AI -> \"Kiểm tra key + model\"; AI Studio -> \"Tạo bộ từ\"; read \"Lần gọi Gemini gần đây\" if it fails.",
+    "Record the real outcome in test_results.device_tests and CHANGELOG.md; only then mark Gemini verified_on_device.",
+    "Phase 3 of the upgrade plan: bilingual explanation mode, provenance fields (with a new migration, not editing v1), richer word generation.",
+    "Phase 4-6 after that: extra study modes, translation workspace, asteroid minigame from stored words."
   ],
   "blocked_by": [
     {

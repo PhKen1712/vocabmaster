@@ -1,10 +1,11 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-20
-- **current_phase:** Giai đoạn 1–6 (code đã viết) — **typecheck + 36 unit test đã chạy và xanh**; chưa build iOS, chưa kiểm chứng thiết bị
+- **last_updated:** 2026-10-22
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + **gia cố Gemini (lỗi/retry/validate/log) ngày 2026-10-22** — **typecheck 0 lỗi, 104/104 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
-- **current_branch / commit:** chưa có Git repository (chưa chạy `git init`)
+- **current_branch / commit:** `main` · `5163a05` + thay đổi AI ngày 2026-10-22 (chưa commit)
+- **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
 
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
 > là đã chạy trên iPhone: widget, micro, thông báo và Gemini **chưa được kiểm chứng thiết bị**.
@@ -222,6 +223,11 @@ Nguồn đầy đủ: `docs/FEASIBILITY.md`.
 | Đoạn JSX thừa trong `WordFormScreen` | Lỗi soạn thảo | Đã xoá, bỏ import không dùng |
 | Thiếu `expo-speech-recognition` trong `package.json` dù code và `app.json` đều dùng | Rà import ↔ dependency | Đã thêm `~58.0.0`; cần `npm install` lại |
 | Nghi `expo-file-system/legacy` đổi ở SDK 58 | Rà type trong `node_modules` | Không đổi: export + API còn đủ, đóng rủi ro |
+| "Gemini đang gặp lỗi tạm thời" lúc được lúc không (2026-10-22) | 503/overloaded của Google bị coi là lỗi cuối cùng vì **không có retry**; `AiError.retryable` được khai báo nhưng **không chỗ nào đọc** | **Đã sửa** — retry 3 lần, exponential backoff + jitter, tôn trọng Retry-After, chỉ cho lỗi tạm thời |
+| Câu trả lời bị cắt → "Không đọc được JSON" | `maxOutputTokens` cố định 4096, không kiểm tra `finishReason`, không vá JSON bị cắt | **Đã sửa** — token budget theo số từ (2048–8192), đọc `finishReason`, salvage các mục hoàn chỉnh, báo rõ "bị cắt" |
+| 404 model bị ngừng vẫn lộ ra UI dạng lỗi chung | `mapHttpError` gộp 404 vào `unknown` | **Đã sửa** — phân loại `model_unavailable`, tự liệt kê model còn dùng được và thử lại 1 lần |
+| Nhấn "Tạo bộ từ" hai lần tạo hai request | Không có khoá single-flight ở tầng dịch vụ | **Đã sửa** — cùng request dùng chung promise; request khác bị từ chối với mã `busy` |
+| Không biết lỗi ở bước nào | Không có log | **Đã sửa** — `src/ai/diagnostics.ts` + panel "Lần gọi Gemini gần đây" trong Cài đặt (không chứa key) |
 
 ## 13. Lỗi còn tồn tại
 
@@ -238,6 +244,9 @@ hạn môi trường, không phải lỗi code:**
 4. Rủi ro chưa có bằng chứng: `@expo/ui` `Text` render nhiều children/number trong runtime
    widget; `expo-speech-recognition` shape của `event.results[0].segments` trong runtime;
    độ chính xác của on-device speech model cho từ tiếng Anh ngắn.
+5. **Gemini**: logic lỗi/retry/validate đã có test tự động, nhưng **chưa có lần gọi Gemini thật nào
+   bằng key của người dùng** trong phiên này. Việc 503/429/404 thực tế có được xử lý đúng trên iPhone
+   chỉ xác nhận được sau khi cài bản build mới và bấm "Tạo bộ từ". Không đánh dấu `verified`.
 
 Đã loại trừ bằng kiểm chứng thật:
 
@@ -246,13 +255,14 @@ hạn môi trường, không phải lỗi code:**
 - `expo-speech-recognition` — đã cài và biên dịch được.
 - Version alignment SDK 58 — `expo-doctor` 20/20.
 
-## 14. Kết quả kiểm thử gần nhất (2026-10-20, đã chạy thật)
+## 14. Kết quả kiểm thử gần nhất (2026-10-22, đã chạy thật)
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
 | Install | `npm install` | exit 0 |
 | Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npm test -- --ci` | **4/4 suite, 36/36 test pass** |
+| Unit test | `npm test -- --ci` | **9/9 suite, 104/104 test pass** (thêm 68 test cho AI) |
+| Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
 | Expo doctor | `npx expo-doctor` | **20/20 check pass** |
 | Config plugin | `npx expo config --type prebuild` | **exit 0** — 2 widget + group id compose đúng |
 | Checkpoint | `node scripts/validate-checkpoint.mjs` | **hợp lệ** |
@@ -321,9 +331,10 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 
 ## 18. Bước tiếp theo theo thứ tự ưu tiên
 
-1. Cài Git for Windows + Node LTS; xác nhận `git`, `node`, `npm`.
-2. `node scripts/setup.mjs` → `npm run typecheck` → `npm test`; sửa mọi lỗi.
-3. `git init` + commit đầu tiên (không commit `.env`, key, chứng chỉ).
+1. ~~Cài Git for Windows + Node LTS~~ — **xong**, `node scripts/verify.mjs` xanh.
+2. ~~Khởi tạo Git + push GitHub~~ — **xong** (`phamkenn/vocabmaster`, private). Cài `.ipa` bằng Sideloadly.
+3. **Cài bản build chứa thay đổi 2026-10-22** rồi kiểm chứng Gemini thật: Cài đặt → "Kiểm tra key +
+   model" → AI Studio → "Tạo bộ từ" (thử cả khi tắt Wi-Fi để thấy lỗi mạng được báo đúng).
 4. Chạy `npx expo prebuild --platform ios` (trên máy có CocoaPods hoặc để EAS prebuild) để xem
    target widget có được tạo; kiểm tra `ios/` và App Group.
 5. Đăng ký Apple Developer Program (nếu người dùng đồng ý chi phí) → `eas device:create` →
@@ -348,12 +359,31 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 | Chưa xác minh | Cách xác minh |
 |---|---|
 | Code compile | `npm run typecheck` |
-| Unit test pass | `npm test` (4 file) |
+| Unit test pass | `npm test` (9 file, 104 test) |
+| Gemini retry/backoff/validate | `npm test -- src/ai` — mock fetch, không gọi API thật |
 | Prebuild tạo widget target | `npx expo prebuild --platform ios --clean`, xem `ios/` |
 | App Group hoạt động | Build bằng tài khoản trả phí, xem Signing & Capabilities |
 | Widget đọc dữ liệu thật | Cài máy thật, thêm từ, kiểm tra số liệu |
 | Widget lock screen | Thêm accessory widget trên iPhone |
 | Tap widget mở app | Chạm widget, quan sát |
+| Gemini 503/429/404 được xử lý đúng trên iPhone | Cài build 2026-10-22, tạo bộ từ, đọc "Lần gọi Gemini gần đây" |
+
+## 21. Lộ trình nâng cấp theo yêu cầu 2026-10-22 (chưa làm hết)
+
+Yêu cầu lớn của người dùng chia 7 giai đoạn. Trạng thái thật:
+
+| Giai đoạn | Nội dung | Trạng thái |
+|---|---|---|
+| 1. Kiểm tra & chẩn đoán | đọc code, xác định framework/DB/luồng Gemini, tìm nguyên nhân lỗi chập chờn | **xong** (xem mục 12) |
+| 2. Sửa Gemini API | phân loại lỗi, retry/backoff, validate, chống trùng, log | **code + test xong**, chưa kiểm chứng thiết bị |
+| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **chưa làm** (đã có `definitionEn`/`meaningVi` trong DB) |
+| 4. Nâng cấp học tập | thêm chế độ học, câu ví dụ, thống kê cá nhân hóa | **một phần** — đã có 9 dạng quiz, FSRS, từ yếu |
+| 5. Dịch thuật | khu vực dịch câu + giải thích ngữ cảnh | **chưa làm** |
+| 6. Minigame bắn thiên thạch | arcade từ dữ liệu đã lưu | **chưa làm** |
+| 7. Kiểm thử & phát hành | thiết bị, offline, hạn mức, IPA | **một phần** — unit test xanh, chưa có thiết bị |
+
+Nguyên tắc đã thống nhất: không viết lại app, không đổi schema khi chưa có migration, không tuyên bố
+hoàn thành khi chưa kiểm thử, ưu tiên ổn định trước tính năng.
 | TTS phát tiếng | Tắt silent mode, nghe thử trong Cài đặt |
 | Nhận diện giọng nói | Cấp quyền, đọc từ, xem transcript |
 | Gemini 2.5 flash còn dùng được | Tạo 3 từ trong app; đổi model nếu 404 |

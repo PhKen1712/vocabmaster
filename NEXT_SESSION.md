@@ -2,17 +2,20 @@
 
 ## 1. Dự án đang ở đâu
 
-- **Đã xanh (chạy thật ngày 2026-10-20):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
-  36/36 test pass trong 4 suite, `npx expo-doctor` 20/20, `npx expo config --type prebuild`
-  compose đúng 2 widget + App Group, `node scripts/validate-checkpoint.mjs` hợp lệ.
-- **Chưa chạy:** `expo prebuild` cho iOS (Expo chặn trên Windows), EAS build, cài iPhone,
-  kiểm chứng widget/speech/notification/Gemini trên máy thật.
+- **Đã xanh (chạy thật ngày 2026-10-22):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
+  **104/104 test pass trong 9 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
+  `expo-doctor` 20/20, `expo config --type prebuild` compose đúng 2 widget + App Group.
+- **Mới nhất (2026-10-22):** toàn bộ lớp Gemini được gia cố — `src/ai/errors.ts`, `retry.ts`,
+  `diagnostics.ts`, `gemini.ts`, `schema.ts` + UI. Đọc `CHANGELOG.md` mục 2026-10-22 trước khi sửa AI.
+- **Chưa chạy:** gọi Gemini thật bằng key người dùng sau thay đổi 2026-10-22; `expo prebuild` cho iOS
+  (Expo chặn trên Windows); EAS build; kiểm chứng widget/speech/notification trên máy thật.
 - **Toàn bộ code trên đĩa** tại `C:\Users\Lenovo\Desktop\VocabMaster`.
   Workspace của công cụ AI là `C:\Users\Lenovo\Desktop\App TANH` — **khác** thư mục dự án.
   Luôn `cd "C:/Users/Lenovo/Desktop/VocabMaster"` trước khi chạy lệnh.
 - **Blocker còn lại:** (a) iOS prebuild/build chỉ chạy trên macOS hoặc EAS;
   (b) App Groups cần Apple Developer Program 99 USD/năm — quyết định của người dùng.
-- Chưa có Git repo, chưa có EAS project.
+- **Git:** repo private `https://github.com/phamkenn/vocabmaster` (branch `main`), workflow macOS
+  `ios-unsigned.yml` đã tạo ra `.ipa` cài được bằng Sideloadly. Chưa có EAS project.
 
 ## 2. Đọc theo thứ tự này
 
@@ -36,11 +39,11 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 
 ## 4. Việc ưu tiên tiếp theo
 
-1. **`git init` + commit + push GitHub, rồi chạy workflow `iOS unsigned IPA (free Apple ID)`.**
-   Đây là đường người dùng đã chọn (Apple ID miễn phí, không widget). Tài liệu từng bước:
-   `docs/FREE_SIDELOAD.md`. `.gitignore` đã chặn `.env`, `ios/`, `node_modules/`,
-   `tools/verify-report.txt`, `app.json.free-build.bak`.
-   Sau khi có `.ipa`: cài bằng Sideloadly, bật Developer Mode, kiểm tra checklist mục 6 của tài liệu.
+1. **Commit + push thay đổi AI 2026-10-22**, chờ workflow macOS xanh, tải `.ipa` và cài đè
+   (`docs/FREE_SIDELOAD.md`). Huỷ các run cũ để tiết kiệm ~300 phút macOS/run.
+   Sau khi cài: **Cài đặt → Gemini AI → "Kiểm tra key + model"** → **AI Studio → "Tạo bộ từ"**.
+   Nếu lỗi, đọc **Cài đặt → "Lần gọi Gemini gần đây"** (giai đoạn + HTTP status + mã lỗi) rồi ghi kết quả
+   thật vào `CHECKPOINT.json → test_results.device_tests`.
 2. **Quyết định Apple Developer Program.** Không có nó thì widget chỉ render placeholder
    vì không có App Group để chia sẻ dữ liệu.
 3. **`eas init` + development build.** EAS chạy prebuild trên macOS; sau build kiểm tra:
@@ -57,6 +60,9 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 - Không dùng PWA thay widget.
 - Không "lách" App Groups bằng Apple ID miễn phí — Apple không cấp entitlement.
 - Không hardcode/commit Gemini key; `EXPO_PUBLIC_*` là công khai.
+- Không thêm retry cho `invalid_key` / `quota_exceeded`, và không nâng số lần thử quá 3: mỗi lần thử là
+  một request thật, Google tính vào hạn mức.
+- Không hiển thị nguyên văn lỗi Google mà chưa qua `redactSecrets` + `describeAiError`.
 - Không sửa migration v1 đã có; thêm version mới.
 - Không xoá dữ liệu người dùng để "sửa lỗi"; backup trước.
 - Không thêm `ignoreDeprecations`/`@ts-expect-error` chỉ để tsc im lặng — sửa nguyên nhân

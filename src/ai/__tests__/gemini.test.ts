@@ -7,16 +7,53 @@ jest.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'whenUnlockedThisDeviceOnly',
 }));
 
-import { checkApiKey, generateVocabulary, rankModels } from '../gemini';
+import { checkApiKey, generateVocabulary, rankModels, resetGenerationState, tokenBudget } from '../gemini';
+import { clearDiagnostics, getDiagnostics } from '../diagnostics';
 import { AiError, type AiRequest } from '../types';
 
 function jsonResponse(status: number, body: unknown) {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: { get: () => null },
     json: async () => body,
   } as unknown as Response;
 }
+
+const successBody = {
+  candidates: [
+    {
+      finishReason: 'STOP',
+      content: {
+        parts: [
+          {
+            text: JSON.stringify({
+              words: [
+                {
+                  term: 'borrow',
+                  meaningVi: 'mượn',
+                  partOfSpeech: 'verb',
+                  level: 2,
+                  exampleEn: 'Can I borrow your pen?',
+                },
+              ],
+            }),
+          },
+        ],
+      },
+    },
+  ],
+};
+
+const request: AiRequest = {
+  track: 'general',
+  level: 2,
+  count: 1,
+  avoidTerms: [],
+  weakTerms: [],
+};
+
+const noSleep = jest.fn(async () => undefined);
 
 describe('checkApiKey', () => {
   const originalFetch = globalThis.fetch;
@@ -129,31 +166,20 @@ describe('rankModels', () => {
   });
 });
 
+describe('tokenBudget', () => {
+  it('gives a short list headroom and grows with the request', () => {
+    expect(tokenBudget(1)).toBe(2048);
+    expect(tokenBudget(8)).toBe(4800);
+    expect(tokenBudget(20)).toBe(8192);
+  });
+
+  it('never exceeds the model output cap', () => {
+    expect(tokenBudget(200)).toBe(8192);
+  });
+});
+
 describe('generateVocabulary when the model was retired', () => {
   const originalFetch = globalThis.fetch;
-  const request: AiRequest = {
-    track: 'general',
-    level: 2,
-    count: 1,
-    avoidTerms: [],
-    weakTerms: [],
-  };
-
-  const successBody = {
-    candidates: [
-      {
-        content: {
-          parts: [
-            {
-              text: JSON.stringify({
-                words: [{ term: 'borrow', meaningVi: 'mượn', partOfSpeech: 'verb', level: 2 }],
-              }),
-            },
-          ],
-        },
-      },
-    ],
-  };
 
   const retiredBody = {
     error: {
@@ -167,6 +193,8 @@ describe('generateVocabulary when the model was retired', () => {
   beforeEach(() => {
     mockGetItem.mockReset();
     mockGetItem.mockResolvedValue('AIza-test-key-1234567890');
+    resetGenerationState();
+    clearDiagnostics();
   });
 
   afterEach(() => {
@@ -217,5 +245,145 @@ describe('generateVocabulary when the model was retired', () => {
       expect(error).toBeInstanceOf(AiError);
       expect((error as AiError).message).toContain('Cài đặt');
     }
+  });
+});
+
+describe('generateVocabulary retry and failure handling', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    mockGetItem.mockReset();
+    mockGetItem.mockResolvedValue('AIza-test-key-1234567890');
+    resetGenerationState();
+    clearDiagnostics();
+    noSleep.mockClear();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('retries a 503 and succeeds on the second attempt', async () => {
+    let calls = 0;
+    const fetchMock = jest.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return jsonResponse(503, {
+          error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded.' },
+        });
+      }
+      return jsonResponse(200, successBody);
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await generateVocabulary(request, {
+      model: 'gemini-3.8-flash',
+      sleep: noSleep,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(result.attempts).toBe(2);
+    expect(result.suggestions).toHaveLength(1);
+    // The learner can see that a retry happened, without any secret.
+    const diagnostics = getDiagnostics();
+    expect(diagnostics.some((entry) => entry.outcome === 'retry')).toBe(true);
+    expect(JSON.stringify(diagnostics)).not.toContain('AIza');
+  });
+
+  it('does not retry a rejected key', async () => {
+    const fetchMock = jest.fn(async () =>
+      jsonResponse(401, {
+        error: { code: 401, status: 'UNAUTHENTICATED', message: 'Request had invalid authentication credentials.' },
+      }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ).rejects.toMatchObject({ code: 'invalid_key' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a spent daily quota', async () => {
+    const fetchMock = jest.fn(async () =>
+      jsonResponse(429, {
+        error: {
+          code: 429,
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'You exceeded your current quota.',
+          details: [{ violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }],
+        },
+      }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ).rejects.toMatchObject({ code: 'quota_exceeded' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains a truncated answer instead of failing with a generic error', async () => {
+    const cut = '{"words":[{"term":"borrow","meaningVi":"mượn"';
+    const fetchMock = jest.fn(async () =>
+      jsonResponse(200, {
+        candidates: [{ finishReason: 'MAX_TOKENS', content: { parts: [{ text: cut }] } }],
+      }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ).rejects.toMatchObject({ code: 'json_parse' });
+    // One automatic retry for unusable output, then stop.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    try {
+      await generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep });
+    } catch (error) {
+      expect((error as AiError).message).toContain('cắt');
+    }
+  });
+
+  it('validates the request before spending an API call', async () => {
+    const fetchMock = jest.fn();
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary({ ...request, count: 25 }, { model: 'gemini-3.8-flash' }),
+    ).rejects.toMatchObject({ code: 'validation' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('shares one call when the same request is fired twice', async () => {
+    const fetchMock = jest.fn(async () => jsonResponse(200, successBody));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const [first, second] = await Promise.all([
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(first.suggestions[0]?.term).toBe(second.suggestions[0]?.term);
+  });
+
+  it('refuses a different request while one is already running', async () => {
+    let release!: (value: unknown) => void;
+    const gate = new Promise<unknown>((resolve) => {
+      release = resolve;
+    });
+    globalThis.fetch = jest.fn(async () => {
+      await gate;
+      return jsonResponse(200, successBody);
+    }) as unknown as typeof fetch;
+
+    const running = generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep });
+    await expect(
+      generateVocabulary({ ...request, count: 5 }, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ).rejects.toMatchObject({ code: 'busy' });
+
+    release(null);
+    await expect(running).resolves.toBeDefined();
   });
 });

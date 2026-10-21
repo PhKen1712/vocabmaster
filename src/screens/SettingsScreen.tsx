@@ -4,6 +4,13 @@ import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 import { checkApiKey, clearApiKey, hasApiKey, saveApiKey, type KeyCheck } from '../ai/gemini';
+import {
+  clearDiagnostics,
+  formatDiagnostic,
+  getDiagnostics,
+  subscribeDiagnostics,
+  type AiDiagnostic,
+} from '../ai/diagnostics';
 import { exportBackupFile, exportCsvFile, importCsvWords, pickTextFile, restoreBackup } from '../db/backup';
 import { getCounts } from '../db/words';
 import { resetDatabase } from '../db/database';
@@ -42,6 +49,11 @@ export function SettingsScreen() {
   const [checkResult, setCheckResult] = useState<KeyCheck | null>(null);
   const [notificationStatus, setNotificationStatus] = useState<string>('…');
   const [busy, setBusy] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<AiDiagnostic[]>(() => getDiagnostics());
+
+  // In-memory only: it survives navigation, not an app restart, and never holds
+  // the API key or the learner's content.
+  useEffect(() => subscribeDiagnostics(() => setDiagnostics(getDiagnostics())), []);
 
   // Model Google đề xuất khi model đang cấu hình đã bị ngừng.
   const suggestedModel = checkResult && !checkResult.ok ? checkResult.suggestedModel ?? null : null;
@@ -359,6 +371,53 @@ export function SettingsScreen() {
             onPress={() => void useSuggestedModel(suggestedModel)}
           />
         ) : null}
+      </Card>
+
+      <Card style={{ marginTop: spacing.md }}>
+        <View style={styles.rowBetween}>
+          <AppText variant="bodyStrong">Lần gọi Gemini gần đây</AppText>
+          <AppText variant="caption" color={colors.textMuted}>
+            {diagnostics.length}/40
+          </AppText>
+        </View>
+        <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
+          Dùng khi Gemini báo lỗi: mỗi dòng cho biết giai đoạn (request → response → parse →
+          validate), HTTP status, mã lỗi nội bộ, model và thời gian. Log chỉ nằm trong bộ nhớ của
+          phiên này, không chứa API key hay nội dung bạn học.
+        </AppText>
+        {diagnostics.length === 0 ? (
+          <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
+            Chưa có lần gọi nào trong phiên này. Tạo một bộ từ rồi quay lại đây nếu cần xem lỗi.
+          </AppText>
+        ) : (
+          diagnostics.slice(0, 10).map((entry) => (
+            <AppText
+              key={entry.id}
+              variant="micro"
+              color={
+                entry.outcome === 'error'
+                  ? colors.danger
+                  : entry.outcome === 'retry'
+                    ? colors.warning
+                    : colors.textMuted
+              }
+              style={{ marginTop: spacing.xs }}
+            >
+              {formatDiagnostic(entry)}
+              {entry.detail ? ` — ${entry.detail}` : ''}
+            </AppText>
+          ))
+        )}
+        <PrimaryButton
+          label="Xoá log"
+          variant="ghost"
+          style={{ marginTop: spacing.md }}
+          disabled={diagnostics.length === 0}
+          onPress={() => {
+            clearDiagnostics();
+            setDiagnostics(getDiagnostics());
+          }}
+        />
       </Card>
 
       <SectionHeader title="Học tập" />

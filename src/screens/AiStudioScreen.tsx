@@ -1,10 +1,11 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 import { generateVocabulary } from '../ai/gemini';
-import { AiError, AI_ERROR_MESSAGES, type AiSuggestion } from '../ai/types';
+import { describeAiError, type AiErrorView } from '../ai/errors';
+import type { AiSuggestion } from '../ai/types';
 import { DuplicateWordError, createWord, listWords } from '../db/words';
 import { formatList, splitList } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
@@ -29,19 +30,33 @@ export function AiStudioScreen() {
   const [count, setCount] = useState(8);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [rejected, setRejected] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AiErrorView | null>(null);
   const [modelNote, setModelNote] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
+  const [requestedCount, setRequestedCount] = useState(0);
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Leaving the screen cancels the request instead of letting it finish in the
+  // background and update a screen the learner can no longer see.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   const generate = useCallback(async () => {
-    if (!db) return;
+    if (!db || loading) return;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     setLoading(true);
     setError(null);
     setModelNote(null);
     setRejected([]);
+    setWarnings([]);
+    setProgress('Đang gửi yêu cầu tới Gemini…');
     try {
       const existing = await listWords(db, { track, limit: 300 });
       const result = await generateVocabulary(
@@ -54,34 +69,44 @@ export function AiStudioScreen() {
           avoidTerms: existing.map((word) => word.term),
           weakTerms: existing.filter((word) => word.lapses > 0).slice(0, 20).map((word) => word.term),
         },
-        settings.aiModel,
+        {
+          model: settings.aiModel,
+          signal: controller.signal,
+          onAttempt: (info) => {
+            if (controller.signal.aborted) return;
+            setProgress(
+              info.delayMs !== undefined
+                ? `Gemini lỗi tạm thời. Thử lại lần ${info.attempt}/${info.attempts} sau ${(info.delayMs / 1000).toFixed(1)} giây…`
+                : info.attempt > 1
+                  ? `Đang thử lại (lần ${info.attempt}/${info.attempts})…`
+                  : 'Gemini đang tạo từ…',
+            );
+          },
+        },
       );
+      if (controller.signal.aborted) return;
+
       setDrafts(result.suggestions.map((item) => ({ ...item, include: true })));
       setRejected(result.rejected);
+      setWarnings(result.warnings);
+      setRequestedCount(result.requested);
       if (result.fallbackFrom) {
         setModelNote(
           `Model "${result.fallbackFrom}" đã bị Google ngừng nên lần này dùng "${result.model}". Vào Cài đặt → Gemini AI để lưu model mới.`,
         );
       }
-      if (result.suggestions.length === 0) {
-        setError('Gemini không trả về từ nào dùng được. Thử đổi chủ đề hoặc giảm số lượng.');
-      }
     } catch (caught) {
-      setError(
-        caught instanceof AiError
-          ? // Lỗi không phân loại được: hiện nguyên văn của Google kèm mã HTTP,
-            // nếu không thì không thể biết phải sửa key, model hay mạng.
-            caught.code === 'unknown' || caught.code === 'model_unavailable'
-            ? caught.message
-            : AI_ERROR_MESSAGES[caught.code]
-          : caught instanceof Error
-            ? caught.message
-            : 'Không gọi được Gemini.',
-      );
+      if (controller.signal.aborted) return;
+      const view = describeAiError(caught);
+      setError(view.code === 'cancelled' ? null : view);
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+        setProgress(null);
+      }
     }
-  }, [db, track, level, topic, focus, count, settings.aiModel]);
+  }, [db, track, level, topic, focus, count, settings.aiModel, loading]);
 
   const selectedCount = drafts.filter((draft) => draft.include).length;
 
@@ -225,14 +250,67 @@ export function AiStudioScreen() {
           disabled={loading}
           style={{ marginTop: spacing.md }}
         />
+        {loading && progress ? (
+          <AppText
+            variant="caption"
+            color={colors.textMuted}
+            style={{ marginTop: spacing.sm, textAlign: 'center' }}
+          >
+            {progress}
+          </AppText>
+        ) : null}
       </Card>
 
       {error ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="danger"
-            title="Không tạo được bộ từ"
-            body={`${error} Học và ôn tập offline vẫn hoạt động bình thường.`}
+            title={error.title}
+            body={`${error.body}${error.hint ? `\n${error.hint}` : ''}\nHọc và ôn tập offline vẫn hoạt động bình thường.`}
+          />
+          <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+            Kỹ thuật: {error.diagnostic}
+          </AppText>
+          <View style={styles.errorActions}>
+            {error.canRetry ? (
+              <PrimaryButton
+                label="Thử lại"
+                variant="ghost"
+                style={{ flex: 1 }}
+                disabled={loading}
+                onPress={() => void generate()}
+              />
+            ) : null}
+            {error.code === 'invalid_key' ||
+            error.code === 'missing_key' ||
+            error.code === 'model_unavailable' ||
+            error.code === 'quota_exceeded' ? (
+              <PrimaryButton
+                label="Mở Cài đặt"
+                style={{ flex: 1 }}
+                onPress={() => goToTab('settings')}
+              />
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+
+      {drafts.length > 0 && requestedCount > drafts.length ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Banner
+            tone="warning"
+            title={`Thiếu ${requestedCount - drafts.length} từ`}
+            body={`Bạn yêu cầu ${requestedCount} từ, Gemini trả về ${drafts.length} từ dùng được. Bấm "Tạo bộ từ" lần nữa để xin thêm, hoặc thêm tay bằng nút + ở tab Từ vựng.`}
+          />
+        </View>
+      ) : null}
+
+      {warnings.length > 0 ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Banner
+            tone="warning"
+            title={`${warnings.length} điểm cần kiểm tra`}
+            body={warnings.slice(0, 3).join(' ')}
           />
         </View>
       ) : null}
@@ -419,6 +497,11 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
   },
   draftMeta: {
     flexDirection: 'row',

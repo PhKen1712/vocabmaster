@@ -4,6 +4,68 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-22 — Phiên 7: chẩn đoán và gia cố Gemini API
+
+### Bối cảnh
+
+Người dùng báo "Tạo bộ từ" lúc được lúc không, có lúc chỉ hiện "Gemini đang gặp lỗi tạm thời", và
+đưa danh sách nâng cấp 20 phần. Yêu cầu: đọc code trước, sửa ổn định trước tính năng.
+
+### Nguyên nhân thật, tìm trong code (không phải "AI ngu")
+
+1. **Không có retry.** `AiError.retryable` được khai báo nhưng **không dòng nào đọc**. Một 503
+   "model is overloaded" của Google hay một lần rớt Wi-Fi là hỏng luôn — đúng hiện tượng chập chờn.
+2. **Giới hạn output cứng 4096 token.** 20 từ × ~250–350 token chắc chắn vượt; `finishReason`
+   không được kiểm tra nên JSON bị cắt được báo thành "JSON không hợp lệ".
+3. **404 model bị ngừng bị gộp vào lỗi chung**, người dùng không biết phải đổi model.
+4. **Không có log**: không biết lỗi ở bước request, response, parse hay validate.
+5. **Không chống double-tap** ở tầng dịch vụ; không huỷ request khi rời màn hình.
+
+### Đã thay đổi
+
+- **Mới** `src/ai/errors.ts` — phân loại theo HTTP status + `error.status` + quota hint; parse
+  `Retry-After` (giây hoặc HTTP date); redact `AIza…`, `key=`, header; `describeAiError()` trả
+  tiêu đề/cách sửa/mã kỹ thuật cho UI.
+- **Mới** `src/ai/retry.ts` — retry 3 lần, exponential backoff + jitter 50–100 %, tôn trọng
+  Retry-After (cap 20 s), sleep huỷ được, predicate tách "lỗi tạm thời" khỏi "key sai / hết hạn mức".
+- **Mới** `src/ai/diagnostics.ts` — ring buffer 40 dòng trong bộ nhớ, không có key/nội dung học.
+- `src/ai/types.ts` — mã lỗi mở rộng (`quota_exceeded`, `timeout`, `json_parse`, `validation`,
+  `database`, `busy`, `cancelled`…), `AiError` mang `httpStatus`/`stage`/`retryAfterMs`,
+  `retryable` thành getter suy ra từ mã; `AiResult` thêm `warnings`/`requested`/`attempts`/`elapsedMs`.
+- `src/ai/schema.ts` — vá JSON bị cắt (giữ các mục hoàn chỉnh), cảnh báo IPA sai dạng, từ loại lạ,
+  cấp độ lệch, ví dụ không chứa từ, nghĩa chưa dịch.
+- `src/ai/gemini.ts` — token budget theo số từ (2048–8192), đọc `finishReason`, phân biệt
+  timeout/mất mạng/người dùng huỷ, tự chuyển model khi 404 rồi thử lại, single-flight, ghi diagnostics.
+- `src/screens/AiStudioScreen.tsx` — banner lỗi có tiêu đề + cách sửa + nút **Thử lại** / **Mở Cài đặt**,
+  dòng mã lỗi, tiến trình "thử lại lần 2/3 sau 1.2 giây…", cảnh báo thiếu từ và cảnh báo dữ liệu.
+- `src/screens/SettingsScreen.tsx` — card **"Lần gọi Gemini gần đây"** + nút xoá log.
+
+### Đã kiểm thử thật (2026-10-22)
+
+| Bước | Kết quả |
+|---|---|
+| `npm run typecheck` | exit 0, 0 lỗi |
+| `npm test -- --ci` | **9/9 suite, 104/104 test pass** (68 test mới cho AI) |
+| `node scripts/validate-checkpoint.mjs` | hợp lệ (44 file trong `important_files`) |
+| `node scripts/verify.mjs` | xem `tools/verify-report.txt` |
+
+Test AI dùng `fetch` giả: 503 → thành công, 401 không retry, 429 theo ngày không retry,
+MAX_TOKENS → `json_parse` + 1 lần thử lại, count 25 bị chặn trước khi gọi mạng, hai request giống nhau
+dùng chung 1 lời gọi, request khác nhận `busy`, diagnostics không chứa `AIza`, salvage JSON bị cắt.
+
+### Chưa kiểm chứng
+
+- **Chưa có lần gọi Gemini thật nào** bằng key người dùng sau thay đổi này.
+- Chưa cài bản build mới; hành vi `AbortController` của React Native trên máy thật chưa đo.
+- Body 429 thật của Gemini (theo phút vs theo ngày) chưa đối chiếu.
+
+### Việc còn dở
+
+Các giai đoạn 3–7 của kế hoạch nâng cấp (giải thích Anh/Việt, nguồn xác minh, chế độ học mới,
+dịch thuật, minigame) **chưa làm** — xem `CHECKPOINT.md` mục 21.
+
+---
+
 ## 2026-10-19 — Phiên 1: khảo sát, kiến trúc, code toàn bộ v1.0 (chưa build)
 
 ### Bối cảnh
