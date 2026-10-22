@@ -223,7 +223,7 @@ export function describeAiError(error: unknown): AiErrorView {
         code: failure.code,
         title: 'Gemini đang bận',
         body: `Máy chủ Gemini trả về lỗi tạm thời.${google ? ` Google trả lời: ${google}` : ''}`,
-        hint: 'App đã tự thử lại vài lần. Chờ khoảng một phút rồi bấm "Thử lại".',
+        hint: 'App đã thử model khác và thử lại vài lần. Chờ khoảng một phút rồi bấm "Thử lại", hoặc chọn model khác trong Cài đặt → Gemini AI.',
         canRetry: true,
         diagnostic,
       };

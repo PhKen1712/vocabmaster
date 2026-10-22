@@ -133,7 +133,9 @@ export function AiStudioScreen() {
       setRequestedCount(result.requested);
       if (result.fallbackFrom) {
         setModelNote(
-          `Model "${result.fallbackFrom}" đã bị Google ngừng nên lần này dùng "${result.model}". Vào Cài đặt → Gemini AI để lưu model mới.`,
+          result.fallbackReason === 'overloaded'
+            ? `Model "${result.fallbackFrom}" đang quá tải nên lần này app tự dùng "${result.model}". Cài đặt không bị đổi; nếu lỗi lặp lại, chọn model khác trong Cài đặt → Gemini AI.`
+            : `Model "${result.fallbackFrom}" đã bị Google ngừng nên lần này dùng "${result.model}". Vào Cài đặt → Gemini AI để lưu model mới.`,
         );
       }
     } catch (caught) {

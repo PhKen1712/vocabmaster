@@ -41,6 +41,11 @@ export interface AiResult {
    * model instead, so the UI can explain the switch.
    */
   fallbackFrom?: string | null;
+  /**
+   * Why another model ran: `retired` when Google stopped serving the configured
+   * one, `overloaded` when it returned 503/429 and another model answered.
+   */
+  fallbackReason?: 'retired' | 'overloaded' | null;
   /** True when Gemini returned nothing parseable. */
   empty: boolean;
   /** How many words the learner asked for, to report a shortfall honestly. */

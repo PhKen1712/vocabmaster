@@ -288,13 +288,85 @@ describe('generateVocabulary retry and failure handling', () => {
       sleep: noSleep,
     });
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // The failed attempt now also asks Google which other models exist; that
+    // mock answers 503 too, so no replacement is found and the retry happens on
+    // the same model.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(result.attempts).toBe(2);
     expect(result.suggestions).toHaveLength(1);
+    expect(result.fallbackFrom ?? null).toBeNull();
     // The learner can see that a retry happened, without any secret.
     const diagnostics = getDiagnostics();
     expect(diagnostics.some((entry) => entry.outcome === 'retry')).toBe(true);
     expect(JSON.stringify(diagnostics)).not.toContain('AIza');
+  });
+
+  it('switches to another model when the chosen one is overloaded', async () => {
+    const overload = {
+      error: {
+        code: 503,
+        status: 'UNAVAILABLE',
+        message: 'This model is currently experiencing high demand. Please try again later.',
+      },
+    };
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.endsWith('/v1beta/models')) {
+        return jsonResponse(200, {
+          models: [
+            { name: 'models/gemini-3.8-flash' },
+            { name: 'models/gemini-3.5-flash' },
+            { name: 'models/gemini-2.5-pro' },
+          ],
+        });
+      }
+      if (url.includes('gemini-3.8-flash')) return jsonResponse(503, overload);
+      return jsonResponse(200, successBody);
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const result = await generateVocabulary(request, {
+      model: 'gemini-3.8-flash',
+      sleep: noSleep,
+    });
+
+    expect(result.model).toBe('gemini-3.5-flash');
+    expect(result.fallbackFrom).toBe('gemini-3.8-flash');
+    expect(result.fallbackReason).toBe('overloaded');
+    // No backoff wait was needed: the busy model was replaced immediately.
+    expect(result.attempts).toBe(1);
+    expect(noSleep).not.toHaveBeenCalled();
+    expect(
+      getDiagnostics().some(
+        (entry) => entry.phase === 'config' && (entry.detail ?? '').includes('quá tải'),
+      ),
+    ).toBe(true);
+  });
+
+  it('stops after the replacement model is overloaded as well', async () => {
+    const overload = {
+      error: { code: 503, status: 'UNAVAILABLE', message: 'The model is overloaded.' },
+    };
+    const fetchMock = jest.fn(async (url: string) => {
+      if (url.endsWith('/v1beta/models')) {
+        return jsonResponse(200, {
+          models: [{ name: 'models/gemini-3.8-flash' }, { name: 'models/gemini-3.5-flash' }],
+        });
+      }
+      return jsonResponse(503, overload);
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    await expect(
+      generateVocabulary(request, { model: 'gemini-3.8-flash', sleep: noSleep }),
+    ).rejects.toMatchObject({ code: 'server' });
+
+    const posts = fetchMock.mock.calls.filter(([url]) => String(url).includes(':generateContent'));
+    const listings = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/v1beta/models'));
+    // One call to the busy model, one to the replacement, one last retry: the
+    // switch must not double the retry budget.
+    expect(posts).toHaveLength(3);
+    expect(listings).toHaveLength(1);
+    expect(noSleep).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry a rejected key', async () => {

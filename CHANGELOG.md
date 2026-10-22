@@ -4,6 +4,38 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-23 — Phiên 9: đổi model khi Gemini quá tải (503)
+
+### Bối cảnh
+
+Log trên máy cho thấy `gemini-3.8-flash` trả **HTTP 503 "This model is currently experiencing
+high demand"** cho cả 3 lần thử của hai yêu cầu liên tiếp: app chỉ thử lại đúng model đang quá tải,
+nên người dùng chờ ~40 giây rồi vẫn không có từ nào.
+
+### Đã thay đổi
+
+- `src/ai/gemini.ts` — lần thử **đầu tiên** gặp `server` (5xx) hoặc `rate_limited` (429 theo phút)
+  thì hỏi Google danh sách model (`GET /v1beta/models`) và chuyển sang model kế tiếp theo
+  `rankModels`, gọi lại ngay, **không chờ backoff**. Mỗi lần tạo chỉ đổi một lần.
+  Nếu model thay thế cũng quá tải thì chỉ thử thêm 1 lần rồi báo lỗi — việc đổi model không làm
+  tăng ngân sách retry (vẫn tối đa 3 lần gọi sinh nội dung như cũ).
+  `quota_exceeded` (hết hạn mức ngày) vẫn **không** retry và **không** đổi model.
+- `src/ai/types.ts` — `AiResult.fallbackReason: 'retired' | 'overloaded'`.
+- `src/screens/AiStudioScreen.tsx` — ghi chú đúng lý do: model quá tải (cài đặt không đổi) hay
+  model bị Google ngừng (nên lưu model mới).
+- `src/ai/errors.ts` — gợi ý lỗi 5xx nhắc chọn model khác trong Cài đặt.
+- `src/ai/__tests__/gemini.test.ts` — 2 test mới (503 → đổi model trong 1 lần thử; cả hai model
+  đều 503 → dừng sau 3 lần gọi sinh nội dung), cập nhật test 503 cũ.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → 0 lỗi.
+- `npx jest --ci --maxWorkers=2` → **14/14 suite, 155/155 test pass** (chạy mặc định bị Jest hết
+  bộ nhớ worker trên Windows; chạy lại với 2 worker thì pass — không phải lỗi code).
+- Chưa gọi Gemini thật cho nhánh mới: test dùng `fetch` giả, không có key trong môi trường này.
+
+---
+
 ## 2026-10-23 — Phiên 8: Dictionary API + 2 cách tạo bộ từ
 
 ### Bối cảnh

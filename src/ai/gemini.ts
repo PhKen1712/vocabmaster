@@ -38,6 +38,9 @@ const LIST_TIMEOUT_MS = 15_000;
 
 const DEFAULT_MODEL = DEFAULT_AI_MODEL;
 
+/** Failures that say "this model is busy", not "this key is wrong". */
+const OVERLOAD_CODES: ReadonlySet<string> = new Set(['server', 'rate_limited']);
+
 /** Chinese-style output budgets: one rich word can cost ~250-350 tokens. */
 const MAX_OUTPUT_TOKENS = 8192;
 const MIN_OUTPUT_TOKENS = 2048;
@@ -520,6 +523,7 @@ async function runGenerate(
   const startedAt = Date.now();
   let model = normalizeModel(options.model ?? defaultModel()) || DEFAULT_MODEL;
   let fallbackFrom: string | null = null;
+  let fallbackReason: AiResult['fallbackReason'] = null;
   let switched = false;
   let attemptsMade = 0;
   const maxAttempts = Math.max(1, options.attempts ?? DEFAULT_ATTEMPTS);
@@ -564,6 +568,7 @@ async function runGenerate(
         const replacement = rankModels(await listModelNames(apiKey, options.signal), activeModel)[0];
         if (replacement) {
           fallbackFrom = activeModel;
+          fallbackReason = 'retired';
           switched = true;
           model = replacement;
           recordDiagnostic({
@@ -591,6 +596,34 @@ async function runGenerate(
           `Cả "${fallbackFrom}" và "${model}" đều không dùng được. Mở Cài đặt → Gemini AI rồi bấm "Kiểm tra key + model".`,
           { httpStatus: 404, stage: 'request' },
         );
+      }
+
+      // 503 "high demand" and a per-minute 429 belong to the model, not to the
+      // key. Retrying the same overloaded model three times (three 503s in the
+      // diagnostics log) wastes the learner's time, so on the first attempt we
+      // ask Google for another usable model and continue there once. A daily
+      // quota (`quota_exceeded`) is never retried and never switches models.
+      if (OVERLOAD_CODES.has(failure.code) && !switched && attemptsMade <= 1) {
+        const replacement = rankModels(
+          await listModelNames(apiKey, options.signal),
+          activeModel,
+        )[0];
+        if (replacement) {
+          fallbackFrom = activeModel;
+          fallbackReason = 'overloaded';
+          switched = true;
+          model = replacement;
+          recordDiagnostic({
+            phase: 'config',
+            outcome: 'ok',
+            model: replacement,
+            attempt: attemptsMade || 1,
+            durationMs: 0,
+            code: failure.code,
+            detail: `model quá tải, chuyển từ ${activeModel}`,
+          });
+          return callModel(replacement);
+        }
       }
       throw failure;
     }
@@ -706,6 +739,7 @@ async function runGenerate(
       warnings,
       model: activeModel,
       fallbackFrom,
+      fallbackReason,
       empty: false,
       requested: request.count,
       attempts: attemptsMade || 1,
@@ -736,6 +770,10 @@ async function runGenerate(
         // doubles the wait and then reports the same thing, which is exactly
         // the "retry nhiều rồi bảo quá lâu" experience. Fail fast instead.
         if (error.code === 'timeout') return false;
+        // The replacement model was also overloaded: this is a broad outage,
+        // not a busy model, so one more try is enough. Without this the switch
+        // would extend the budget instead of spending it faster.
+        if (switched && OVERLOAD_CODES.has(error.code) && attempt >= 2) return false;
         return RETRYABLE_CODES.has(error.code);
       },
       onRetry: ({ attempt, attempts, delayMs, error }) => {
