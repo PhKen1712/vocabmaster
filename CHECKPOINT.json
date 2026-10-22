@@ -3,10 +3,10 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-22",
-  "current_phase": "Phases 1-6 code written; Gemini reliability layer (typed errors, retries, 20 s hard deadline, no timeout retry, diagnostics) and the placement dead-end fix landed on 2026-10-22. Bundled word bank started: 134 hand-checked words (94 general + 40 IELTS) with level targets for 2500+2500, loaded through SEED_VERSION 2. Typecheck 0 errors, 125/125 unit tests.",
+  "last_updated": "2026-10-23",
+  "current_phase": "Phases 1-6 code written. 2026-10-23 added a second way to build a word set: paste a list and look it up through dict.minhqnd.com (Vietnamese meanings, IPA, audio) + api.dictionaryapi.dev (English definitions, examples), with schema v2 (dict_source, missing_fields, dictionary_cache), 3-request concurrency, 8 s deadline, single-layer retry, 30-day cache and honest missing-field labels. Typecheck 0 errors, 153/153 unit tests, live lookup of 6 words in 906 ms, migration 1→2 replayed on real SQLite.",
   "current_branch": "main",
-  "current_commit": "5163a05 + uncommitted AI hardening (2026-10-22); remote phamkenn/vocabmaster (private)",
+  "current_commit": "main · Dictionary API + pasted word lists (2026-10-23); remote phamkenn/vocabmaster (private)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -155,6 +155,11 @@
       "name": "Bundled offline word packs with level targets",
       "status": "tested",
       "evidence": "src/data/packs.ts (94 general + 40 IELTS rows, TARGET_DISTRIBUTION 2500 per track, decreasing by level), src/db/database.ts SEED_VERSION 2 with INSERT OR IGNORE, docs/WORD_BANK.md, src/data/__tests__/packs.test.ts (duplicates, Vietnamese meaning, level bands, example contains the term, distribution sums)"
+    },
+    {
+      "name": "Dictionary lookup for pasted word lists (second creation mode)",
+      "status": "tested",
+      "evidence": "src/dict/{types,list,sources,lookup}.ts, src/db/dictCache.ts, src/screens/useWordListLookup.ts, two-mode AiStudioScreen, schema v2. Tests: src/dict/__tests__/list.test.ts, src/dict/__tests__/lookup.test.ts (real captured payloads, 404/530/429/timeout/cache/concurrency/AI-fill), src/db/__tests__/dictCache.test.ts. Live run: 4 words resolved, unknown word notFound, phrase rejected, 906 ms. Endpoints and licences in docs/DICTIONARY.md."
     }
   ],
   "in_progress_features": [
@@ -421,12 +426,16 @@
     {
       "capability": "CSV/JSON backup round-trips without data loss",
       "how_to_verify": "Export, reset, restore, compare counts"
+    },
+    {
+      "capability": "Dictionary lookup works on the iPhone and the pasted-list mode saves words",
+      "how_to_verify": "Install the 2026-10-23 build; open Tạo bộ từ → Nhập danh sách từ; paste criminal, civil, justice, evidence; confirm meanings appear one by one, then save and open Từ vựng"
     }
   ],
   "test_results": {
-    "last_run": "2026-10-22",
+    "last_run": "2026-10-23",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npm run typecheck exit 0; npm test -- --ci: 11/11 suites, 125/125 tests. AI error handling, placement questions and word-pack content are tested with mocks/data, never with the live API.",
+    "reason": "npm run typecheck exit 0; npm test -- --ci: 14/14 suites, 153/153 tests. Dictionary lookups are tested with real captured payloads through a fake HTTP client; the endpoints themselves were checked live with curl in this session, but no test calls the network.",
     "typecheck": {
       "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
       "exit_code": 0,
@@ -435,9 +444,9 @@
     "unit_tests": {
       "command": "npm test -- --ci",
       "exit_code": 0,
-      "suites_passed": 11,
+      "suites_passed": 14,
       "suites_failed": 0,
-      "tests_passed": 125,
+      "tests_passed": 153,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -452,7 +461,7 @@
     },
     "commands_pending": [
       "npm run verify on the final tree (documentation edits included)",
-      "Install the 2026-10-22 build and generate a word set with the real key",
+      "Install the 2026-10-23 build and run both creation modes on the iPhone",
       "Device verification of widget / speech / notifications / Gemini"
     ],
     "suites_written": [
@@ -466,7 +475,10 @@
       "src/ai/__tests__/retry.test.ts",
       "src/ai/__tests__/schema.test.ts",
       "src/quiz/__tests__/placement.test.ts",
-      "src/data/__tests__/packs.test.ts"
+      "src/data/__tests__/packs.test.ts",
+      "src/dict/__tests__/list.test.ts",
+      "src/dict/__tests__/lookup.test.ts",
+      "src/db/__tests__/dictCache.test.ts"
     ],
     "device_tests": {
       "status": "not_run",
@@ -497,6 +509,24 @@
         "any live Gemini call with a real key",
         "behaviour of the real Gemini 429 body for per-minute vs per-day quota",
         "on-device React Native AbortController behaviour"
+      ]
+    },
+    "dictionary_checks": {
+      "status": "live_endpoints_verified_ui_not",
+      "verified_with_curl": [
+        "api.dictionaryapi.dev returns 200 with IPA, mp3, definitions and sometimes examples for criminal/civil/justice/evidence",
+        "api.dictionaryapi.dev returns HTTP 530 with body \"error code: 1033\" for unknown headwords (reproduced 3x)",
+        "dict.minhqnd.com /api/v1/lookup?lang=en returns Vietnamese meanings, IPA, TTS audio and Vietnamese part of speech",
+        "dict.minhqnd.com returns 404 {exists:false} for unknown headwords and for the phrase \"civil law\"",
+        "both sources reject multi-word phrases (civil law)"
+      ],
+      "live_pipeline": "lookupWords() with real endpoints resolved 6 words in 906 ms (4 found, 1 notFound, 1 phrase rejected)",
+      "migration_checked": "node:sqlite: migrations 1 then 2 on a database holding an old word; meaning, reps, stability and due_at survived; new columns default NULL / []",
+      "not_covered": [
+        "the two-mode UI on a real iPhone",
+        "React Native AbortController behaviour during a lookup",
+        "a live Gemini call from the pasted-list flow (mocked only)",
+        "published rate limits for dict.minhqnd.com (none documented; app self-limits to 3 concurrent)"
       ]
     }
   },
@@ -688,14 +718,38 @@
     {
       "path": "docs/WORD_BANK.md",
       "role": "5000-word bank plan: distribution, selection rules, free data sources, licences"
+    },
+    {
+      "path": "src/dict/lookup.ts",
+      "role": "Dictionary pipeline: cache, 3-request limiter, 8 s deadline, single retry layer, merge, missing-field report, optional Gemini fill"
+    },
+    {
+      "path": "src/dict/sources.ts",
+      "role": "Verified minhqnd + Wiktionary clients/parsers (incl. the 530 unknown-word quirk) and IPA/POS normalization"
+    },
+    {
+      "path": "src/dict/list.ts",
+      "role": "Pasted-list parser: separators, trimming, dedupe, 50-word cap"
+    },
+    {
+      "path": "src/db/dictCache.ts",
+      "role": "SQLite dictionary cache (30-day TTL) plus 90-day prune"
+    },
+    {
+      "path": "src/screens/useWordListLookup.ts",
+      "role": "State for the pasted-list mode: progressive results, cancel, retry failed only"
+    },
+    {
+      "path": "docs/DICTIONARY.md",
+      "role": "Live-verified endpoints, JSON shapes, licences, limits and test matrix"
     }
   ],
   "next_steps": [
-    "Run node scripts/verify.mjs, then commit; one build carries the Gemini fixes, the placement fix and the first word-pack tranche.",
-    "On the iPhone: run Kiểm tra đầu vào (every question must show options), then open Từ vựng and confirm the 134 bundled words are present without touching existing edits.",
-    "Expand the packs in 200-300 word batches: general A1/A2 first, then B1/B2, then IELTS by topic; npm test blocks duplicates and bad meanings.",
-    "Add IPA for packed words from CMUdict (public licence) rather than inventing it.",
-    "Continue phases 3-6 of the upgrade plan (bilingual explanations, provenance, translation workspace, minigame)."
+    "Run node scripts/verify.mjs, then push; the main-branch workflow builds one unsigned IPA containing these changes.",
+    "On the iPhone: Tạo bộ từ → Nhập danh sách từ with \"criminal, civil, justice, evidence\"; check Vietnamese meanings, IPA, the \"Thiếu:\" line and the retry button after airplane mode.",
+    "Expand the bundled packs in 200-300 word batches (general A1/A2 first) as planned in docs/WORD_BANK.md.",
+    "Add IPA for packed words from CMUdict (public licence) instead of inventing it.",
+    "Continue phases 4-6 of the upgrade plan (bilingual study view, translation workspace, asteroid minigame)."
   ],
   "blocked_by": [
     {

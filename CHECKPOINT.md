@@ -1,10 +1,10 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-22
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + **Gemini reliability + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 (2026-10-22)** — **typecheck 0 lỗi, 125/125 unit test xanh**; chưa build iOS, chưa kiểm chứng thiết bị
+- **last_updated:** 2026-10-23
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + Gemini reliability + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ: Gemini chọn từ và nhập danh sách có tra từ điển (2026-10-23)** — **typecheck 0 lỗi, 153/153 unit test xanh, schema v2 có migration đã chạy thử trên SQLite thật**; chưa build iOS, chưa kiểm chứng thiết bị
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
-- **current_branch / commit:** `main` · `5163a05` + thay đổi AI ngày 2026-10-22 (chưa commit)
+- **current_branch / commit:** `main` · Dictionary API + nhập danh sách (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
 
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
@@ -139,6 +139,11 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Luyện nói: nhận diện giọng nói, ưu tiên on-device, so khớp từ + confidence; **không** chấm âm vị.
 - Gemini: tạo bộ từ theo track/level/topic/count/focus, tránh từ đã có, validate từng trường,
   preview + sửa + chọn trước khi lưu, xử lý lỗi 401/403/429/5xx/mạng/timeout.
+- **Tạo bộ từ từ danh sách tự nhập (2026-10-23)**: tách phẩy/chấm phẩy/xuống dòng, bỏ trùng,
+  tra song song hai từ điển miễn phí (dict.minhqnd.com cho nghĩa Việt + IPA, api.dictionaryapi.dev
+  cho định nghĩa/ví dụ tiếng Anh), giới hạn 3 request đồng thời, timeout 8 giây, retry 2 lần cho
+  mạng/429/5xx, cache SQLite 30 ngày, đánh dấu trường thiếu (`missing_fields`), Gemini chỉ bổ sung
+  nghĩa Việt cho tối đa 5 từ và được ghi rõ nguồn (`docs/DICTIONARY.md`).
 - Gợi ý chi tiết cho một từ cụ thể trong biểu mẫu (lookupTerm).
 - Key Gemini trong Keychain, không log, không backup, có xoá key.
 - Widget: 2 kind (home 3 size, lock screen 3 family), snapshot + timeline, sync sau mỗi thay đổi
@@ -146,7 +151,7 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 11 bộ unit test (FSRS, quiz, streak, text, settings, AI ×4, placement, word packs).
+- 14 bộ unit test (FSRS, quiz, streak, text, settings, AI ×4, placement, word packs, dictionary ×2, dict cache).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -257,13 +262,15 @@ hạn môi trường, không phải lỗi code:**
 - `expo-speech-recognition` — đã cài và biên dịch được.
 - Version alignment SDK 58 — `expo-doctor` 20/20.
 
-## 14. Kết quả kiểm thử gần nhất (2026-10-22, đã chạy thật)
+## 14. Kết quả kiểm thử gần nhất (2026-10-23, đã chạy thật)
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
 | Install | `npm install` | exit 0 |
 | Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npm test -- --ci` | **11/11 suite, 125/125 test pass** (AI, placement, word packs) |
+| Unit test | `npm test -- --ci` | **14/14 suite, 153/153 test pass** (AI, placement, word packs, dictionary, dict cache) |
+| Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
+| Migration thật | `node:sqlite` chạy migration 1 → 2 | từ cũ giữ nguyên nghĩa/`reps`/`stability`/`due_at`; cột mới `NULL` / `'[]'` |
 | Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
 | Expo doctor | `npx expo-doctor` | **20/20 check pass** |
 | Config plugin | `npx expo config --type prebuild` | **exit 0** — 2 widget + group id compose đúng |
@@ -335,8 +342,9 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 
 1. ~~Cài Git for Windows + Node LTS~~ — **xong**, `node scripts/verify.mjs` xanh.
 2. ~~Khởi tạo Git + push GitHub~~ — **xong** (`phamkenn/vocabmaster`, private). Cài `.ipa` bằng Sideloadly.
-3. **Cài bản build chứa thay đổi 2026-10-22** rồi kiểm chứng Gemini thật: Cài đặt → "Kiểm tra key +
-   model" → AI Studio → "Tạo bộ từ" (thử cả khi tắt Wi-Fi để thấy lỗi mạng được báo đúng).
+3. **Cài bản build chứa thay đổi 2026-10-23** rồi kiểm chứng cả hai chế độ: (a) Gemini → "Tạo bộ
+   từ" (thử cả khi tắt Wi-Fi để thấy lỗi mạng được báo đúng); (b) tab Từ vựng → "Nhập danh sách từ"
+   với `criminal, civil, justice, evidence` → phải thấy nghĩa Việt, IPA, và thẻ ghi trường thiếu.
 4. Chạy `npx expo prebuild --platform ios` (trên máy có CocoaPods hoặc để EAS prebuild) để xem
    target widget có được tạo; kiểm tra `ios/` và App Group.
 5. Đăng ký Apple Developer Program (nếu người dùng đồng ý chi phí) → `eas device:create` →
@@ -379,7 +387,7 @@ Yêu cầu lớn của người dùng chia 7 giai đoạn. Trạng thái thật:
 |---|---|---|
 | 1. Kiểm tra & chẩn đoán | đọc code, xác định framework/DB/luồng Gemini, tìm nguyên nhân lỗi chập chờn | **xong** (xem mục 12) |
 | 2. Sửa Gemini API | phân loại lỗi, retry/backoff, validate, chống trùng, log | **code + test xong**, chưa kiểm chứng thiết bị |
-| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **đang làm** — kho bundle 134/5.000 từ, xem `docs/WORD_BANK.md`; phần song ngữ/nguồn chưa làm |
+| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **đang làm** — kho bundle 134/5.000 từ (`docs/WORD_BANK.md`); **đã có nguồn + trạng thái thiếu + hai cách tạo bộ từ** (`docs/DICTIONARY.md`); phần song ngữ khi học chưa làm |
 | 4. Nâng cấp học tập | thêm chế độ học, câu ví dụ, thống kê cá nhân hóa | **một phần** — đã có 9 dạng quiz, FSRS, từ yếu |
 | 5. Dịch thuật | khu vực dịch câu + giải thích ngữ cảnh | **chưa làm** |
 | 6. Minigame bắn thiên thạch | arcade từ dữ liệu đã lưu | **chưa làm** |

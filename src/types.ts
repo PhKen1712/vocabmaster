@@ -9,7 +9,20 @@ export type Track = 'general' | 'ielts';
 /** 0 = starter (mất gốc), 1..6 = A1, A2, B1, B2, C1, C2. */
 export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
-export type WordSource = 'manual' | 'ai' | 'seed' | 'import';
+export type WordSource = 'manual' | 'ai' | 'seed' | 'import' | 'dictionary';
+
+/**
+ * Optional word fields a dictionary may not provide. Stored with the word so
+ * the UI can say "thiếu IPA" instead of pretending the data is complete.
+ */
+export type WordField =
+  | 'ipa'
+  | 'audio'
+  | 'partOfSpeech'
+  | 'meaningVi'
+  | 'definitionEn'
+  | 'exampleEn'
+  | 'synonyms';
 
 export type LearningState = 'new' | 'learning' | 'review' | 'relearning' | 'known';
 
@@ -70,6 +83,10 @@ export interface Word {
   confirmed: boolean;
   note: string | null;
   audioUrl: string | null;
+  /** "minhqnd+wiktionary" for looked-up words; null for hand-made ones. */
+  dictSource?: string | null;
+  /** Fields the lookup could not fill; empty means complete. */
+  missingFields?: WordField[];
   isFavorite: boolean;
   learningState: LearningState;
   /** ISO timestamp of the next scheduled review. Null for never-reviewed words. */
@@ -102,6 +119,8 @@ export interface WordInput {
   source?: WordSource;
   note?: string | null;
   audioUrl?: string | null;
+  dictSource?: string | null;
+  missingFields?: WordField[];
   isFavorite?: boolean;
   aiGenerated?: boolean;
   confirmed?: boolean;

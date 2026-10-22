@@ -2,13 +2,15 @@
 
 ## 1. Dự án đang ở đâu
 
-- **Đã xanh (chạy thật ngày 2026-10-22):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
-  **125/125 test pass trong 11 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
+- **Đã xanh (chạy thật ngày 2026-10-23):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
+  **153/153 test pass trong 14 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
   `expo-doctor` 20/20, `expo config --type prebuild` compose đúng 2 widget + App Group.
-- **Mới nhất (2026-10-22):** lớp Gemini được gia cố (`src/ai/errors.ts`, `retry.ts`, `diagnostics.ts`,
-  `gemini.ts`, `schema.ts` + UI), sửa lỗi kiểm tra đầu vào không có đáp án (`src/quiz/placement.ts`),
-  và bắt đầu kho từ bundle: 134/5.000 từ trong `src/data/packs.ts` (`SEED_VERSION = '2'`).
-  Đọc `CHANGELOG.md` mục 2026-10-22 và `docs/WORD_BANK.md` trước khi sửa AI/kho từ.
+- **Mới nhất (2026-10-23):** hai cách tạo bộ từ — Gemini chọn từ (cũ) và **nhập danh sách từ rồi
+  tra hai từ điển miễn phí** (`src/dict/*`, `src/db/dictCache.ts`, `src/screens/useWordListLookup.ts`,
+  `AiStudioScreen` hai chế độ), **schema v2** (`dict_source`, `missing_fields`, `dictionary_cache`).
+  Trước đó: lớp Gemini gia cố (`src/ai/*`), sửa kiểm tra đầu vào (`src/quiz/placement.ts`), kho từ
+  bundle 134/5.000 từ (`src/data/packs.ts`, `SEED_VERSION = '2'`).
+  Đọc `CHANGELOG.md` mục 2026-10-23, `docs/DICTIONARY.md` và `docs/WORD_BANK.md` trước khi sửa.
 - **Chưa chạy:** gọi Gemini thật bằng key người dùng sau thay đổi 2026-10-22; `expo prebuild` cho iOS
   (Expo chặn trên Windows); EAS build; kiểm chứng widget/speech/notification trên máy thật.
 - **Toàn bộ code trên đĩa** tại `C:\Users\Lenovo\Desktop\VocabMaster`.
@@ -28,6 +30,7 @@
 5. `docs/FEASIBILITY.md` — vì sao widget cần tài khoản trả giá.
 6. `docs/ARCHITECTURE.md`, `docs/TEST_PLAN.md`.
 7. `docs/WORD_BANK.md` — phân bổ 2.500 + 2.500, tiêu chí chọn từ, nguồn miễn phí và giấy phép.
+8. `docs/DICTIONARY.md` — endpoint đã kiểm chứng, JSON thật, quy tắc ghi công, giới hạn và bảng test.
 
 ## 3. Lệnh kiểm tra (chạy đầu tiên mỗi phiên)
 
@@ -42,11 +45,14 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 
 ## 4. Việc ưu tiên tiếp theo
 
-1. **Commit + push thay đổi AI 2026-10-22**, chờ workflow macOS xanh, tải `.ipa` và cài đè
-   (`docs/FREE_SIDELOAD.md`). Huỷ các run cũ để tiết kiệm ~300 phút macOS/run.
-   Sau khi cài: **Cài đặt → Gemini AI → "Kiểm tra key + model"** → **AI Studio → "Tạo bộ từ"**.
-   Nếu lỗi, đọc **Cài đặt → "Lần gọi Gemini gần đây"** (giai đoạn + HTTP status + mã lỗi) rồi ghi kết quả
-   thật vào `CHECKPOINT.json → test_results.device_tests`.
+1. **Build bản 2026-10-23** (workflow macOS), tải `.ipa` và cài đè (`docs/FREE_SIDELOAD.md`).
+   Huỷ các run cũ để tiết kiệm ~300 phút macOS/run.
+   Sau khi cài, kiểm **cả hai** chế độ:
+   - **Tạo bộ từ → Gemini chọn từ** (Cài đặt → "Kiểm tra key + model" trước).
+   - **Tạo bộ từ → Nhập danh sách từ**: dán `criminal, civil, justice, evidence`, xem tiến trình,
+     nghĩa Việt, IPA, dòng "Thiếu: …"; thử tắt Wi-Fi cho một từ chưa tra để thấy lỗi mạng,
+     rồi bật lại bấm "Thử lại từ lỗi".
+   Ghi kết quả thật vào `CHECKPOINT.json → test_results.device_tests`.
 2. **Quyết định Apple Developer Program.** Không có nó thì widget chỉ render placeholder
    vì không có App Group để chia sẻ dữ liệu.
 3. **`eas init` + development build.** EAS chạy prebuild trên macOS; sau build kiểm tra:

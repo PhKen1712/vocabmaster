@@ -1,11 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 import { generateVocabulary } from '../ai/gemini';
 import { describeAiError, type AiErrorView } from '../ai/errors';
 import type { AiSuggestion } from '../ai/types';
+import { entryToWordInput } from '../dict/lookup';
+import { DICT_FIELD_LABELS, describeDictError, type DictEntry } from '../dict/types';
 import { DuplicateWordError, createWord, listWords } from '../db/words';
 import { formatList, splitList } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
@@ -13,16 +15,31 @@ import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing } from '../theme/tokens';
 import type { Level, Track } from '../types';
+import { useWordListLookup } from './useWordListLookup';
 
 interface Draft extends AiSuggestion {
   include: boolean;
 }
+
+type CreationMode = 'gemini' | 'list';
+
+const MODE_COPY: Record<CreationMode, { label: string; caption: string }> = {
+  gemini: {
+    label: 'Gemini chọn từ',
+    caption: 'Gemini đề xuất từ theo cấp độ và chủ đề, rồi từ điển kiểm tra lại.',
+  },
+  list: {
+    label: 'Nhập danh sách từ',
+    caption: 'Bạn đã có từ rồi? Dán vào, ứng dụng tra từ điển — không cần Gemini.',
+  },
+};
 
 export function AiStudioScreen() {
   const { db, settings, notifyDataChanged, updateSettings } = useApp();
   const { pop, goToTab } = useNavigation();
   const { colors } = useTheme();
 
+  const [mode, setMode] = useState<CreationMode>('gemini');
   const [track, setTrack] = useState<Track>(settings.track);
   const [level, setLevel] = useState<Level>(settings.level);
   const [topic, setTopic] = useState('');
@@ -40,7 +57,10 @@ export function AiStudioScreen() {
   const [requestedCount, setRequestedCount] = useState(0);
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
+  const [listSaving, setListSaving] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  const wordList = useWordListLookup({ db, track, level, topic, aiModel: settings.aiModel });
 
   // Leaving the screen cancels the request instead of letting it finish in the
   // background and update a screen the learner can no longer see.
@@ -188,6 +208,51 @@ export function AiStudioScreen() {
     );
   };
 
+  const saveListEntries = async () => {
+    if (!db || listSaving) return;
+    setListSaving(true);
+    let added = 0;
+    let skipped = 0;
+    let noMeaning = 0;
+    const errors: string[] = [];
+
+    for (const entry of wordList.entries) {
+      if (!wordList.selected.has(entry.normalized)) continue;
+      const input = entryToWordInput(entry, { track, level, topic });
+      if (!input) {
+        noMeaning += 1;
+        continue;
+      }
+      try {
+        await createWord(db, input);
+        added += 1;
+      } catch (caught) {
+        if (caught instanceof DuplicateWordError) skipped += 1;
+        else {
+          errors.push(
+            `${entry.term}: ${caught instanceof Error ? caught.message : 'lỗi không rõ'}`,
+          );
+        }
+      }
+    }
+
+    await notifyDataChanged();
+    setListSaving(false);
+    wordList.clear();
+    Alert.alert(
+      'Đã thêm từ từ từ điển',
+      [
+        `${added} từ đã được thêm vào bộ ${track === 'ielts' ? 'IELTS' : 'General'}.`,
+        skipped > 0 ? `${skipped} từ đã tồn tại nên bỏ qua.` : '',
+        noMeaning > 0 ? `${noMeaning} từ thiếu nghĩa tiếng Việt nên chưa lưu.` : '',
+        errors.length > 0 ? `Lỗi: ${errors.slice(0, 3).join('; ')}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      [{ text: 'Xem bộ từ', onPress: () => goToTab('words') }],
+    );
+  };
+
   const openEdit = (index: number) => {
     const draft = drafts[index];
     if (!draft) return;
@@ -204,18 +269,22 @@ export function AiStudioScreen() {
     setEditForm(null);
   };
 
+  const foundCount = wordList.entries.filter((entry) => entry.status === 'found').length;
+  const notFoundCount = wordList.entries.filter((entry) => entry.status === 'notFound').length;
+  const failedCount = wordList.entries.filter((entry) => entry.status === 'failed').length;
+
   return (
     <Screen>
       <ScreenHeader
-        title="Gemini Studio"
-        subtitle="Gợi ý bộ từ theo đúng cấp độ và chủ đề"
+        title="Tạo bộ từ"
+        subtitle="Gemini chọn từ, hoặc tra từ điển cho danh sách của bạn"
         onBack={pop}
       />
 
       <Banner
         tone="info"
         title="Bạn kiểm soát mọi thứ trước khi lưu"
-        body="Gemini chỉ đề xuất. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ."
+        body="Gemini và từ điển chỉ điền dữ liệu. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ."
       />
 
       <Card>
@@ -233,7 +302,7 @@ export function AiStudioScreen() {
 
         <View style={{ height: spacing.md }} />
         <AppText variant="caption" color={colors.textMuted}>
-          Chủ đề (để trống nếu muốn Gemini tự chọn)
+          Chủ đề (tuỳ chọn)
         </AppText>
         <Input
           value={topic}
@@ -243,52 +312,136 @@ export function AiStudioScreen() {
           style={{ marginTop: spacing.xs, marginBottom: spacing.md }}
         />
 
-        <AppText variant="caption" color={colors.textMuted}>
-          Ưu tiên đặc biệt (tuỳ chọn)
+        <View style={styles.modeRow}>
+          {(Object.keys(MODE_COPY) as CreationMode[]).map((key) => {
+            const active = mode === key;
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setMode(key)}
+                style={[
+                  styles.modeButton,
+                  {
+                    borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: active ? colors.primary : 'transparent',
+                  },
+                ]}
+              >
+                <AppText
+                  variant="caption"
+                  color={active ? colors.onPrimary : colors.textMuted}
+                  style={{ textAlign: 'center' }}
+                >
+                  {MODE_COPY[key].label}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
+        <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.md }}>
+          {MODE_COPY[mode].caption}
         </AppText>
-        <Input
-          value={focus}
-          onChangeText={setFocus}
-          placeholder="ví dụ: collocations for IELTS Writing Task 2"
-          autoCapitalize="sentences"
-          style={{ marginTop: spacing.xs, marginBottom: spacing.md }}
-        />
 
-        <Stepper
-          label="Số từ cần tạo"
-          value={count}
-          min={3}
-          max={20}
-          step={1}
-          suffix="từ"
-          onChange={setCount}
-        />
+        {mode === 'gemini' ? (
+          <>
+            <AppText variant="caption" color={colors.textMuted}>
+              Ưu tiên đặc biệt (tuỳ chọn)
+            </AppText>
+            <Input
+              value={focus}
+              onChangeText={setFocus}
+              placeholder="ví dụ: collocations for IELTS Writing Task 2"
+              autoCapitalize="sentences"
+              style={{ marginTop: spacing.xs, marginBottom: spacing.md }}
+            />
 
-        <PrimaryButton
-          label={loading ? 'Gemini đang tạo…' : '✨ Tạo bộ từ'}
-          onPress={() => void generate()}
-          loading={loading}
-          disabled={loading}
-          style={{ marginTop: spacing.md }}
-        />
-        {loading && progress ? (
-          <AppText
-            variant="caption"
-            color={colors.textMuted}
-            style={{ marginTop: spacing.sm, textAlign: 'center' }}
-          >
-            {progress}
-            {elapsed > 0 ? ` · ${elapsed}s` : ''}
-          </AppText>
-        ) : null}
-        {loading ? (
-          <PrimaryButton
-            label="Huỷ"
-            variant="ghost"
-            style={{ marginTop: spacing.sm }}
-            onPress={cancel}
-          />
-        ) : null}
+            <Stepper
+              label="Số từ cần tạo"
+              value={count}
+              min={3}
+              max={20}
+              step={1}
+              suffix="từ"
+              onChange={setCount}
+            />
+
+            <PrimaryButton
+              label={loading ? 'Gemini đang tạo…' : '✨ Tạo bộ từ'}
+              onPress={() => void generate()}
+              loading={loading}
+              disabled={loading}
+              style={{ marginTop: spacing.md }}
+            />
+            {loading && progress ? (
+              <AppText
+                variant="caption"
+                color={colors.textMuted}
+                style={{ marginTop: spacing.sm, textAlign: 'center' }}
+              >
+                {progress}
+                {elapsed > 0 ? ` · ${elapsed}s` : ''}
+              </AppText>
+            ) : null}
+            {loading ? (
+              <PrimaryButton
+                label="Huỷ"
+                variant="ghost"
+                style={{ marginTop: spacing.sm }}
+                onPress={cancel}
+              />
+            ) : null}
+          </>
+        ) : (
+          <>
+            <AppText variant="caption" color={colors.textMuted}>
+              Danh sách từ tiếng Anh, cách nhau bằng dấu phẩy
+            </AppText>
+            <Input
+              value={wordList.text}
+              onChangeText={wordList.setText}
+              placeholder="criminal, civil, justice, evidence"
+              multiline
+              autoCapitalize="none"
+              style={{ marginTop: spacing.xs, minHeight: 96, textAlignVertical: 'top' }}
+            />
+            <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+              {wordList.parsed.terms.length} từ hợp lệ
+              {wordList.parsed.dropped.filter((item) => item.reason === 'duplicate').length > 0
+                ? ` · bỏ ${wordList.parsed.dropped.filter((item) => item.reason === 'duplicate').length} từ trùng`
+                : ''}
+              {wordList.parsed.truncated ? ' · chỉ tra 50 từ đầu' : ''}
+              {wordList.parsed.terms.length > 0 ? '' : ' · dán danh sách để bắt đầu'}
+            </AppText>
+
+            <PrimaryButton
+              label={wordList.running ? 'Đang tra từ điển…' : 'Tra cứu và tạo bộ từ'}
+              onPress={wordList.lookUp}
+              loading={wordList.running}
+              disabled={wordList.running || wordList.parsed.terms.length === 0}
+              style={{ marginTop: spacing.md }}
+            />
+            {wordList.running ? (
+              <>
+                <AppText
+                  variant="caption"
+                  color={colors.textMuted}
+                  style={{ marginTop: spacing.sm, textAlign: 'center' }}
+                >
+                  {wordList.total > 0 ? `${wordList.done}/${wordList.total} từ` : 'Đang chuẩn bị…'}
+                  {wordList.elapsed > 0 ? ` · ${wordList.elapsed}s` : ''}
+                </AppText>
+                <PrimaryButton
+                  label="Huỷ"
+                  variant="ghost"
+                  style={{ marginTop: spacing.sm }}
+                  onPress={wordList.cancel}
+                />
+              </>
+            ) : null}
+          </>
+        )}
       </Card>
 
       {error ? (
@@ -325,7 +478,13 @@ export function AiStudioScreen() {
         </View>
       ) : null}
 
-      {drafts.length > 0 && requestedCount > drafts.length ? (
+      {wordList.error ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Banner tone="warning" title="Một số từ chưa tra được" body={wordList.error} />
+        </View>
+      ) : null}
+
+      {mode === 'gemini' && drafts.length > 0 && requestedCount > drafts.length ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
@@ -335,7 +494,7 @@ export function AiStudioScreen() {
         </View>
       ) : null}
 
-      {warnings.length > 0 ? (
+      {mode === 'gemini' && warnings.length > 0 ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
@@ -351,7 +510,7 @@ export function AiStudioScreen() {
         </View>
       ) : null}
 
-      {rejected.length > 0 ? (
+      {mode === 'gemini' && rejected.length > 0 ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
@@ -361,7 +520,53 @@ export function AiStudioScreen() {
         </View>
       ) : null}
 
-      {drafts.length > 0 ? (
+      {mode === 'list' && wordList.entries.length > 0 ? (
+        <>
+          <SectionHeader title={`${wordList.selected.size}/${wordList.entries.length} từ sẽ thêm`} />
+          <Banner
+            tone={failedCount > 0 || notFoundCount > 0 ? 'warning' : 'info'}
+            title={`${foundCount} tra được · ${notFoundCount} không có trong từ điển · ${failedCount} lỗi`}
+            body={
+              failedCount > 0
+                ? 'Bấm "Thử lại từ lỗi" — các từ đã tra được sẽ không bị gọi lại.'
+                : 'Từ thiếu dữ liệu được đánh dấu bên dưới. Không có trường nào được bịa thêm.'
+            }
+          />
+          {wordList.entries.map((entry) => (
+            <ListEntryCard
+              key={entry.normalized}
+              entry={entry}
+              included={wordList.selected.has(entry.normalized)}
+              onToggle={() => wordList.toggle(entry.normalized)}
+            />
+          ))}
+          {failedCount > 0 ? (
+            <PrimaryButton
+              label={`Thử lại ${failedCount} từ lỗi`}
+              variant="ghost"
+              onPress={wordList.retryFailed}
+              disabled={wordList.running}
+              style={{ marginTop: spacing.sm }}
+            />
+          ) : null}
+          <PrimaryButton
+            label={`Thêm ${wordList.selected.size} từ đã chọn`}
+            onPress={() => void saveListEntries()}
+            loading={listSaving}
+            disabled={listSaving || wordList.selected.size === 0}
+            style={{ marginTop: spacing.sm }}
+          />
+          <AppText
+            variant="caption"
+            color={colors.textFaint}
+            style={{ marginTop: spacing.sm, textAlign: 'center' }}
+          >
+            Từ tra bằng từ điển được lưu kèm nguồn và danh sách trường còn thiếu.
+          </AppText>
+        </>
+      ) : null}
+
+      {mode === 'gemini' && drafts.length > 0 ? (
         <>
           <SectionHeader title={`${selectedCount}/${drafts.length} từ sẽ thêm`} />
           {drafts.map((draft, index) => (
@@ -514,7 +719,126 @@ export function AiStudioScreen() {
         Gemini có hạn mức miễn phí theo model và theo ngày; hạn mức có thể thay đổi. Kiểm tra
         ai.google.dev để biết giới hạn hiện hành. Ứng dụng không gọi Gemini khi bạn học hay ôn tập.
       </AppText>
+
+      <Pressable
+        accessibilityRole="link"
+        onPress={() => void Linking.openURL('https://dict.minhqnd.com')}
+        style={{ marginTop: spacing.md }}
+      >
+        <AppText variant="micro" color={colors.textFaint} style={{ textAlign: 'center' }}>
+          Nghĩa tiếng Việt & IPA: dict.minhqnd.com (@minhqnd, CC BY-SA 4.0). Định nghĩa và ví dụ
+          tiếng Anh: Wiktionary qua api.dictionaryapi.dev (CC BY-SA 3.0). Chạm để xem nguồn.
+        </AppText>
+      </Pressable>
     </Screen>
+  );
+}
+
+function ListEntryCard({
+  entry,
+  included,
+  onToggle,
+}: {
+  entry: DictEntry;
+  included: boolean;
+  onToggle: () => void;
+}) {
+  const { colors } = useTheme();
+  const selectable = entry.status === 'found' && Boolean(entry.meaningVi);
+
+  return (
+    <Card style={{ marginBottom: spacing.md, opacity: selectable ? 1 : 0.75 }}>
+      <View style={styles.draftHeader}>
+        <Pressable
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: included, disabled: !selectable }}
+          disabled={!selectable}
+          onPress={onToggle}
+          style={[
+            styles.checkbox,
+            {
+              borderColor: included ? colors.primary : colors.border,
+              backgroundColor: included ? colors.primary : 'transparent',
+            },
+          ]}
+        >
+          {included ? (
+            <AppText variant="caption" color={colors.onPrimary}>
+              ✓
+            </AppText>
+          ) : null}
+        </Pressable>
+        <View style={{ flex: 1 }}>
+          <AppText variant="headline">{entry.term}</AppText>
+          {entry.ipa ? (
+            <AppText variant="caption" color={colors.textFaint}>
+              {entry.ipa}
+            </AppText>
+          ) : null}
+        </View>
+        {entry.cached ? (
+          <AppText variant="micro" color={colors.textFaint}>
+            đã lưu
+          </AppText>
+        ) : null}
+      </View>
+
+      {entry.status === 'notFound' ? (
+        <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+          {entry.term.includes(' ')
+            ? `Hai từ điển này chỉ tra từ đơn nên chưa có "${entry.term}". Thêm tay ở tab Từ vựng nếu bạn cần cụm từ này.`
+            : 'Không tìm thấy trong từ điển. Kiểm tra lại chính tả, hoặc thêm tay ở tab Từ vựng.'}
+        </AppText>
+      ) : null}
+      {entry.status === 'failed' ? (
+        <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+          {describeDictError(entry.error)}
+        </AppText>
+      ) : null}
+
+      {entry.meaningVi ? (
+        <AppText variant="body" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
+          {entry.meaningVi}
+        </AppText>
+      ) : entry.status === 'found' ? (
+        <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+          Từ điển có từ này nhưng không có nghĩa tiếng Việt. Thêm tay để giữ đúng nghĩa bạn muốn.
+        </AppText>
+      ) : null}
+
+      {entry.otherMeaningsVi.length > 0 ? (
+        <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Nghĩa khác: {entry.otherMeaningsVi.join(' · ')}
+        </AppText>
+      ) : null}
+      {entry.definitionEn ? (
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          {entry.definitionEn}
+        </AppText>
+      ) : null}
+      {entry.exampleEn ? (
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          “{entry.exampleEn}”
+        </AppText>
+      ) : null}
+
+      <View style={styles.draftMeta}>
+        <AppText variant="micro" color={colors.textFaint}>
+          {(entry.partOfSpeech ?? 'chưa rõ từ loại').toUpperCase()} ·{' '}
+          {entry.sources.length > 0 ? entry.sources.join(' + ') : 'chưa có nguồn'}
+        </AppText>
+        {entry.aiFilled.length > 0 ? (
+          <AppText variant="micro" color={colors.warning}>
+            AI bổ sung: {entry.aiFilled.map((field) => DICT_FIELD_LABELS[field]).join(', ')}
+          </AppText>
+        ) : null}
+      </View>
+      {entry.missing.length > 0 ? (
+        <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Thiếu: {entry.missing.map((field) => DICT_FIELD_LABELS[field]).join(', ')}
+        </AppText>
+      ) : null}
+    </Card>
   );
 }
 
@@ -539,5 +863,17 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
     flexWrap: 'wrap',
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  modeButton: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 10,
+    borderWidth: 1.5,
   },
 });

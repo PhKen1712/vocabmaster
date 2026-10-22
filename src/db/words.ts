@@ -179,6 +179,8 @@ export async function createWord(db: SQLiteDatabase, input: WordInput): Promise<
     confirmed: input.confirmed ?? true,
     note: input.note?.trim() || null,
     audioUrl: input.audioUrl?.trim() || null,
+    dictSource: input.dictSource?.trim() || null,
+    missingFields: input.missingFields ?? [],
     isFavorite: input.isFavorite ?? false,
     learningState: 'new',
     dueAt: null,
@@ -251,6 +253,11 @@ export async function updateWord(
     note: patch.note !== undefined ? patch.note?.trim() || null : current.note,
     audioUrl:
       patch.audioUrl !== undefined ? patch.audioUrl?.trim() || null : current.audioUrl,
+    dictSource:
+      patch.dictSource !== undefined
+        ? patch.dictSource?.trim() || null
+        : (current.dictSource ?? null),
+    missingFields: patch.missingFields ?? current.missingFields ?? [],
     isFavorite: patch.isFavorite ?? current.isFavorite,
     learningState: patch.learningState ?? current.learningState,
     aiGenerated: patch.aiGenerated ?? current.aiGenerated,
@@ -264,6 +271,7 @@ export async function updateWord(
       definition_en = ?, example_en = ?, example_vi = ?, synonyms = ?, antonyms = ?,
       collocations = ?, word_family = ?, topic = ?, track = ?, level = ?,
       source = ?, ai_generated = ?, confirmed = ?, note = ?, audio_url = ?,
+      dict_source = ?, missing_fields = ?,
       is_favorite = ?, learning_state = ?, updated_at = ?
      WHERE id = ?;`,
     [
@@ -287,6 +295,8 @@ export async function updateWord(
       next.confirmed ? 1 : 0,
       next.note,
       next.audioUrl,
+      next.dictSource ?? null,
+      JSON.stringify(next.missingFields ?? []),
       next.isFavorite ? 1 : 0,
       next.learningState,
       next.updatedAt,

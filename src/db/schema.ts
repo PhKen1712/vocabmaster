@@ -6,10 +6,11 @@ import type {
   ReviewRating,
   Track,
   Word,
+  WordField,
   WordSource,
 } from '../types';
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /**
  * Forward-only migrations. Every entry runs exactly once, inside a transaction.
@@ -86,6 +87,22 @@ export const MIGRATIONS: { version: number; statements: string[] }[] = [
       );`,
     ],
   },
+  {
+    version: 2,
+    statements: [
+      // Provenance for looked-up words: where the data came from and what is
+      // still missing. Existing rows keep working with NULL / empty list.
+      `ALTER TABLE words ADD COLUMN dict_source TEXT;`,
+      `ALTER TABLE words ADD COLUMN missing_fields TEXT NOT NULL DEFAULT '[]';`,
+      // Answers from the dictionaries, so a word is never fetched twice.
+      `CREATE TABLE IF NOT EXISTS dictionary_cache (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_dict_cache_fetched ON dictionary_cache (fetched_at);`,
+    ],
+  },
 ];
 
 export interface WordRow {
@@ -110,6 +127,8 @@ export interface WordRow {
   confirmed: number;
   note: string | null;
   audio_url: string | null;
+  dict_source?: string | null;
+  missing_fields?: string | null;
   is_favorite: number;
   learning_state: string;
   due_at: string | null;
@@ -160,7 +179,9 @@ function asTrack(value: string): Track {
 }
 
 function asSource(value: string): WordSource {
-  if (value === 'ai' || value === 'seed' || value === 'import') return value;
+  if (value === 'ai' || value === 'seed' || value === 'import' || value === 'dictionary') {
+    return value;
+  }
   return 'manual';
 }
 
@@ -206,6 +227,8 @@ export function rowToWord(row: WordRow): Word {
     confirmed: row.confirmed === 1,
     note: row.note,
     audioUrl: row.audio_url,
+    dictSource: row.dict_source ?? null,
+    missingFields: parseList(row.missing_fields ?? null) as WordField[],
     isFavorite: row.is_favorite === 1,
     learningState: asLearningState(row.learning_state),
     dueAt: row.due_at,
@@ -268,6 +291,8 @@ export const WORD_COLUMNS = [
   'confirmed',
   'note',
   'audio_url',
+  'dict_source',
+  'missing_fields',
   'is_favorite',
   'learning_state',
   'due_at',
@@ -303,6 +328,8 @@ export function wordInsertValues(word: Word): (string | number | null)[] {
     word.confirmed ? 1 : 0,
     word.note,
     word.audioUrl,
+    word.dictSource ?? null,
+    JSON.stringify(word.missingFields ?? []),
     word.isFavorite ? 1 : 0,
     word.learningState,
     word.dueAt,

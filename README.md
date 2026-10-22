@@ -2,7 +2,8 @@
 
 Ứng dụng học từ vựng tiếng Anh cá nhân trên iPhone, viết bằng React Native + Expo, có
 **widget thật** trên màn hình chính và màn hình khóa, ôn tập theo FSRS, hai hệ thống
-General English / IELTS, phát âm, luyện nói, streak, nhắc nhở và gợi ý từ bằng Gemini.
+General English / IELTS, phát âm, luyện nói, streak, nhắc nhở, gợi ý từ bằng Gemini và
+**tra từ điển miễn phí** (nghĩa Việt + IPA + ví dụ) cho danh sách từ bạn tự nhập.
 
 - Đường dẫn dự án: `C:\Users\Lenovo\Desktop\VocabMaster`
 - Nền tảng: iOS 18+ (iPhone), phát triển trên Windows
@@ -77,6 +78,36 @@ khi level tăng. Chi tiết phân bổ, tiêu chí chọn từ, nguồn dữ li�
 
 Từ mới được thêm bằng `INSERT OR IGNORE` theo khoá `(normalized_term, track)`, nên khi cập nhật app:
 từ đã có **không bị sửa**, nghĩa bạn đã chỉnh **không bị ghi đè**, tiến độ FSRS **không mất**.
+
+## Tạo bộ từ: hai cách
+
+Màn hình **Tạo bộ từ** có hai chế độ, cùng nằm trên tab Từ vựng:
+
+1. **Gemini chọn từ** — chọn track/level/chủ đề/số từ, Gemini đề xuất, bạn sửa và chọn từng từ.
+   Vẫn là cách cũ, không thay đổi.
+2. **Nhập danh sách từ** — dán `criminal, civil, justice, evidence` (cách nhau bằng phẩy, chấm phẩy
+   hoặc xuống dòng). App chuẩn hoá danh sách rồi **tra từ điển**, không gọi Gemini trừ khi từ điển
+   không có nghĩa tiếng Việt. Không cần API key cho chế độ này.
+
+Chế độ 2 dùng hai nguồn miễn phí, không cần key:
+
+| Nguồn | Dữ liệu | Giấy phép |
+|---|---|---|
+| [dict.minhqnd.com](https://dict.minhqnd.com) | Nghĩa tiếng Việt, IPA, audio TTS, từ loại | CC BY-SA 4.0 — có ghi công trong app |
+| [api.dictionaryapi.dev](https://dictionaryapi.dev) | Định nghĩa tiếng Anh, câu ví dụ, đồng/trái nghĩa, mp3 | CC BY-SA 3.0 (Wiktionary) |
+
+Điều đáng biết:
+
+- Mỗi từ được tra **song song** nhưng giới hạn 3 request cùng lúc; tiến trình hiện `12/30 từ`, có nút **Huỷ**.
+- Kết quả được **cache trên máy 30 ngày**: tra lại cùng từ không tốn request và vẫn dùng được offline.
+- Trường thiếu được **đánh dấu**, không bịa: thẻ từ ghi "Thiếu: phiên âm IPA, từ đồng nghĩa…",
+  lưu vào `missing_fields` và hiện lại ở màn hình chi tiết.
+- Từ không có nghĩa tiếng Việt: Gemini bổ sung tối đa 5 từ và được ghi rõ **"AI bổ sung"**.
+- Chỉ tra được **từ đơn**; cụm như `civil law` bị cả hai từ điển từ chối và app nói rõ lý do.
+- Retry chỉ áp dụng cho mạng/timeout/429/5xx (tối đa 2 lần, deadline 8 giây). Từ sai chính tả
+  không bị thử lại.
+
+Chi tiết endpoint, JSON thật, quy tắc ghi công và giới hạn: **[docs/DICTIONARY.md](docs/DICTIONARY.md)**.
 
 ## Build iOS và cài lên iPhone
 

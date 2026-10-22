@@ -4,6 +4,70 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-23 — Phiên 8: Dictionary API + 2 cách tạo bộ từ
+
+### Bối cảnh
+
+Người dùng muốn giảm phụ thuộc Gemini: có thêm cách nhập danh sách từ rồi để **từ điển** tra dữ liệu,
+Gemini chỉ còn lo phần nó làm tốt. Yêu cầu kèm: đánh giá nguồn `dict.minhqnd.com` bằng cách kiểm
+tra thật, không tích hợp theo phỏng đoán.
+
+### Đã xác minh với dịch vụ thật (2026-10-22/23)
+
+| Kiểm tra | Kết quả thật |
+|---|---|
+| `api.dictionaryapi.dev/api/v2/entries/en/{criminal,civil,justice,evidence}` | 200, có IPA + mp3 + định nghĩa + ví dụ (không phải từ nào cũng có ví dụ) |
+| Từ không tồn tại trên dịch vụ đó | **HTTP 530, body `error code: 1033`** (không phải 404 JSON) — đã ghi vào code là trường hợp "không tìm thấy" và **không retry** |
+| `dict.minhqnd.com/api/v1/lookup?word=criminal&lang=en` | 200, **nghĩa tiếng Việt**, IPA, audio TTS, `pos` tiếng Việt, CORS mở, không cần key |
+| Cùng 4 từ trên minhqnd | 200, nghĩa Việt đúng, IPA đúng |
+| Từ không tồn tại trên minhqnd | **404** `{"exists": false, "word": "..."}` |
+| Cụm từ `civil law` | **404 ở cả hai** — từ điển chỉ tra từ đơn |
+| Giấy phép | minhqnd: CC BY-SA 4.0 (bắt buộc ghi công); dictionaryapi: CC BY-SA 3.0 (Wiktionary) |
+
+### Đã thay đổi
+
+- **Mới** `src/dict/types.ts` — kiểu dữ liệu tra từ, mã lỗi, nhãn trường thiếu.
+- **Mới** `src/dict/list.ts` — `parseWordList`: tách phẩy/chấm phẩy/xuống dòng, trim, gộp khoảng
+  trắng, bỏ mục rỗng, bỏ trùng không phân biệt hoa/thường, giữ thứ tự, tối đa 50 từ, báo rõ mục bị bỏ.
+- **Mới** `src/dict/sources.ts` — hai nguồn + parser thuần; map `Tính từ → adjective`; lọc IPA rác
+  (`ʹsĭv-əl`), ghép URL audio, chỉ nhận ví dụ có chứa từ.
+- **Mới** `src/dict/lookup.ts` — điều phối: cache trước, 2 request song song/từ, limiter 3,
+  deadline 8 giây, retry 2 lần (mạng/timeout/429/5xx, backoff + jitter, tôn trọng `Retry-After` cap 3 s),
+  merge (nghĩa Việt + IPA ưu tiên minhqnd; định nghĩa + ví dụ + mp3 ưu tiên Wiktionary), tính
+  `missing`, Gemini bổ sung nghĩa Việt tối đa 5 từ và gắn nhãn `gemini`.
+- **Mới** `src/db/dictCache.ts` — cache SQLite (`dictionary_cache`) + cache bộ nhớ + `pruneDictCache`
+  gọi lúc mở app (xoá bản quá 90 ngày).
+- **Mới** `src/screens/useWordListLookup.ts` — hook trạng thái: tiến trình `12/30 từ`, kết quả về
+dần từng từ, huỷ, thử lại **chỉ từ lỗi**, chọn/bỏ chọn.
+- `src/db/schema.ts` — **schema v2**: `words.dict_source`, `words.missing_fields`, bảng
+  `dictionary_cache` + index; `rowToWord`, `WORD_COLUMNS`, `wordInsertValues` cập nhật theo.
+- `src/db/words.ts` — `createWord`/`updateWord` lưu nguồn từ điển và trường thiếu; `WordSource` thêm `dictionary`.
+- `src/screens/AiStudioScreen.tsx` — màn hình đổi thành **Tạo bộ từ** với hai chế độ; chế độ danh
+  sách có ô nhập nhiều dòng, đếm từ hợp lệ, tiến trình, huỷ, thẻ kết quả ghi nguồn + trường thiếu,
+  nút thử lại từ lỗi, ghi công hai từ điển (bấm mở dict.minhqnd.com).
+- `src/screens/WordDetailScreen.tsx` — nguồn "Tra từ điển (minhqnd+wiktionary)" + dòng "Còn thiếu".
+- `src/state/AppProvider.tsx` — dọn cache từ điển cũ khi mở app (best effort).
+- Docs: `docs/DICTIONARY.md` (endpoint, JSON thật, giấy phép, giới hạn, bảng test), README, checkpoint.
+
+### Kiểm thử
+
+| Bước | Kết quả |
+|---|---|
+| `npm run typecheck` | exit 0, 0 lỗi |
+| `npm test -- --ci` | **14/14 suite, 153/153 test pass** |
+| Tra thật 6 từ (criminal, civil, justice, evidence, zzqqxxvvyy, civil law) | **906 ms**; 4 found đủ dữ liệu, 1 notFound, 1 cụm từ notFound |
+| SQLite thật (`node:sqlite`) migration 1 → 2 có dữ liệu cũ | từ cũ giữ `reps`/`stability`/`due_at`; cột mới `NULL`/`'[]'`; insert 33 cột khớp 33 giá trị |
+
+### Lỗi/hạn chế còn lại
+
+- **Chưa chạy trên iPhone**: chưa build, chưa bấm thử hai chế độ; `AbortController` của React Native chưa kiểm chứng.
+- Chưa gọi Gemini thật trong luồng nhập danh sách (nhánh bổ sung nghĩa Việt mới chỉ test bằng mock).
+- Từ điển chỉ tra **từ đơn**; cụm từ phải thêm tay (app báo rõ).
+- Không có bản dịch câu ví dụ; `exampleVi` để trống thay vì dịch máy.
+- Rate limit của minhqnd không được công bố → app tự giới hạn 3 request đồng thời, 2 lần thử.
+
+---
+
 ## 2026-10-22 — Phiên 7: chẩn đoán và gia cố Gemini API
 
 ### Bối cảnh

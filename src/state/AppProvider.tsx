@@ -12,6 +12,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { getDailyStats } from '../db/activity';
 import { getDatabase, seedDatabase } from '../db/database';
+import { pruneDictCache } from '../db/dictCache';
 import { loadSettings, saveSettings } from '../db/settings';
 import type { DailyStats, Settings } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
@@ -52,6 +53,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const database = await getDatabase();
         if (cancelled) return;
         await seedDatabase(database);
+        // Drop lookup answers nobody has asked for in 90 days. Best effort:
+        // a failed prune must never stop the app from opening.
+        void pruneDictCache(database, 90 * 24 * 60 * 60 * 1000);
         const loaded = await loadSettings(database);
         if (cancelled) return;
         setDb(database);
