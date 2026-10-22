@@ -310,6 +310,8 @@ export function mergeResults(term: string, results: SourceResult[]): Omit<DictEn
     exampleEn: en?.exampleEn ?? vi?.exampleEn ?? null,
     synonyms: union([en?.synonyms ?? [], vi?.synonyms ?? []], term),
     antonyms: union([en?.antonyms ?? [], vi?.antonyms ?? []], term),
+    level: null,
+    levelSource: null,
     sources: found.map((item) => item.source),
     aiFilled: [],
     missing: [],
@@ -451,7 +453,9 @@ export function entryToWordInput(entry: DictEntry, defaults: EntryDefaults): Wor
     wordFamily: [],
     topic: defaults.topic?.trim() || null,
     track: defaults.track,
-    level: defaults.level,
+    // The level the app worked out for this word wins; `defaults.level` is only
+    // the fallback when nobody could estimate it (and the card says so).
+    level: entry.level ?? defaults.level,
     source: 'dictionary',
     aiGenerated: entry.aiFilled.length > 0,
     confirmed: true,

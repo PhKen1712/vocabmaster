@@ -2,9 +2,11 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
   DEFAULT_AI_MODEL,
+  DEFAULT_GROQ_MODEL,
   DEFAULT_SETTINGS,
   LEVELS,
   RETIRED_AI_MODELS,
+  type AiProvider,
   type Settings,
   type Track,
 } from '../types';
@@ -18,6 +20,17 @@ export function sanitizeAiModel(value: unknown): string {
   const name = value.trim().replace(/^models\//, '');
   if (!name) return DEFAULT_AI_MODEL;
   return RETIRED_AI_MODELS.includes(name) ? DEFAULT_AI_MODEL : name;
+}
+
+/** A blank Groq model would make every request fail, so it falls back. */
+export function sanitizeGroqModel(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_GROQ_MODEL;
+  const name = value.trim();
+  return name || DEFAULT_GROQ_MODEL;
+}
+
+export function sanitizeAiProvider(value: unknown): AiProvider {
+  return value === 'groq' ? 'groq' : 'gemini';
 }
 
 const SETTINGS_KEY = 'settings';
@@ -63,7 +76,9 @@ export function sanitizeSettings(raw: unknown): Settings {
     reminderWeekdays: weekdays.length > 0 ? weekdays.sort((a, b) => a - b) : DEFAULT_SETTINGS.reminderWeekdays,
     onboardingDone: Boolean(value.onboardingDone),
     widgetTrack: asTrack(value.widgetTrack, DEFAULT_SETTINGS.widgetTrack),
+    aiProvider: sanitizeAiProvider(value.aiProvider),
     aiModel: sanitizeAiModel(value.aiModel),
+    groqModel: sanitizeGroqModel(value.groqModel),
   };
 }
 

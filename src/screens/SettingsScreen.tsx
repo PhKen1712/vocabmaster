@@ -1,9 +1,17 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
-import { checkApiKey, clearApiKey, hasApiKey, saveApiKey, type KeyCheck } from '../ai/gemini';
+import {
+  checkProviderKey,
+  clearProviderKey,
+  hasProviderKey,
+  PROVIDER_INFO,
+  providerLabel,
+  saveProviderKey,
+} from '../ai';
+import type { KeyCheck } from '../ai/types';
 import {
   clearDiagnostics,
   formatDiagnostic,
@@ -24,7 +32,7 @@ import { speak } from '../speech/tts';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
-import { DEFAULT_AI_MODEL, type ThemeMode } from '../types';
+import { AI_PROVIDERS, DEFAULT_AI_MODEL, DEFAULT_GROQ_MODEL, type AiProvider, type ThemeMode } from '../types';
 import { useNavigation } from '../navigation/NavigationProvider';
 
 const WEEKDAYS = [
@@ -58,10 +66,16 @@ export function SettingsScreen() {
   // Model Google đề xuất khi model đang cấu hình đã bị ngừng.
   const suggestedModel = checkResult && !checkResult.ok ? checkResult.suggestedModel ?? null : null;
 
+  const provider = settings.aiProvider;
+  const providerInfo = PROVIDER_INFO[provider];
+  /* Each provider keeps its own model, so switching never overwrites a good one. */
+  const modelValue = provider === 'groq' ? settings.groqModel : settings.aiModel;
+  const defaultModel = provider === 'groq' ? DEFAULT_GROQ_MODEL : DEFAULT_AI_MODEL;
+
   const refreshKeyStatus = useCallback(async () => {
-    const exists = await hasApiKey();
+    const exists = await hasProviderKey(provider);
     setKeyStatus(exists ? 'saved' : 'missing');
-  }, []);
+  }, [provider]);
 
   useEffect(() => {
     void refreshKeyStatus();
@@ -76,26 +90,35 @@ export function SettingsScreen() {
     });
   }, [refreshKeyStatus]);
 
+  const switchProvider = async (next: AiProvider) => {
+    if (next === provider) return;
+    setCheckResult(null);
+    setKeyInput('');
+    setKeyError(null);
+    setKeyStatus('loading');
+    await updateSettings({ aiProvider: next });
+  };
+
   const storeKey = async () => {
     setKeyError(null);
     try {
-      await saveApiKey(keyInput);
+      await saveProviderKey(provider, keyInput);
       setKeyInput('');
       await refreshKeyStatus();
       Alert.alert(
         'Đã lưu API key',
-        'Key được lưu trong Keychain của iPhone và không nằm trong mã nguồn hay file sao lưu.',
+        `Key ${providerInfo.label} được lưu trong Keychain của iPhone và không nằm trong mã nguồn hay file sao lưu.`,
       );
     } catch (error) {
       setKeyError(error instanceof Error ? error.message : 'Không lưu được key.');
     }
   };
 
-  const verifyKey = async (model = settings.aiModel) => {
+  const verifyKey = async (model = modelValue) => {
     setChecking(true);
     setCheckResult(null);
     try {
-      setCheckResult(await checkApiKey(model));
+      setCheckResult(await checkProviderKey(provider, model));
     } catch (error) {
       setCheckResult({
         ok: false,
@@ -108,22 +131,26 @@ export function SettingsScreen() {
 
   // One tap instead of making the learner copy a model name by hand.
   const useSuggestedModel = async (model: string) => {
-    await updateSettings({ aiModel: model });
+    await updateSettings(provider === 'groq' ? { groqModel: model } : { aiModel: model });
     await verifyKey(model);
   };
 
   const removeKey = () => {
-    Alert.alert('Xoá Gemini API key?', 'Bạn vẫn có thể học và ôn tập bình thường.', [
-      { text: 'Huỷ', style: 'cancel' },
-      {
-        text: 'Xoá',
-        style: 'destructive',
-        onPress: async () => {
-          await clearApiKey();
-          await refreshKeyStatus();
+    Alert.alert(
+      `Xoá ${providerInfo.label} API key?`,
+      'Bạn vẫn có thể học và ôn tập bình thường.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Xoá',
+          style: 'destructive',
+          onPress: async () => {
+            await clearProviderKey(provider);
+            await refreshKeyStatus();
+          },
         },
-      },
-    ]);
+      ],
+    );
   };
 
   const applyReminders = async (nextSettings = settings) => {
@@ -291,8 +318,41 @@ export function SettingsScreen() {
     <Screen>
       <ScreenHeader title="Cài đặt" subtitle="Dữ liệu, AI, nhắc nhở và widget" onBack={pop} />
 
-      <SectionHeader title="Gemini AI" />
+      <SectionHeader title="AI" />
       <Card>
+        <AppText variant="bodyStrong">Nhà cung cấp</AppText>
+        <View style={styles.providerRow}>
+          {AI_PROVIDERS.map((key) => {
+            const active = key === provider;
+            return (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => void switchProvider(key)}
+                style={[
+                  styles.providerButton,
+                  {
+                    borderColor: active ? colors.primary : colors.border,
+                    backgroundColor: active ? colors.primary : 'transparent',
+                  },
+                ]}
+              >
+                <AppText
+                  variant="caption"
+                  color={active ? colors.onPrimary : colors.textMuted}
+                  style={{ textAlign: 'center' }}
+                >
+                  {providerLabel(key)}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
+        <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.md }}>
+          {providerInfo.keyHint} Key nằm trong Keychain của máy và không đi qua máy chủ nào khác.
+        </AppText>
+
         <View style={styles.rowBetween}>
           <AppText variant="bodyStrong">API key</AppText>
           <AppText variant="caption" color={keyStatus === 'saved' ? colors.success : colors.warning}>
@@ -300,13 +360,13 @@ export function SettingsScreen() {
           </AppText>
         </View>
         <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
-          Key chỉ dùng để gọi Gemini từ iPhone. Ứng dụng không ghi key vào log, không gửi key tới
-          máy chủ nào khác. Học và ôn tập luôn hoạt động khi không có key.
+          Key chỉ dùng để gọi {providerInfo.label} từ iPhone. Ứng dụng không ghi key vào log, không
+          gửi key tới máy chủ nào khác. Học và ôn tập luôn hoạt động khi không có key.
         </AppText>
         <Input
           value={keyInput}
           onChangeText={setKeyInput}
-          placeholder="Dán Gemini API key (AIza…)"
+          placeholder={providerInfo.placeholder}
           secureTextEntry
           autoCapitalize="none"
           style={{ marginTop: spacing.md }}
@@ -332,19 +392,36 @@ export function SettingsScreen() {
           />
         </View>
 
+        <PrimaryButton
+          label={`Lấy key ${providerInfo.label}`}
+          variant="ghost"
+          style={{ marginTop: spacing.sm }}
+          onPress={() => {
+            Linking.openURL(providerInfo.keysUrl).catch(() => {
+              Alert.alert(
+                'Không mở được trình duyệt',
+                `Tự mở ${providerInfo.keysUrl} để lấy key.`,
+              );
+            });
+          }}
+        />
+
         <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.md }}>
           Model
         </AppText>
         <Input
-          value={settings.aiModel}
-          onChangeText={(value) => void updateSettings({ aiModel: value })}
-          placeholder={DEFAULT_AI_MODEL}
+          value={modelValue}
+          onChangeText={(value) =>
+            void updateSettings(provider === 'groq' ? { groqModel: value } : { aiModel: value })
+          }
+          placeholder={defaultModel}
+          autoCapitalize="none"
           style={{ marginTop: spacing.xs }}
         />
         <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
-          Google định kỳ ngừng các model cũ. Nếu model ở trên bị ngừng, app tự chuyển sang model
-          khả dụng; bấm "Kiểm tra key + model" để xem và lưu lại tên model mới. Hạn mức miễn phí
-          thay đổi theo thời gian và theo model.
+          {provider === 'groq'
+            ? 'Groq có thể ngừng một model; khi đó app tự chuyển sang model còn hoạt động. Hạn mức miễn phí tính theo phút và theo ngày, nên nếu bị lỗi 429 hãy chờ hoặc tạo ít từ hơn mỗi lần.'
+            : 'Google định kỳ ngừng các model cũ. Nếu model ở trên bị ngừng, app tự chuyển sang model khả dụng; bấm "Kiểm tra key + model" để xem và lưu lại tên model mới. Hạn mức miễn phí thay đổi theo thời gian và theo model.'}
         </AppText>
 
         <PrimaryButton
@@ -375,15 +452,15 @@ export function SettingsScreen() {
 
       <Card style={{ marginTop: spacing.md }}>
         <View style={styles.rowBetween}>
-          <AppText variant="bodyStrong">Lần gọi Gemini gần đây</AppText>
+          <AppText variant="bodyStrong">Lần gọi AI gần đây</AppText>
           <AppText variant="caption" color={colors.textMuted}>
             {diagnostics.length}/40
           </AppText>
         </View>
         <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
-          Dùng khi Gemini báo lỗi: mỗi dòng cho biết giai đoạn (request → response → parse →
-          validate), HTTP status, mã lỗi nội bộ, model và thời gian. Log chỉ nằm trong bộ nhớ của
-          phiên này, không chứa API key hay nội dung bạn học.
+          Dùng khi AI báo lỗi: mỗi dòng cho biết nhà cung cấp (gemini/groq), giai đoạn (request →
+          response → parse → validate), HTTP status, mã lỗi nội bộ, model và thời gian. Log chỉ nằm
+          trong bộ nhớ của phiên này, không chứa API key hay nội dung bạn học.
         </AppText>
         {diagnostics.length === 0 ? (
           <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
@@ -713,6 +790,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   buttonRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
+  providerRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  providerButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
   choice: {
     borderWidth: 1,
     borderRadius: radius.pill,

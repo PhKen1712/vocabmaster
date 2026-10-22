@@ -2,16 +2,23 @@
 
 ## 1. Dự án đang ở đâu
 
-- **Đã xanh (chạy thật ngày 2026-10-23):** `npm run typecheck` exit 0 (0 lỗi), `npm test -- --ci`
-  **153/153 test pass trong 14 suite**, `node scripts/validate-checkpoint.mjs` hợp lệ. Trước đó (2026-10-20):
+- **Đã xanh (chạy thật ngày 2026-10-23):** `npm run typecheck` exit 0 (0 lỗi),
+  `npx jest --ci --maxWorkers=2` **186/186 test pass trong 16 suite**,
+  `node scripts/validate-checkpoint.mjs` hợp lệ. (Chạy `npx jest --ci` không giới hạn worker bị hết
+  bộ nhớ trên Windows — dùng 2 worker.) Trước đó (2026-10-20):
   `expo-doctor` 20/20, `expo config --type prebuild` compose đúng 2 widget + App Group.
-- **Mới nhất (2026-10-23):** hai cách tạo bộ từ — Gemini chọn từ (cũ) và **nhập danh sách từ rồi
-  tra hai từ điển miễn phí** (`src/dict/*`, `src/db/dictCache.ts`, `src/screens/useWordListLookup.ts`,
-  `AiStudioScreen` hai chế độ), **schema v2** (`dict_source`, `missing_fields`, `dictionary_cache`).
+- **Mới nhất (2026-10-23):** **Groq là nhà cung cấp AI thứ hai** (`src/ai/groq.ts`, `src/ai/provider.ts`,
+  `src/ai/index.ts`; chọn trong Cài đặt → AI, key + model riêng cho từng bên) và **cấp độ CEFR tự
+  tra cho từng từ khi dán danh sách** (`src/ai/levels.ts`, `packLevel` trong `src/data/packs.ts`,
+  hiện trên từng thẻ và lưu vào từ). Trước đó cùng ngày: hai cách tạo bộ từ — AI chọn từ (cũ) và
+  **nhập danh sách từ rồi tra hai từ điển miễn phí** (`src/dict/*`, `src/db/dictCache.ts`,
+  `src/screens/useWordListLookup.ts`, `AiStudioScreen` hai chế độ), **schema v2** (`dict_source`,
+  `missing_fields`, `dictionary_cache`).
   Trước đó: lớp Gemini gia cố (`src/ai/*`), sửa kiểm tra đầu vào (`src/quiz/placement.ts`), kho từ
   bundle 134/5.000 từ (`src/data/packs.ts`, `SEED_VERSION = '2'`).
   Đọc `CHANGELOG.md` mục 2026-10-23, `docs/DICTIONARY.md` và `docs/WORD_BANK.md` trước khi sửa.
-- **Chưa chạy:** gọi Gemini thật bằng key người dùng sau thay đổi 2026-10-22; `expo prebuild` cho iOS
+- **Chưa chạy:** gọi **Groq** thật (không có key trong môi trường này — mới test bằng `fetch` giả);
+  gọi Gemini thật bằng key người dùng sau thay đổi 2026-10-22; `expo prebuild` cho iOS
   (Expo chặn trên Windows); EAS build; kiểm chứng widget/speech/notification trên máy thật.
 - **Toàn bộ code trên đĩa** tại `C:\Users\Lenovo\Desktop\VocabMaster`.
   Workspace của công cụ AI là `C:\Users\Lenovo\Desktop\App TANH` — **khác** thư mục dự án.
@@ -45,13 +52,17 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 
 ## 4. Việc ưu tiên tiếp theo
 
+0. **Thử Groq thật:** Cài đặt → AI → **Groq** → dán key `gsk_…` → **Kiểm tra key + model** →
+   tạo 5–8 từ và so nghĩa tiếng Việt/IPA với Gemini trên cùng bộ từ. Ghi kết quả vào CHANGELOG;
+   nếu chất lượng kém hơn, đổi lại **Gemini** bằng một lần bấm (key vẫn còn nguyên).
 1. **Build bản 2026-10-23** (workflow macOS), tải `.ipa` và cài đè (`docs/FREE_SIDELOAD.md`).
    Huỷ các run cũ để tiết kiệm ~300 phút macOS/run.
    Sau khi cài, kiểm **cả hai** chế độ:
-   - **Tạo bộ từ → Gemini chọn từ** (Cài đặt → "Kiểm tra key + model" trước).
-   - **Tạo bộ từ → Nhập danh sách từ**: dán `criminal, civil, justice, evidence`, xem tiến trình,
-     nghĩa Việt, IPA, dòng "Thiếu: …"; thử tắt Wi-Fi cho một từ chưa tra để thấy lỗi mạng,
-     rồi bật lại bấm "Thử lại từ lỗi".
+   - **Tạo bộ từ → AI chọn từ** (Cài đặt → "Kiểm tra key + model" trước).
+   - **Tạo bộ từ → Nhập danh sách từ**: dán `criminal, civil, justice, evidence` **và một từ lạ
+     ngoài kho (ví dụ `quixotic`)**, xem tiến trình, nghĩa Việt, IPA, **cấp độ riêng của từng thẻ**
+     ("có sẵn" / "AI ước lượng" / "chưa rõ cấp độ"), dòng "Thiếu: …"; thử tắt Wi-Fi cho một từ chưa
+     tra để thấy lỗi mạng, rồi bật lại bấm "Thử lại từ lỗi" (các từ đã tra phải còn nguyên).
    Ghi kết quả thật vào `CHECKPOINT.json → test_results.device_tests`.
 2. **Quyết định Apple Developer Program.** Không có nó thì widget chỉ render placeholder
    vì không có App Group để chia sẻ dữ liệu.
@@ -99,7 +110,9 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 | Schema/migration | `src/db/schema.ts` |
 | Lưu lượt ôn | `src/db/reviews.ts` |
 | Nhập/xuất dữ liệu | `src/db/backup.ts` (dùng `expo-file-system/legacy`) |
-| Gemini | `src/ai/*` |
+| AI (Gemini/Groq) | `src/ai/gemini.ts`, `src/ai/groq.ts`, `src/ai/index.ts` |
+| Cấp độ tự tra | `src/ai/levels.ts`, `packLevel` trong `src/data/packs.ts` |
+| Chọn nhà cung cấp / key | `src/ai/provider.ts`, `src/screens/SettingsScreen.tsx` |
 | Widget | `widgets/*.tsx`, `src/widgets/*` |
 | Giao diện | `src/screens/*`, `src/components/*`, `src/theme/*` |
 | Điều hướng | `src/navigation/NavigationProvider.tsx`, `App.tsx` |

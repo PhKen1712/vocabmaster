@@ -12,6 +12,15 @@ export type Level = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type WordSource = 'manual' | 'ai' | 'seed' | 'import' | 'dictionary';
 
 /**
+ * Which hosted model provider the app calls. The key, the model name and the
+ * quota all belong to the provider, so they are stored per provider instead of
+ * being overwritten when the learner switches.
+ */
+export type AiProvider = 'gemini' | 'groq';
+
+export const AI_PROVIDERS: readonly AiProvider[] = ['gemini', 'groq'];
+
+/**
  * Optional word fields a dictionary may not provide. Stored with the word so
  * the UI can say "thiếu IPA" instead of pretending the data is complete.
  */
@@ -202,7 +211,11 @@ export interface Settings {
   onboardingDone: boolean;
   /** Track whose daily word is shown in the widgets. */
   widgetTrack: Track;
+  aiProvider: AiProvider;
+  /** Gemini model name, used when `aiProvider` is `gemini`. */
   aiModel: string;
+  /** Groq model id, used when `aiProvider` is `groq`. */
+  groqModel: string;
 }
 
 /**
@@ -221,6 +234,16 @@ export const DEFAULT_AI_MODEL = 'gemini-3.8-flash';
  */
 export const RETIRED_AI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'];
 
+/**
+ * Model Groq mặc định.
+ *
+ * `openai/gpt-oss-120b` nằm trong bảng Production models của Groq và hỗ trợ
+ * JSON mode; `llama-3.3-70b-versatile` đã chuyển sang Enterprise (liên hệ bán
+ * hàng) nên không dùng được với key miễn phí. Nếu Groq ngừng model này, app tự
+ * chuyển sang model còn hoạt động trong danh sách `GET /openai/v1/models`.
+ */
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
+
 export const DEFAULT_SETTINGS: Settings = {
   track: 'general',
   level: 2,
@@ -234,7 +257,9 @@ export const DEFAULT_SETTINGS: Settings = {
   reminderWeekdays: [2, 3, 4, 5, 6, 7, 1],
   onboardingDone: false,
   widgetTrack: 'general',
+  aiProvider: 'gemini',
   aiModel: DEFAULT_AI_MODEL,
+  groqModel: DEFAULT_GROQ_MODEL,
 };
 
 export interface DailyStats {

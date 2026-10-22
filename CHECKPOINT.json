@@ -4,9 +4,9 @@
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
   "last_updated": "2026-10-23",
-  "current_phase": "Phases 1-6 code written. 2026-10-23 added a second way to build a word set: paste a list and look it up through dict.minhqnd.com (Vietnamese meanings, IPA, audio) + api.dictionaryapi.dev (English definitions, examples), with schema v2 (dict_source, missing_fields, dictionary_cache), 3-request concurrency, 8 s deadline, single-layer retry, 30-day cache and honest missing-field labels. Typecheck 0 errors, 153/153 unit tests, live lookup of 6 words in 906 ms, migration 1→2 replayed on real SQLite.",
+  "current_phase": "Phases 1-6 code written. 2026-10-23 added a second way to build a word set: paste a list and look it up through dict.minhqnd.com (Vietnamese meanings, IPA, audio) + api.dictionaryapi.dev (English definitions, examples), with schema v2 (dict_source, missing_fields, dictionary_cache), 3-request concurrency, 8 s deadline, single-layer retry, 30-day cache and honest missing-field labels. Typecheck 0 errors, 153/153 unit tests, live lookup of 6 words in 906 ms, migration 1→2 replayed on real SQLite. + **Groq là nhà cung cấp AI thứ hai, chọn được trong Cài đặt (2026-10-23)** + **cấp độ CEFR tự tra cho từng từ trong danh sách dán (2026-10-23)**",
   "current_branch": "main",
-  "current_commit": "main · Dictionary API + pasted word lists (2026-10-23); remote phamkenn/vocabmaster (private)",
+  "current_commit": "main · Groq provider + auto CEFR levels (2026-10-23, xem git log); remote phamkenn/vocabmaster (private)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -160,6 +160,16 @@
       "name": "Dictionary lookup for pasted word lists (second creation mode)",
       "status": "tested",
       "evidence": "src/dict/{types,list,sources,lookup}.ts, src/db/dictCache.ts, src/screens/useWordListLookup.ts, two-mode AiStudioScreen, schema v2. Tests: src/dict/__tests__/list.test.ts, src/dict/__tests__/lookup.test.ts (real captured payloads, 404/530/429/timeout/cache/concurrency/AI-fill), src/db/__tests__/dictCache.test.ts. Live run: 4 words resolved, unknown word notFound, phrase rejected, 906 ms. Endpoints and licences in docs/DICTIONARY.md."
+    },
+    {
+      "name": "Groq as a second AI provider, selectable in Settings",
+      "status": "tested",
+      "evidence": "src/ai/groq.ts (OpenAI-compatible chat completions, JSON mode, hidden reasoning for gpt-oss, retry-after, per-day vs per-minute 429, model listing and one-time replacement), src/ai/provider.ts (separate Keychain slot per provider), src/ai/index.ts dispatch, settings aiProvider/groqModel with migration, Settings UI (switch, key, model, check), diagnostics carry the provider. Tests: src/ai/__tests__/groq.test.ts (9 cases). Not exercised against the live Groq API: no key in this environment."
+    },
+    {
+      "name": "Per-word CEFR level detection for pasted word lists",
+      "status": "tested",
+      "evidence": "src/data/packs.ts packLevel (bundled packs, free and instant), src/ai/levels.ts (one batch request for the whole list, either provider), DictEntry.level/levelSource, useWordListLookup starts level estimation in parallel with the dictionary, AiStudioScreen shows band + source per card and saves the detected level. The settings level is only the fallback for words nobody could rate, and the screen says so. Tests: levels.test.ts (5), packLevel (3), entryToWordInput level (1)."
     }
   ],
   "in_progress_features": [
@@ -435,18 +445,18 @@
   "test_results": {
     "last_run": "2026-10-23",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npm run typecheck exit 0; npm test -- --ci: 14/14 suites, 153/153 tests. Dictionary lookups are tested with real captured payloads through a fake HTTP client; the endpoints themselves were checked live with curl in this session, but no test calls the network.",
+    "reason": "npm run typecheck exit 0; npx jest --ci --maxWorkers=2: 16/16 suites, 186/186 tests. No test calls Gemini or Groq; both are mocked fetch fakes. A plain `npx jest --ci` runs out of worker memory on this Windows machine, so 2 workers are used.",
     "typecheck": {
       "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
       "exit_code": 0,
       "errors": 0
     },
     "unit_tests": {
-      "command": "npm test -- --ci",
+      "command": "npx jest --ci --maxWorkers=2",
       "exit_code": 0,
-      "suites_passed": 14,
+      "suites_passed": 16,
       "suites_failed": 0,
-      "tests_passed": 153,
+      "tests_passed": 186,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -742,9 +752,27 @@
     {
       "path": "docs/DICTIONARY.md",
       "role": "Live-verified endpoints, JSON shapes, licences, limits and test matrix"
+    },
+    {
+      "path": "src/ai/groq.ts",
+      "role": "Groq chat-completions client: JSON mode, retry-after, daily-cap detection, model list, key check, diagnostics"
+    },
+    {
+      "path": "src/ai/provider.ts",
+      "role": "Gemini/Groq keys in separate Keychain slots plus provider labels and key URLs"
+    },
+    {
+      "path": "src/ai/levels.ts",
+      "role": "Single-request CEFR level estimation for a pasted list, provider-agnostic"
+    },
+    {
+      "path": "src/ai/index.ts",
+      "role": "Provider dispatch used by screens: generateVocabulary, checkProviderKey"
     }
   ],
   "next_steps": [
+    "Paste the Groq key in Cài đặt → AI → Groq, run one generation, then compare Vietnamese meaning and IPA quality against Gemini on the same words.",
+    "On the iPhone: Nhập danh sách từ with ~10 mixed-level words and check that each card shows its own band, including a word the bundled packs do not contain.",
     "Run node scripts/verify.mjs, then push; the main-branch workflow builds one unsigned IPA containing these changes.",
     "On the iPhone: Tạo bộ từ → Nhập danh sách từ with \"criminal, civil, justice, evidence\"; check Vietnamese meanings, IPA, the \"Thiếu:\" line and the retry button after airplane mode.",
     "Expand the bundled packs in 200-300 word batches (general A1/A2 first) as planned in docs/WORD_BANK.md.",

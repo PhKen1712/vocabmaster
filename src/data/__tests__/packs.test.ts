@@ -1,5 +1,11 @@
 import { SEED_WORDS } from '../seed';
-import { TARGET_DISTRIBUTION, WORD_PACKS, packRowsToSeedWords, type PackRow } from '../packs';
+import {
+  TARGET_DISTRIBUTION,
+  WORD_PACKS,
+  packLevel,
+  packRowsToSeedWords,
+  type PackRow,
+} from '../packs';
 import type { Level } from '../../types';
 
 const POS = new Set(['noun', 'verb', 'adjective', 'adverb', 'phrase', 'idiom']);
@@ -15,6 +21,25 @@ function mentionsTerm(example: string, term: string): boolean {
   const stem = needle.replace(/(e|y)$/, '');
   return stem.length >= 4 && haystack.includes(stem);
 }
+
+describe('packLevel', () => {
+  it('finds the band of a curated word, ignoring case and spaces', () => {
+    expect(packLevel('water')).toBe(0);
+    expect(packLevel('  Water ')).toBe(0);
+    expect(packLevel('ambiguous')).toBe(5);
+  });
+
+  it('prefers the level of the requested track', () => {
+    // `sustain` is a C1 IELTS item; the general pack does not list it.
+    expect(packLevel('sustain', 'ielts')).toBe(5);
+    expect(packLevel('sustain', 'general')).toBe(5);
+  });
+
+  it('returns null for a word the packs do not know', () => {
+    expect(packLevel('zzqqxxvvyy')).toBeNull();
+    expect(packLevel('   ')).toBeNull();
+  });
+});
 
 describe('word pack targets', () => {
   it('sizes each track at 2500 words', () => {

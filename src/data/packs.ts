@@ -1,3 +1,4 @@
+import { normalizeTerm } from '../lib/text';
 import type { Level, Track } from '../types';
 import type { SeedWord } from './seed';
 
@@ -225,6 +226,40 @@ export const WORD_PACKS: WordPack[] = [
     rows: IELTS_ROWS,
   },
 ];
+
+const LEVELS_BY_TRACK: Record<Track, Map<string, Level>> = {
+  general: new Map(),
+  ielts: new Map(),
+};
+const LEVELS_ANY_TRACK = new Map<string, Level>();
+
+for (const pack of WORD_PACKS) {
+  for (const [term, , , level] of pack.rows) {
+    const key = normalizeTerm(term);
+    LEVELS_BY_TRACK[pack.track].set(key, level);
+    // A word in both packs keeps the easier band: that is where a learner
+    // first meets it, and the import must not overstate the difficulty.
+    const existing = LEVELS_ANY_TRACK.get(key);
+    if (existing === undefined || level < existing) LEVELS_ANY_TRACK.set(key, level);
+  }
+}
+
+/**
+ * CEFR band of a single word, from the bundled packs only.
+ *
+ * Free, instant and deterministic, which is why it runs before any AI call:
+ * a word we already curated never costs a request just to learn its level.
+ * Returns null when the packs do not contain the word.
+ */
+export function packLevel(term: string, track?: Track): Level | null {
+  const key = normalizeTerm(term);
+  if (!key) return null;
+  if (track) {
+    const inTrack = LEVELS_BY_TRACK[track].get(key);
+    if (inTrack !== undefined) return inTrack;
+  }
+  return LEVELS_ANY_TRACK.get(key) ?? null;
+}
 
 /** Flatten rows into the same shape the database seeder already knows. */
 export function packRowsToSeedWords(packs: readonly WordPack[] = WORD_PACKS): SeedWord[] {

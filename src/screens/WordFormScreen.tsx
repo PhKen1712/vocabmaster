@@ -4,8 +4,10 @@ import { ActivityIndicator, Alert, StyleSheet, Switch, View } from 'react-native
 import { AppText, Banner, Card, PrimaryButton, Screen } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, TrackSwitcher } from '../components/patterns';
 import { DuplicateWordError, createWord, getWord, updateWord } from '../db/words';
-import { generateVocabulary } from '../ai/gemini';
-import { AiError, AI_ERROR_MESSAGES } from '../ai/types';
+import { generateVocabulary } from '../ai';
+import { describeAiError } from '../ai/errors';
+import { providerLabel } from '../ai/provider';
+import { AiError } from '../ai/types';
 import { formatList, splitList } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
@@ -38,6 +40,8 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
   const { db, settings, notifyDataChanged } = useApp();
   const { pop, push } = useNavigation();
   const { colors } = useTheme();
+  const providerName = providerLabel(settings.aiProvider);
+  const providerModel = settings.aiProvider === 'groq' ? settings.groqModel : settings.aiModel;
 
   const [form, setForm] = useState<FormState>({
     term: draft?.term ?? '',
@@ -119,7 +123,7 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
           avoidTerms: [],
           weakTerms: [],
         },
-        settings.aiModel,
+        { provider: settings.aiProvider, model: providerModel },
       );
       const suggestion =
         result.suggestions.find(
@@ -128,7 +132,7 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
       if (!suggestion) {
         setError(
           result.rejected[0] ??
-            'Gemini không trả về nội dung dùng được. Bạn vẫn có thể tự điền các trường.',
+            `${providerName} không trả về nội dung dùng được. Bạn vẫn có thể tự điền các trường.`,
         );
         return;
       }
@@ -152,13 +156,13 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
     } catch (caught) {
       setError(
         caught instanceof AiError
-          ? // These two explain exactly what to fix; the generic map would hide it.
+          ? // These two explain exactly what to fix; the generic view would hide it.
             caught.code === 'unknown' || caught.code === 'model_unavailable'
             ? caught.message
-            : AI_ERROR_MESSAGES[caught.code]
+            : describeAiError(caught, providerName).body
           : caught instanceof Error
             ? caught.message
-            : 'Không gọi được Gemini.',
+            : `Không gọi được ${providerName}.`,
       );
     } finally {
       setAiLoading(false);
@@ -246,7 +250,7 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
       {aiFilled ? (
         <Banner
           tone="warning"
-          title="Nội dung do Gemini gợi ý"
+          title={`Nội dung do ${providerName} gợi ý`}
           body="Hãy kiểm tra phiên âm, nghĩa và ví dụ trước khi lưu. Bạn có thể sửa mọi trường."
         />
       ) : null}
@@ -264,7 +268,7 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
         />
         {!id ? (
           <PrimaryButton
-            label={aiLoading ? 'Đang hỏi Gemini…' : '✨ Gợi ý phiên âm, nghĩa, ví dụ'}
+            label={aiLoading ? `Đang hỏi ${providerName}…` : '✨ Gợi ý phiên âm, nghĩa, ví dụ'}
             variant="ghost"
             onPress={() => void suggestWithAi()}
             loading={aiLoading}

@@ -46,13 +46,29 @@ npm start
 - Cần **development build** đã cài trên iPhone (không dùng Expo Go cho widget/nhận diện giọng nói).
 - Metro chạy trên Windows; điện thoại cùng mạng Wi-Fi.
 
-## Cấu hình Gemini
+## Cấu hình AI (Gemini hoặc Groq)
 
-1. Lấy API key tại https://aistudio.google.com/apikey
-2. Trong app: **Cài đặt → Gemini AI → dán key → Lưu key**.
+Chọn nhà cung cấp trong **Cài đặt → AI** bằng hai nút **Gemini** / **Groq**. Mỗi bên có key và
+model riêng, lưu ở hai ô Keychain khác nhau, nên đổi qua lại **không mất key** và không phải dán lại.
+
+| | Gemini (mặc định) | Groq |
+|---|---|---|
+| Lấy key | https://aistudio.google.com/apikey | https://console.groq.com/keys |
+| Dạng key | `AIza…` | `gsk_…` |
+| Model mặc định | `gemini-3.8-flash` | `openai/gpt-oss-120b` |
+| Điểm mạnh | Tiếng Việt và IPA tốt hơn | Trả lời rất nhanh, ít bị 503 hơn |
+| Hạn mức miễn phí | Theo model, theo ngày | ~1.000 request + 8.000 token/phút + 200.000 token/ngày |
+
+Groq dùng model nhỏ hơn Gemini nên nghĩa tiếng Việt và phiên âm có thể kém chính xác hơn — hãy
+đọc lại thẻ từ trước khi lưu, và đổi lại Gemini bằng một lần bấm nếu thấy không ổn.
+
+1. Bấm **Lấy key** trong mục AI để mở đúng trang tạo key.
+2. Dán key vào ô API key của nhà cung cấp đó rồi bấm **Lưu key**. Key sai định dạng (ví dụ dán key
+   Gemini vào ô Groq) bị từ chối ngay trên máy, không gửi đi đâu.
 3. Key được lưu trong Keychain của iPhone, không nằm trong mã nguồn/Git/backup.
-4. Model mặc định là `gemini-3.8-flash`. Nếu Google ngừng model đó, app tự chuyển sang model
-   còn khả dụng và báo trong AI Studio; bấm **Kiểm tra key + model** trong Cài đặt để lưu lại.
+4. Nếu nhà cung cấp ngừng model đang cấu hình, app tự chuyển sang model còn khả dụng (Gemini:
+   danh sách `/v1beta/models`; Groq: `GET /openai/v1/models`) và báo trong AI Studio; bấm
+   **Kiểm tra key + model** trong Cài đặt để xem gợi ý và lưu lại tên model mới bằng một lần bấm.
 5. Khi Gemini lỗi, app phân loại nguyên nhân (key sai, hết hạn mức, mạng, timeout, model bị ngừng,
    JSON bị cắt, dữ liệu không hợp lệ) thay vì báo chung "lỗi tạm thời". Lỗi tạm thời (5xx, mất mạng,
    timeout, rate limit) được tự thử lại tối đa 3 lần với exponential backoff + jitter; key sai và hạn
@@ -60,12 +76,13 @@ npm start
    + HTTP status. Trong lúc chờ có đồng hồ giây và nút **Huỷ**; mỗi lần gọi có deadline 20 giây nên
    màn hình không thể treo vô hạn (rời màn hình cũng tự huỷ request). Lỗi timeout **không** được tự
    thử lại vì làm vậy chỉ khiến bạn chờ thêm rồi vẫn nhận đúng một thông báo.
-6. **Cài đặt → Gemini AI → "Lần gọi Gemini gần đây"** ghi lại các lần gọi trong bộ nhớ của phiên
-   hiện tại: giai đoạn (request → response → parse → validate), HTTP status, mã lỗi, model, thời gian.
+6. **Cài đặt → AI → "Lần gọi AI gần đây"** ghi lại các lần gọi trong bộ nhớ của phiên hiện tại:
+   nhà cung cấp (gemini/groq), giai đoạn (request → response → parse → validate), HTTP status, mã
+   lỗi, model, thời gian.
    Không có API key, không có nội dung bạn học, không gửi đi đâu.
 7. Không có key: mọi chức năng học, ôn, tìm kiếm, nhập CSV, widget vẫn hoạt động.
 
-**Cảnh báo bảo mật:** app gọi Gemini trực tiếp từ iPhone. Key lưu trên máy có thể bị lộ nếu
+**Cảnh báo bảo mật:** app gọi nhà cung cấp AI trực tiếp từ iPhone. Key lưu trên máy có thể bị lộ nếu
 máy jailbreak hoặc bị mở khoá. Với app cá nhân, đây là đánh đổi để tránh chi phí backend.
 Không dán key vào chat, ảnh chụp màn hình, commit, hay file checkpoint.
 
@@ -83,8 +100,8 @@ từ đã có **không bị sửa**, nghĩa bạn đã chỉnh **không bị ghi
 
 Màn hình **Tạo bộ từ** có hai chế độ, cùng nằm trên tab Từ vựng:
 
-1. **Gemini chọn từ** — chọn track/level/chủ đề/số từ, Gemini đề xuất, bạn sửa và chọn từng từ.
-   Vẫn là cách cũ, không thay đổi.
+1. **AI chọn từ** — chọn track/level/chủ đề/số từ, Gemini hoặc Groq (theo Cài đặt) đề xuất, bạn
+   sửa và chọn từng từ.
 2. **Nhập danh sách từ** — dán `criminal, civil, justice, evidence` (cách nhau bằng phẩy, chấm phẩy
    hoặc xuống dòng). App chuẩn hoá danh sách rồi **tra từ điển**, không gọi Gemini trừ khi từ điển
    không có nghĩa tiếng Việt. Không cần API key cho chế độ này.
@@ -102,7 +119,12 @@ Chế độ 2 dùng hai nguồn miễn phí, không cần key:
 - Kết quả được **cache trên máy 30 ngày**: tra lại cùng từ không tốn request và vẫn dùng được offline.
 - Trường thiếu được **đánh dấu**, không bịa: thẻ từ ghi "Thiếu: phiên âm IPA, từ đồng nghĩa…",
   lưu vào `missing_fields` và hiện lại ở màn hình chi tiết.
-- Từ không có nghĩa tiếng Việt: Gemini bổ sung tối đa 5 từ và được ghi rõ **"AI bổ sung"**.
+- Từ không có nghĩa tiếng Việt: AI bổ sung tối đa 5 từ và được ghi rõ **"AI bổ sung"**.
+- **Cấp độ được tra tự động cho từng từ**, không lấy theo mức bạn chọn: từ có trong kho từ kèm app
+  lấy ngay cấp độ đã kiểm tra; các từ còn lại được AI xếp CEFR trong **một** request cho cả danh
+  sách (không phải một request mỗi từ). Thẻ từ ghi rõ `A2` / `B1`… kèm nguồn ("cấp độ có sẵn"
+  hoặc "AI ước lượng"); từ chưa xác định được ghi "chưa rõ cấp độ" và chỉ khi đó mới dùng cấp độ
+  trong Cài đặt — thông báo trên màn hình nói rõ điều này.
 - Chỉ tra được **từ đơn**; cụm như `civil law` bị cả hai từ điển từ chối và app nói rõ lý do.
 - Retry chỉ áp dụng cho mạng/timeout/429/5xx (tối đa 2 lần, deadline 8 giây). Từ sai chính tả
   không bị thử lại.
@@ -161,7 +183,7 @@ VocabMaster/
 ├── eas.json                # profile build
 ├── widgets/                # widget SwiftUI (DailyWord, ReviewGlance)
 ├── src/
-│   ├── ai/                 # Gemini client, prompt, validate
+│   ├── ai/                 # AI client (Gemini + Groq), prompt, validate, levels
 │   ├── components/         # UI primitives + patterns
 │   ├── data/seed.ts        # 40 từ khởi tạo (General + IELTS)
 │   ├── db/                 # schema, migration, repository, backup
@@ -200,18 +222,19 @@ VocabMaster/
 | Widget không đổi số liệu | Mở app lại; iOS trễ refresh; kiểm tra App Group trong Signing |
 | Không phát âm thanh | Tắt chế độ im lặng; tăng âm lượng; cài voice trong Cài đặt iOS |
 | Micro không nhận | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói |
-| Gemini 429 | Chờ vài phút; giảm số từ; kiểm tra hạn mức model. Nếu là hạn mức theo ngày, app báo riêng và không tự thử lại |
-| Gemini 403 | Key sai hoặc chưa bật Gemini API |
-| Gemini 503 / "đang bận" | App đã tự thử lại 3 lần; chờ khoảng 1 phút rồi bấm **Thử lại** |
-| "Gemini phản hồi quá lâu" | Giảm số từ cần tạo (5–8 từ) rồi thử lại |
+| 429 (Gemini hoặc Groq) | Chờ vài phút; giảm số từ; kiểm tra hạn mức model. Nếu là hạn mức theo ngày, app báo riêng và không tự thử lại |
+| 403 / 401 | Key sai, hoặc key Groq dán vào ô Gemini (hoặc ngược lại) |
+| 503 / "đang bận" | App đã tự thử lại 3 lần (Gemini còn tự đổi model khi model quá tải); chờ khoảng 1 phút rồi bấm **Thử lại** |
+| "... phản hồi quá lâu" | Giảm số từ cần tạo (5–8 từ) rồi thử lại |
 | "Không đọc được JSON" / "dữ liệu không dùng được" | Câu trả lời bị cắt hoặc bị chặn; bấm **Thử lại** với ít từ hơn |
-| Không biết lỗi ở đâu | Cài đặt → Gemini AI → **Lần gọi Gemini gần đây** (mã lỗi + HTTP status từng bước) |
+| Groq 429 liên tục | Hạn mức Groq tính theo phút (8.000 token): chờ ~1 phút hoặc tạo ít từ hơn mỗi lần |
+| Không biết lỗi ở đâu | Cài đặt → AI → **Lần gọi AI gần đây** (nhà cung cấp + mã lỗi + HTTP status từng bước) |
 | Không mở được DB sau cập nhật | Đóng hẳn app, mở lại; migration rollback giữ dữ liệu cũ |
 
 ## Kiểm thử
 
 ```bash
-npm test              # 11 bộ unit test, 125 test
+npm test              # 16 bộ unit test, 186 test
 npm run typecheck     # TypeScript strict
 node scripts/validate-checkpoint.mjs
 ```

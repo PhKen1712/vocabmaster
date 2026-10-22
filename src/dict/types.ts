@@ -4,7 +4,7 @@
  * below can be unit-tested with a fake HTTP client.
  */
 
-import type { WordField } from '../types';
+import type { Level, WordField } from '../types';
 
 /** Where a field really came from. Shown to the learner, never hidden. */
 export type DictSourceName = 'minhqnd' | 'wiktionary' | 'gemini';
@@ -83,6 +83,13 @@ export interface DictEntry {
   exampleEn: string | null;
   synonyms: string[];
   antonyms: string[];
+  /**
+   * CEFR band the app worked out for this word, and where it came from.
+   * `pack` = bundled word list (free, instant), `ai` = one batch estimate.
+   * Null means nobody could tell: the UI must say so instead of pretending.
+   */
+  level: Level | null;
+  levelSource: 'pack' | 'ai' | null;
   /** Dictionaries that answered this word. */
   sources: DictSourceName[];
   /** Fields filled by Gemini because the dictionaries had nothing for them. */

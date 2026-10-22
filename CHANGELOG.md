@@ -4,6 +4,69 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-23 — Phiên 10: Groq là nhà cung cấp AI thứ hai + cấp độ tự tra cho danh sách từ
+
+### Bối cảnh
+
+- Log trên máy (01:16–01:17) cho thấy `gemini-3.8-flash` trả 503 "high demand" liên tiếp; người dùng
+  muốn **thử Groq** vì cho rằng nó ổn định/nhanh hơn. Quyết định: **thêm** Groq, không thay Gemini —
+  hai bên có key và model riêng, đổi qua lại bằng một lần bấm, nên vẫn so sánh được chất lượng.
+- Ở chế độ **Nhập danh sách từ**, cả danh sách đang bị gán **một** cấp độ người dùng bấm, dù
+  `water` và `unprecedented` không cùng band. Yêu cầu: app tự tra cấp độ cho từng từ.
+
+### Đã thay đổi
+
+- `src/ai/groq.ts` (mới) — client `POST https://api.groq.com/openai/v1/chat/completions`:
+  `Bearer` key, `response_format: {type:"json_object"}`, `max_completion_tokens` theo số từ,
+  `reasoning_format: "hidden"` + `reasoning_effort: "low"` cho gpt-oss (qwen3 dùng `none`), bỏ hai
+  field này với model không phải reasoning. Retry 3 lần/backoff, tôn trọng `retry-after`;
+  phân biệt 429 **theo phút** (retry được) với 429 **theo ngày** (`quota_exceeded`, không retry);
+  404 model bị ngừng → hỏi `GET /openai/v1/models` và đổi **một lần** sang model còn hoạt động.
+  `checkGroqKey` kiểm tra key + model mà không tốn token sinh nội dung.
+- `src/ai/provider.ts` (mới) — mỗi nhà cung cấp một ô Keychain riêng (`gemini_api_key`,
+  `groq_api_key`); key Groq phải bắt đầu `gsk_` nên dán nhầm key Gemini bị chặn ngay trên máy.
+- `src/ai/index.ts` (mới) — `generateVocabulary`/`checkProviderKey` chọn provider từ Cài đặt;
+  màn hình không tự quyết định gọi API nào.
+- `src/ai/levels.ts` (mới) — **một** request cho cả danh sách, trả `{levels:[{term,level}]}`;
+  chỉ nhận level nguyên 0–6 và đúng term đã hỏi; lỗi/không có key → trả message, **không ném**.
+- `src/data/packs.ts` — `packLevel(term, track)`: cấp độ từ kho 134 từ có sẵn, miễn phí và tức thì.
+- `src/dict/types.ts`, `src/dict/lookup.ts` — `DictEntry.level` + `levelSource` (`pack`/`ai`),
+  `entryToWordInput` dùng cấp độ đã tra trước, chỉ fallback mới dùng cấp độ trong Cài đặt.
+- `src/screens/useWordListLookup.ts` — khởi động request cấp độ **song song** với tra từ điển
+  (chờ max của hai, không phải tổng); sửa luôn lỗi cũ: "Thử lại từ lỗi" làm mất các từ đã tra xong.
+- `src/screens/AiStudioScreen.tsx` — chế độ Gemini đổi tên thành **AI chọn từ**, copy theo provider;
+  ở chế độ danh sách **ẩn LevelPicker** và ghi rõ cấp độ do app tự xác định; mỗi thẻ hiện
+  `A2/B1… · có sẵn | AI ước lượng | chưa rõ cấp độ`; lưu kèm cấp độ đó.
+- `src/screens/SettingsScreen.tsx` — mục **AI** có nút chọn Gemini/Groq, key + model riêng cho từng
+  bên, nút **Lấy key** mở đúng trang, "Kiểm tra key + model" theo provider.
+- `src/types.ts`, `src/db/settings.ts` — `aiProvider` + `groqModel` (mặc định `openai/gpt-oss-120b`),
+  sanitize + migration cho settings cũ; `DEFAULT_SETTINGS.aiProvider = 'gemini'`.
+- `src/ai/diagnostics.ts` — mỗi dòng log ghi thêm provider (gemini/groq).
+- `src/ai/errors.ts` — che `gsk_…` và header `Authorization: Bearer`; `describeAiError(error, label)`
+  để câu báo lỗi dùng đúng tên nhà cung cấp.
+- `src/ai/validate.ts` (mới) — `assertRequest` dùng chung cho cả hai provider.
+- README, CHECKPOINT.md, CHECKPOINT.json, NEXT_SESSION.md — cập nhật trạng thái và số liệu thật.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi**.
+- `npx jest --ci --maxWorkers=2` → **16/16 suite, 186/186 test pass** (thêm 31 test: Groq 14,
+  levels 6, packLevel 3, settings 5, errors 2, entryToWordInput 1). `npx jest --ci` mặc định vẫn
+  hết bộ nhớ worker trên Windows.
+- `node scripts/verify.mjs` → **ALL PASS**.
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- **Chưa gọi Groq thật**: môi trường này không có key. Request shape, retry, quota, model replacement
+  chỉ được chứng minh bằng `fetch` giả.
+- Chưa chạy app trên iPhone: chưa thấy UI chọn provider, chưa thấy cấp độ hiện trên thẻ từ thật.
+- Số liệu Groq dưới đây lấy từ docs ngày 2026-10-23, có thể đổi: `openai/gpt-oss-120b`,
+  `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` là model production/preview còn dùng; `llama-3.3-70b-versatile`
+  đã chuyển sang Enterprise (không dùng được với key miễn phí). Base limits ~30 RPM, 1K RPD,
+  8K TPM (gồm cả input), 200K TPD.
+
+---
+
 ## 2026-10-23 — Phiên 9: đổi model khi Gemini quá tải (503)
 
 ### Bối cảnh

@@ -1,8 +1,12 @@
-import * as SecureStore from 'expo-secure-store';
-
 import { DEFAULT_AI_MODEL } from '../types';
 import { recordDiagnostic } from './diagnostics';
 import { errorFromHttp, parseRetryAfter, redactSecrets } from './errors';
+import {
+  clearProviderKey,
+  hasProviderKey,
+  loadProviderKey,
+  saveProviderKey,
+} from './provider';
 import { buildPrompt, SYSTEM_INSTRUCTION } from './prompt';
 import { extractJson, looksTruncated, parseSuggestions, RESPONSE_SCHEMA } from './schema';
 import {
@@ -17,7 +21,13 @@ import {
   RETRYABLE_CODES,
   type AiRequest,
   type AiResult,
+  type AttemptInfo,
+  type GenerateOptions,
+  type KeyCheck,
 } from './types';
+import { assertRequest } from './validate';
+
+export type { AttemptInfo, GenerateOptions, KeyCheck };
 
 /**
  * Gemini is called directly from the phone. Trade-offs, documented on purpose:
@@ -31,7 +41,6 @@ import {
  * - All study features work without a key; only AI word generation needs it.
  */
 
-const API_KEY_NAME = 'gemini_api_key';
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta/models';
 export const REQUEST_TIMEOUT_MS = 20_000;
 const LIST_TIMEOUT_MS = 15_000;
@@ -55,36 +64,11 @@ export function defaultModel(): string {
   return fromEnv && fromEnv.trim() ? fromEnv.trim() : DEFAULT_MODEL;
 }
 
-export async function saveApiKey(value: string): Promise<void> {
-  const key = value.trim();
-  if (key.length < 20) {
-    throw new Error('API key quá ngắn. Hãy dán đúng key lấy từ Google AI Studio.');
-  }
-  await SecureStore.setItemAsync(API_KEY_NAME, key, {
-    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
-}
-
-export async function loadApiKey(): Promise<string | null> {
-  try {
-    return await SecureStore.getItemAsync(API_KEY_NAME);
-  } catch {
-    return null;
-  }
-}
-
-export async function clearApiKey(): Promise<void> {
-  try {
-    await SecureStore.deleteItemAsync(API_KEY_NAME);
-  } catch {
-    // Keychain may be unavailable in a simulator without a passcode; nothing to do.
-  }
-}
-
-export async function hasApiKey(): Promise<boolean> {
-  const key = await loadApiKey();
-  return Boolean(key && key.trim().length > 0);
-}
+/** Gemini key helpers, kept as thin aliases of the shared provider store. */
+export const saveApiKey = (value: string): Promise<void> => saveProviderKey('gemini', value);
+export const loadApiKey = (): Promise<string | null> => loadProviderKey('gemini');
+export const clearApiKey = (): Promise<void> => clearProviderKey('gemini');
+export const hasApiKey = (): Promise<boolean> => hasProviderKey('gemini');
 
 interface GeminiCandidate {
   content?: { parts?: { text?: string }[] };
@@ -210,16 +194,6 @@ function errorMeta(payload: GeminiResponse): ErrorMeta {
     statusLabel: error?.status ?? '',
     quotaHint,
   };
-}
-
-export interface KeyCheck {
-  ok: boolean;
-  detail: string;
-  /**
-   * Model khả dụng gợi ý khi model đang cấu hình đã bị Google ngừng, để UI đổi
-   * bằng một lần bấm thay vì bắt người dùng gõ tên model.
-   */
-  suggestedModel?: string;
 }
 
 /**
@@ -451,47 +425,6 @@ async function postGenerate(
   } finally {
     if (timer) clearTimeout(timer);
     detachAbort?.();
-  }
-}
-
-export interface GenerateOptions {
-  model?: string;
-  /** Lets the screen cancel the request when the learner leaves. */
-  signal?: AbortSignal;
-  attempts?: number;
-  /** Per-attempt deadline. Defaults to REQUEST_TIMEOUT_MS; tests use a tiny one. */
-  timeoutMs?: number;
-  /** Injected in tests so retries do not really wait. */
-  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
-  random?: () => number;
-  /** Called before each attempt and before each wait. */
-  onAttempt?: (info: AttemptInfo) => void;
-}
-
-export interface AttemptInfo {
-  attempt: number;
-  attempts: number;
-  model: string;
-  /** Present when this attempt waits before running. */
-  delayMs?: number;
-}
-
-function assertRequest(request: AiRequest): void {
-  const problems: string[] = [];
-  if (request.track !== 'general' && request.track !== 'ielts') {
-    problems.push('track không hợp lệ');
-  }
-  if (!Number.isInteger(request.level) || request.level < 0 || request.level > 6) {
-    problems.push('cấp độ phải là số nguyên 0–6');
-  }
-  if (!Number.isInteger(request.count) || request.count < 1 || request.count > 20) {
-    problems.push('số từ phải từ 1 đến 20');
-  }
-  if (!Array.isArray(request.avoidTerms) || !Array.isArray(request.weakTerms)) {
-    problems.push('danh sách từ kèm theo không hợp lệ');
-  }
-  if (problems.length > 0) {
-    throw new AiError('validation', problems.join('; '), { stage: 'config' });
   }
 }
 
@@ -794,6 +727,98 @@ async function runGenerate(
   );
 
   return { ...result, attempts: attemptsMade, elapsedMs: Date.now() - startedAt };
+}
+
+/**
+ * One small JSON answer, no retry, used for auxiliary questions such as CEFR
+ * level estimation. The caller treats a failure as "unknown".
+ */
+export async function requestGeminiJson(input: {
+  apiKey: string;
+  model: string;
+  system: string;
+  user: string;
+  maxOutputTokens?: number;
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<string> {
+  const controller = new AbortController();
+  const timeoutMs = input.timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  input.signal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    const response = await fetch(
+      `${API_BASE}/${encodeURIComponent(input.model)}:generateContent`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': input.apiKey,
+        },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: input.system }] },
+          contents: [{ role: 'user', parts: [{ text: input.user }] }],
+          generationConfig: {
+            temperature: 0.2,
+            maxOutputTokens: input.maxOutputTokens ?? 1_024,
+            responseMimeType: 'application/json',
+          },
+        }),
+        signal: controller.signal,
+      },
+    );
+
+    let payload: GeminiResponse = {};
+    try {
+      payload = (await response.json()) as GeminiResponse;
+    } catch {
+      payload = {};
+    }
+
+    if (!response.ok) {
+      throw errorFromHttp({
+        status: response.status,
+        message: payload.error?.message ?? '',
+        statusLabel: payload.error?.status,
+        retryAfterMs: parseRetryAfter(readHeader(response, 'retry-after')),
+        stage: 'request',
+      });
+    }
+
+    const text = (payload.candidates?.[0]?.content?.parts ?? [])
+      .map((part) => part.text ?? '')
+      .join('')
+      .trim();
+    if (!text) {
+      throw new AiError('invalid_response', 'Gemini không trả về nội dung.', {
+        httpStatus: response.status,
+        stage: 'response',
+      });
+    }
+    return text;
+  } catch (error) {
+    if (error instanceof AiError) throw error;
+    if (input.signal?.aborted) {
+      throw new AiError('cancelled', 'Đã huỷ yêu cầu.', { stage: 'request' });
+    }
+    if (controller.signal.aborted) {
+      throw new AiError(
+        'timeout',
+        `Gemini không trả lời trong ${Math.round(timeoutMs / 1000)} giây nên yêu cầu đã bị huỷ.`,
+        { stage: 'request' },
+      );
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    throw new AiError('network', 'Không kết nối được tới Gemini.', {
+      stage: 'request',
+      detail: redactSecrets(message),
+    });
+  } finally {
+    clearTimeout(timer);
+    input.signal?.removeEventListener('abort', onAbort);
+  }
 }
 
 export async function generateVocabulary(

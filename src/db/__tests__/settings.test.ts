@@ -1,5 +1,10 @@
-import { DEFAULT_AI_MODEL, DEFAULT_SETTINGS } from '../../types';
-import { sanitizeAiModel, sanitizeSettings } from '../settings';
+import { DEFAULT_AI_MODEL, DEFAULT_GROQ_MODEL, DEFAULT_SETTINGS } from '../../types';
+import {
+  sanitizeAiModel,
+  sanitizeAiProvider,
+  sanitizeGroqModel,
+  sanitizeSettings,
+} from '../settings';
 
 describe('sanitizeAiModel', () => {
   it('replaces a model Google has retired', () => {
@@ -32,5 +37,44 @@ describe('sanitizeSettings', () => {
   it('ships a default model that is not in the retired list', () => {
     expect(DEFAULT_SETTINGS.aiModel).toBe(DEFAULT_AI_MODEL);
     expect(DEFAULT_SETTINGS.aiModel).not.toContain('2.5');
+  });
+
+  it('keeps both provider models while switching provider', () => {
+    const settings = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      aiProvider: 'groq',
+      aiModel: 'gemini-9.0-pro',
+      groqModel: 'openai/gpt-oss-20b',
+    });
+
+    expect(settings.aiProvider).toBe('groq');
+    expect(settings.aiModel).toBe('gemini-9.0-pro');
+    expect(settings.groqModel).toBe('openai/gpt-oss-20b');
+  });
+
+  it('defaults a settings row saved before Groq existed', () => {
+    const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, aiProvider: undefined, groqModel: undefined });
+    expect(settings.aiProvider).toBe('gemini');
+    expect(settings.groqModel).toBe(DEFAULT_GROQ_MODEL);
+  });
+});
+
+describe('sanitizeAiProvider', () => {
+  it('accepts only the known providers', () => {
+    expect(sanitizeAiProvider('groq')).toBe('groq');
+    expect(sanitizeAiProvider('gemini')).toBe('gemini');
+    expect(sanitizeAiProvider('openai')).toBe('gemini');
+    expect(sanitizeAiProvider(undefined)).toBe('gemini');
+  });
+});
+
+describe('sanitizeGroqModel', () => {
+  it('falls back to the Groq default for a blank model', () => {
+    expect(sanitizeGroqModel('  ')).toBe(DEFAULT_GROQ_MODEL);
+    expect(sanitizeGroqModel(undefined)).toBe(DEFAULT_GROQ_MODEL);
+  });
+
+  it('keeps a model the user typed', () => {
+    expect(sanitizeGroqModel(' openai/gpt-oss-20b ')).toBe('openai/gpt-oss-20b');
   });
 });

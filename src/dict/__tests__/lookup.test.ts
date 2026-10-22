@@ -453,6 +453,16 @@ describe('entryToWordInput', () => {
     expect(input!.missingFields).toEqual(entry!.missing);
   });
 
+  it('uses the level the app estimated for the word instead of the clicked one', async () => {
+    const [entry] = await lookupWords(['criminal'], { client: fixtureClient(), attempts: 1 });
+    const input = entryToWordInput(
+      { ...entry!, level: 5, levelSource: 'ai' },
+      { track: 'general', level: 2 },
+    );
+
+    expect(input?.level).toBe(5);
+  });
+
   it('refuses to turn a word without a Vietnamese meaning into a saved word', async () => {
     const [entry] = await lookupWords(['zzqqxxvvyy'], { client: fixtureClient(), attempts: 1 });
     expect(entryToWordInput(entry!, { track: 'general', level: 2 })).toBeNull();

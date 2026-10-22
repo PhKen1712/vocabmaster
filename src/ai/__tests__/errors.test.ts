@@ -34,6 +34,14 @@ describe('redactSecrets', () => {
     expect(text).toContain('AIza…');
     expect(text).toContain('key=***');
   });
+
+  it('removes a Groq key and a Bearer header', () => {
+    const text = redactSecrets(
+      'Authorization: Bearer gsk_live_1234567890abcdef failed for gsk_live_1234567890abcdef',
+    );
+    expect(text).not.toContain('gsk_live_1234567890abcdef');
+    expect(text).toContain('gsk_…');
+  });
 });
 
 describe('errorFromHttp', () => {
@@ -122,6 +130,12 @@ describe('describeAiError', () => {
     expect(view.code).toBe('unknown');
     expect(view.body).toContain('boom');
     expect(view.hint).toContain('unknown');
+  });
+
+  it('takes the provider label for a non-Gemini provider', () => {
+    const view = describeAiError(new AiError('invalid_key', 'bad key'), 'Groq');
+    expect(view.title).toContain('Groq');
+    expect(view.hint).toContain('Groq');
   });
 
   it('never echoes an API key into the UI', () => {

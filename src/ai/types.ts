@@ -1,4 +1,40 @@
-import type { Level, Track, WordInput } from '../types';
+import type { AiProvider, Level, Track, WordInput } from '../types';
+
+/** Provider-neutral options accepted by every generation entry point. */
+export interface GenerateOptions {
+  /** Defaults to `gemini`; the screens pass the provider chosen in Settings. */
+  provider?: AiProvider;
+  model?: string;
+  /** Lets the screen cancel the request when the learner leaves. */
+  signal?: AbortSignal;
+  attempts?: number;
+  /** Per-attempt deadline. Defaults to REQUEST_TIMEOUT_MS; tests use a tiny one. */
+  timeoutMs?: number;
+  /** Injected in tests so retries do not really wait. */
+  sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  random?: () => number;
+  /** Called before each attempt and before each wait. */
+  onAttempt?: (info: AttemptInfo) => void;
+}
+
+export interface AttemptInfo {
+  attempt: number;
+  attempts: number;
+  model: string;
+  /** Present when this attempt waits before running. */
+  delayMs?: number;
+}
+
+/** Result of the no-token "key + model" check in Settings. */
+export interface KeyCheck {
+  ok: boolean;
+  detail: string;
+  /**
+   * Model khả dụng gợi ý khi model đang cấu hình đã bị nhà cung cấp ngừng, để
+   * UI đổi bằng một lần bấm thay vì bắt người dùng gõ tên model.
+   */
+  suggestedModel?: string;
+}
 
 export interface AiRequest {
   track: Track;

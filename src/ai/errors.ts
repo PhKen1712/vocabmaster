@@ -30,7 +30,9 @@ export function parseRetryAfter(header: string | null | undefined): number | nul
 export function redactSecrets(text: string): string {
   return text
     .replace(/AIza[0-9A-Za-z_-]{10,}/g, 'AIza…')
+    .replace(/gsk_[0-9A-Za-z_-]{10,}/g, 'gsk_…')
     .replace(/("?x-goog-api-key"?\s*[:=]\s*")[^"]+/gi, '$1***')
+    .replace(/("?authorization"?\s*[:=]\s*"?bearer\s+)[^\s",]+/gi, '$1***')
     .replace(/([?&]key=)[^&\s]+/gi, '$1***');
 }
 
@@ -157,35 +159,35 @@ function technicalLine(error: AiError): string {
  * Turn an error into something a learner can act on, without ever showing the
  * API key or a raw stack trace.
  */
-export function describeAiError(error: unknown): AiErrorView {
+export function describeAiError(error: unknown, label = 'Gemini'): AiErrorView {
   const failure = toAiError(error);
   const diagnostic = technicalLine(failure);
-  const google = redactSecrets(failure.message).slice(0, 320);
+  const detail = redactSecrets(failure.message).slice(0, 320);
 
   switch (failure.code) {
     case 'missing_key':
       return {
         code: failure.code,
         title: 'Chưa có API key',
-        body: 'Ứng dụng chưa có Gemini API key nên không thể tạo bộ từ.',
-        hint: 'Mở Cài đặt → Gemini AI, dán key lấy từ Google AI Studio rồi bấm "Lưu key".',
+        body: `Ứng dụng chưa có ${label} API key nên không thể tạo bộ từ.`,
+        hint: `Mở Cài đặt → AI, chọn ${label}, dán key rồi bấm "Lưu key".`,
         canRetry: false,
         diagnostic,
       };
     case 'invalid_key':
       return {
         code: failure.code,
-        title: 'Key bị Google từ chối',
-        body: google || 'Gemini không chấp nhận key này.',
-        hint: 'Kiểm tra key còn hiệu lực và đã bật Generative Language API. Dán key mới trong Cài đặt → Gemini AI.',
+        title: `Key bị ${label} từ chối`,
+        body: detail || `${label} không chấp nhận key này.`,
+        hint: `Kiểm tra key còn hiệu lực. Dán key mới trong Cài đặt → AI → ${label}.`,
         canRetry: false,
         diagnostic,
       };
     case 'quota_exceeded':
       return {
         code: failure.code,
-        title: 'Đã hết hạn mức Gemini',
-        body: google || 'Key này đã dùng hết hạn mức miễn phí hiện tại.',
+        title: `Đã hết hạn mức ${label}`,
+        body: detail || 'Key này đã dùng hết hạn mức miễn phí hiện tại.',
         hint: 'Hạn mức có thể theo phút hoặc theo ngày. Chờ vài phút rồi thử lại, hoặc giảm số từ cần tạo.',
         canRetry: true,
         diagnostic,
@@ -194,7 +196,7 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Gửi quá nhanh',
-        body: 'Gemini giới hạn số lần gọi trong một khoảng thời gian ngắn.',
+        body: `${label} giới hạn số lần gọi trong một khoảng thời gian ngắn.`,
         hint: 'Chờ vài giây rồi bấm "Thử lại". Lần tạo vừa rồi không lưu từ nào.',
         canRetry: true,
         diagnostic,
@@ -202,8 +204,8 @@ export function describeAiError(error: unknown): AiErrorView {
     case 'network':
       return {
         code: failure.code,
-        title: 'Không kết nối được tới Gemini',
-        body: 'Máy không tới được máy chủ Google. Wi-Fi yếu hoặc mất mạng giữa lúc tạo từ thường gây lỗi này.',
+        title: `Không kết nối được tới ${label}`,
+        body: `Máy không tới được máy chủ ${label}. Wi-Fi yếu hoặc mất mạng giữa lúc tạo từ thường gây lỗi này.`,
         hint: 'Kiểm tra mạng (thử 4G) rồi bấm "Thử lại". Học và ôn offline vẫn dùng bình thường.',
         canRetry: true,
         diagnostic,
@@ -211,9 +213,9 @@ export function describeAiError(error: unknown): AiErrorView {
     case 'timeout':
       return {
         code: failure.code,
-        title: 'Gemini phản hồi quá lâu',
+        title: `${label} phản hồi quá lâu`,
         body:
-          google || 'Yêu cầu vượt quá thời gian chờ nên đã được huỷ, không có từ nào được lưu.',
+          detail || 'Yêu cầu vượt quá thời gian chờ nên đã được huỷ, không có từ nào được lưu.',
         hint: 'Giảm số từ cần tạo (5–8 từ) rồi bấm "Thử lại". Lần chờ này không được tự lặp lại.',
         canRetry: true,
         diagnostic,
@@ -221,18 +223,18 @@ export function describeAiError(error: unknown): AiErrorView {
     case 'server':
       return {
         code: failure.code,
-        title: 'Gemini đang bận',
-        body: `Máy chủ Gemini trả về lỗi tạm thời.${google ? ` Google trả lời: ${google}` : ''}`,
-        hint: 'App đã thử model khác và thử lại vài lần. Chờ khoảng một phút rồi bấm "Thử lại", hoặc chọn model khác trong Cài đặt → Gemini AI.',
+        title: `${label} đang bận`,
+        body: `Máy chủ ${label} trả về lỗi tạm thời.${detail ? ` Chi tiết: ${detail}` : ''}`,
+        hint: `App đã thử lại vài lần. Chờ khoảng một phút rồi bấm "Thử lại", hoặc chọn model khác trong Cài đặt → AI.`,
         canRetry: true,
         diagnostic,
       };
     case 'model_unavailable':
       return {
         code: failure.code,
-        title: 'Model Gemini không dùng được',
-        body: google || 'Google đã ngừng cấp model đang cấu hình cho key này.',
-        hint: 'Vào Cài đặt → Gemini AI, bấm "Kiểm tra key + model" rồi chọn model Google còn phục vụ.',
+        title: `Model ${label} không dùng được`,
+        body: detail || `${label} đã ngừng cấp model đang cấu hình cho key này.`,
+        hint: `Vào Cài đặt → AI, chọn ${label}, bấm "Kiểm tra key + model" rồi chọn model còn phục vụ.`,
         canRetry: false,
         diagnostic,
       };
@@ -240,7 +242,7 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'AI trả về dữ liệu không dùng được',
-        body: `Gemini trả về nội dung thiếu hoặc bị chặn.${google ? ` Chi tiết: ${google}` : ''}`,
+        body: `${label} trả về nội dung thiếu hoặc bị chặn.${detail ? ` Chi tiết: ${detail}` : ''}`,
         hint: 'Bấm "Thử lại" để tạo lại. Nếu lặp lại, đổi chủ đề hoặc bớt từ hơn.',
         canRetry: true,
         diagnostic,
@@ -248,8 +250,8 @@ export function describeAiError(error: unknown): AiErrorView {
     case 'json_parse':
       return {
         code: failure.code,
-        title: 'Không đọc được JSON từ Gemini',
-        body: google || 'Phản hồi không phải JSON hợp lệ nên không thể kiểm tra từ vựng.',
+        title: `Không đọc được JSON từ ${label}`,
+        body: detail || 'Phản hồi không phải JSON hợp lệ nên không thể kiểm tra từ vựng.',
         hint: 'Bấm "Thử lại" với ít từ hơn để câu trả lời không bị cắt.',
         canRetry: true,
         diagnostic,
@@ -258,7 +260,7 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Yêu cầu chưa hợp lệ',
-        body: google || 'Gemini từ chối yêu cầu này.',
+        body: detail || `${label} từ chối yêu cầu này.`,
         hint: 'Kiểm tra lại cấp độ, chủ đề và số từ rồi thử lại.',
         canRetry: true,
         diagnostic,
@@ -267,7 +269,7 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Không lưu được vào máy',
-        body: google || 'Cơ sở dữ liệu trên máy từ chối ghi dữ liệu.',
+        body: detail || 'Cơ sở dữ liệu trên máy từ chối ghi dữ liệu.',
         hint: 'Khởi động lại app rồi thêm lại. Dữ liệu cũ không bị ảnh hưởng.',
         canRetry: true,
         diagnostic,
@@ -285,7 +287,7 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Đã huỷ',
-        body: 'Yêu cầu đã dừng trước khi Gemini trả lời.',
+        body: `Yêu cầu đã dừng trước khi ${label} trả lời.`,
         canRetry: false,
         diagnostic,
       };
@@ -294,10 +296,10 @@ export function describeAiError(error: unknown): AiErrorView {
       return {
         code: failure.code,
         title: 'Không tạo được bộ từ lúc này',
-        body: google
-          ? `Không xác định được nguyên nhân. Gemini trả lời: ${google}`
+        body: detail
+          ? `Không xác định được nguyên nhân. ${label} trả lời: ${detail}`
           : 'Không xác định được nguyên nhân.',
-        hint: `Mã lỗi: ${failure.code}. Xem Cài đặt → Gemini AI → "Lần gọi gần đây" để biết chi tiết.`,
+        hint: `Mã lỗi: ${failure.code}. Xem Cài đặt → AI → "Lần gọi gần đây" để biết chi tiết.`,
         canRetry: true,
         diagnostic,
       };

@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
-import { generateVocabulary } from '../ai/gemini';
+import { generateVocabulary } from '../ai';
+import { estimateLevels } from '../ai/levels';
 import { createSqliteDictCache } from '../db/dictCache';
+import { packLevel } from '../data/packs';
 import { parseWordList } from '../dict/list';
 import { createHttpClient, lookupWords } from '../dict/lookup';
 import type { DictEntry } from '../dict/types';
-import type { Level, Track } from '../types';
+import type { AiProvider, Level, Track } from '../types';
 
 /**
  * State machine for "paste a list of words".
@@ -14,6 +16,11 @@ import type { Level, Track } from '../types';
  * The lookup never blocks the whole screen: each word lands in `entries` as
  * soon as it settles, so a 30-word list fills in progressively and one slow
  * word cannot hide the other 29.
+ *
+ * Levels are worked out by the app, never taken from a picker: the bundled
+ * packs answer instantly for words we already curated, and one batch AI request
+ * answers the rest. Words nobody can rate keep `level: null` and are shown as
+ * unknown instead of being silently filed under a level the learner clicked.
  */
 export interface WordListLookup {
   text: string;
@@ -28,6 +35,12 @@ export interface WordListLookup {
   done: number;
   total: number;
   error: string | null;
+  /** True while the single batch level request is in flight. */
+  levelsBusy: boolean;
+  /** Why some levels are missing (no key, network…), if they are. */
+  levelError: string | null;
+  /** Found words with a Vietnamese meaning but no estimated level. */
+  unknownLevels: number;
   lookUp: () => void;
   retryFailed: () => void;
   cancel: () => void;
@@ -39,11 +52,19 @@ export interface UseWordListLookupOptions {
   track: Track;
   level: Level;
   topic: string;
+  provider: AiProvider;
   aiModel: string;
 }
 
+/** Fold in the bundled-pack level, which costs nothing and never fails. */
+function withPackLevel(entry: DictEntry, track: Track): DictEntry {
+  if (entry.status !== 'found' || entry.level !== null) return entry;
+  const level = packLevel(entry.term, track);
+  return level === null ? entry : { ...entry, level, levelSource: 'pack' };
+}
+
 export function useWordListLookup(options: UseWordListLookupOptions): WordListLookup {
-  const { db, track, level, topic, aiModel } = options;
+  const { db, track, level, topic, provider, aiModel } = options;
 
   const [text, setText] = useState('');
   const [entries, setEntries] = useState<DictEntry[]>([]);
@@ -53,6 +74,8 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
   const [done, setDone] = useState(0);
   const [total, setTotal] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [levelsBusy, setLevelsBusy] = useState(false);
+  const [levelError, setLevelError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const parsed = useMemo(() => parseWordList(text), [text]);
@@ -73,6 +96,7 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     abortRef.current?.abort();
     abortRef.current = null;
     setRunning(false);
+    setLevelsBusy(false);
   }, []);
 
   const run = useCallback(
@@ -83,6 +107,8 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
 
       setRunning(true);
       setError(null);
+      setLevelError(null);
+      setLevelsBusy(false);
       setDone(0);
       setTotal(terms.length);
       setEntries(startingEntries);
@@ -91,6 +117,20 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
       let settledCount = 0;
       const cache = createSqliteDictCache(db);
       const client = createHttpClient();
+
+      // Start the one level request now, in parallel with the dictionary. The
+      // learner waits for the slower of the two instead of the sum of both, and
+      // words the bundled packs already know never join this request.
+      const needsLevels = [...new Set(terms)].filter((term) => packLevel(term, track) === null);
+      setLevelsBusy(needsLevels.length > 0);
+      const levelsPromise =
+        needsLevels.length > 0
+          ? estimateLevels(needsLevels, {
+              provider,
+              model: aiModel,
+              signal: controller.signal,
+            })
+          : Promise.resolve({ levels: new Map<string, Level>(), error: null });
 
       try {
         const result = await lookupWords(terms, {
@@ -112,8 +152,9 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
               return next;
             });
           },
-          // Vietnamese meanings are the one thing a dictionary can miss; Gemini
-          // fills at most five, and every filled word is labelled `gemini`.
+          // Vietnamese meanings are the one thing a dictionary can miss; the AI
+          // fills at most five, and every filled word records which source it
+          // came from.
           aiTranslate: async (term) => {
             if (controller.signal.aborted) return null;
             try {
@@ -127,7 +168,7 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
                   avoidTerms: [],
                   weakTerms: [],
                 },
-                { model: aiModel, signal: controller.signal },
+                { provider, model: aiModel, signal: controller.signal },
               );
               const suggestion = result.suggestions[0];
               return suggestion?.meaningVi ? { meaningVi: suggestion.meaningVi } : null;
@@ -140,10 +181,15 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
 
         if (controller.signal.aborted) return;
 
-        setEntries(result);
+        // A retry only re-queries the failed words; keep the ones already found.
+        const merged = new Map(startingEntries.map((entry) => [entry.normalized, entry]));
+        for (const entry of result) merged.set(entry.normalized, entry);
+        const withLevels = [...merged.values()].map((entry) => withPackLevel(entry, track));
+
+        setEntries(withLevels);
         setSelected(
           new Set(
-            result
+            withLevels
               .filter((entry) => entry.status === 'found' && Boolean(entry.meaningVi))
               .map((entry) => entry.normalized),
           ),
@@ -155,6 +201,21 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
             `${failed} từ chưa tra được vì lỗi mạng hoặc từ điển. Các từ còn lại đã sẵn sàng.`,
           );
         }
+
+        const estimate = await levelsPromise;
+        if (controller.signal.aborted) return;
+
+        if (estimate.levels.size > 0) {
+          setEntries((previous) =>
+            previous.map((entry) => {
+              const estimated = estimate.levels.get(entry.normalized);
+              return estimated === undefined
+                ? entry
+                : { ...entry, level: estimated, levelSource: 'ai' };
+            }),
+          );
+        }
+        setLevelError(estimate.error);
       } catch (caught) {
         if (!controller.signal.aborted) {
           setError(
@@ -166,9 +227,10 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
         setRunning(false);
+        setLevelsBusy(false);
       }
     },
-    [db, running, track, level, topic, aiModel],
+    [db, running, track, level, topic, provider, aiModel],
   );
 
   const lookUp = useCallback(() => {
@@ -213,12 +275,18 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     abortRef.current?.abort();
     abortRef.current = null;
     setRunning(false);
+    setLevelsBusy(false);
     setEntries([]);
     setSelected(new Set());
     setError(null);
+    setLevelError(null);
     setDone(0);
     setTotal(0);
   }, []);
+
+  const unknownLevels = entries.filter(
+    (entry) => entry.status === 'found' && Boolean(entry.meaningVi) && entry.level === null,
+  ).length;
 
   return {
     text,
@@ -233,6 +301,9 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     done,
     total,
     error,
+    levelsBusy,
+    levelError,
+    unknownLevels,
     lookUp,
     retryFailed,
     cancel,

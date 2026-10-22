@@ -3,7 +3,8 @@ import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from '
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
-import { generateVocabulary } from '../ai/gemini';
+import { generateVocabulary } from '../ai';
+import { providerLabel } from '../ai/provider';
 import { describeAiError, type AiErrorView } from '../ai/errors';
 import type { AiSuggestion } from '../ai/types';
 import { entryToWordInput } from '../dict/lookup';
@@ -14,32 +15,21 @@ import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing } from '../theme/tokens';
-import type { Level, Track } from '../types';
+import { LEVEL_SHORT, type Level, type Track } from '../types';
 import { useWordListLookup } from './useWordListLookup';
 
 interface Draft extends AiSuggestion {
   include: boolean;
 }
 
-type CreationMode = 'gemini' | 'list';
-
-const MODE_COPY: Record<CreationMode, { label: string; caption: string }> = {
-  gemini: {
-    label: 'Gemini chọn từ',
-    caption: 'Gemini đề xuất từ theo cấp độ và chủ đề, rồi từ điển kiểm tra lại.',
-  },
-  list: {
-    label: 'Nhập danh sách từ',
-    caption: 'Bạn đã có từ rồi? Dán vào, ứng dụng tra từ điển — không cần Gemini.',
-  },
-};
+type CreationMode = 'ai' | 'list';
 
 export function AiStudioScreen() {
   const { db, settings, notifyDataChanged, updateSettings } = useApp();
   const { pop, goToTab } = useNavigation();
   const { colors } = useTheme();
 
-  const [mode, setMode] = useState<CreationMode>('gemini');
+  const [mode, setMode] = useState<CreationMode>('ai');
   const [track, setTrack] = useState<Track>(settings.track);
   const [level, setLevel] = useState<Level>(settings.level);
   const [topic, setTopic] = useState('');
@@ -60,7 +50,27 @@ export function AiStudioScreen() {
   const [listSaving, setListSaving] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const wordList = useWordListLookup({ db, track, level, topic, aiModel: settings.aiModel });
+  const providerName = providerLabel(settings.aiProvider);
+  const providerModel = settings.aiProvider === 'groq' ? settings.groqModel : settings.aiModel;
+  const modeCopy: Record<CreationMode, { label: string; caption: string }> = {
+    ai: {
+      label: `${providerName} chọn từ`,
+      caption: `${providerName} đề xuất từ theo cấp độ và chủ đề, rồi từ điển kiểm tra lại.`,
+    },
+    list: {
+      label: 'Nhập danh sách từ',
+      caption: 'Bạn đã có từ rồi? Dán vào, ứng dụng tra từ điển và tự xác định cấp độ từng từ.',
+    },
+  };
+
+  const wordList = useWordListLookup({
+    db,
+    track,
+    level,
+    topic,
+    provider: settings.aiProvider,
+    aiModel: providerModel,
+  });
 
   // Leaving the screen cancels the request instead of letting it finish in the
   // background and update a screen the learner can no longer see.
@@ -97,7 +107,7 @@ export function AiStudioScreen() {
     setModelNote(null);
     setRejected([]);
     setWarnings([]);
-    setProgress('Đang gửi yêu cầu tới Gemini…');
+    setProgress(`Đang gửi yêu cầu tới ${providerName}…`);
     try {
       const existing = await listWords(db, { track, limit: 300 });
       const result = await generateVocabulary(
@@ -111,16 +121,17 @@ export function AiStudioScreen() {
           weakTerms: existing.filter((word) => word.lapses > 0).slice(0, 20).map((word) => word.term),
         },
         {
-          model: settings.aiModel,
+          provider: settings.aiProvider,
+          model: providerModel,
           signal: controller.signal,
           onAttempt: (info) => {
             if (controller.signal.aborted) return;
             setProgress(
               info.delayMs !== undefined
-                ? `Gemini lỗi tạm thời. Thử lại lần ${info.attempt}/${info.attempts} sau ${(info.delayMs / 1000).toFixed(1)} giây…`
+                ? `${providerName} lỗi tạm thời. Thử lại lần ${info.attempt}/${info.attempts} sau ${(info.delayMs / 1000).toFixed(1)} giây…`
                 : info.attempt > 1
                   ? `Đang thử lại (lần ${info.attempt}/${info.attempts})…`
-                  : 'Gemini đang tạo từ…',
+                  : `${providerName} đang tạo từ…`,
             );
           },
         },
@@ -134,13 +145,13 @@ export function AiStudioScreen() {
       if (result.fallbackFrom) {
         setModelNote(
           result.fallbackReason === 'overloaded'
-            ? `Model "${result.fallbackFrom}" đang quá tải nên lần này app tự dùng "${result.model}". Cài đặt không bị đổi; nếu lỗi lặp lại, chọn model khác trong Cài đặt → Gemini AI.`
-            : `Model "${result.fallbackFrom}" đã bị Google ngừng nên lần này dùng "${result.model}". Vào Cài đặt → Gemini AI để lưu model mới.`,
+            ? `Model "${result.fallbackFrom}" đang quá tải nên lần này app tự dùng "${result.model}". Cài đặt không bị đổi; nếu lỗi lặp lại, chọn model khác trong Cài đặt → AI.`
+            : `Model "${result.fallbackFrom}" đã bị ngừng nên lần này dùng "${result.model}". Vào Cài đặt → AI để lưu model mới.`,
         );
       }
     } catch (caught) {
       if (controller.signal.aborted) return;
-      const view = describeAiError(caught);
+      const view = describeAiError(caught, providerName);
       setError(view.code === 'cancelled' ? null : view);
     } finally {
       if (abortRef.current === controller) {
@@ -149,7 +160,7 @@ export function AiStudioScreen() {
         setProgress(null);
       }
     }
-  }, [db, track, level, topic, focus, count, settings.aiModel, loading]);
+  }, [db, track, level, topic, focus, count, settings.aiProvider, providerModel, providerName, loading]);
 
   const selectedCount = drafts.filter((draft) => draft.include).length;
 
@@ -220,7 +231,9 @@ export function AiStudioScreen() {
 
     for (const entry of wordList.entries) {
       if (!wordList.selected.has(entry.normalized)) continue;
-      const input = entryToWordInput(entry, { track, level, topic });
+      // The per-word level wins; the saved settings level is only the fallback
+      // for words nobody could rate, and the card above says which is which.
+      const input = entryToWordInput(entry, { track, level: settings.level, topic });
       if (!input) {
         noMeaning += 1;
         continue;
@@ -279,14 +292,14 @@ export function AiStudioScreen() {
     <Screen>
       <ScreenHeader
         title="Tạo bộ từ"
-        subtitle="Gemini chọn từ, hoặc tra từ điển cho danh sách của bạn"
+        subtitle="AI chọn từ, hoặc tra từ điển cho danh sách của bạn"
         onBack={pop}
       />
 
       <Banner
         tone="info"
         title="Bạn kiểm soát mọi thứ trước khi lưu"
-        body="Gemini và từ điển chỉ điền dữ liệu. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ."
+        body="AI và từ điển chỉ điền dữ liệu. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ."
       />
 
       <Card>
@@ -297,10 +310,22 @@ export function AiStudioScreen() {
             void updateSettings({ track: next });
           }}
         />
-        <AppText variant="caption" color={colors.textMuted} style={{ marginBottom: spacing.xs }}>
-          Cấp độ
-        </AppText>
-        <LevelPicker value={level} onChange={setLevel} />
+        {mode === 'ai' ? (
+          <>
+            <AppText
+              variant="caption"
+              color={colors.textMuted}
+              style={{ marginBottom: spacing.xs }}
+            >
+              Cấp độ
+            </AppText>
+            <LevelPicker value={level} onChange={setLevel} />
+          </>
+        ) : (
+          <AppText variant="micro" color={colors.textFaint}>
+            Cấp độ của từng từ do app tự xác định — bạn không cần chọn mức ở đây.
+          </AppText>
+        )}
 
         <View style={{ height: spacing.md }} />
         <AppText variant="caption" color={colors.textMuted}>
@@ -315,7 +340,7 @@ export function AiStudioScreen() {
         />
 
         <View style={styles.modeRow}>
-          {(Object.keys(MODE_COPY) as CreationMode[]).map((key) => {
+          {(Object.keys(modeCopy) as CreationMode[]).map((key) => {
             const active = mode === key;
             return (
               <Pressable
@@ -336,17 +361,17 @@ export function AiStudioScreen() {
                   color={active ? colors.onPrimary : colors.textMuted}
                   style={{ textAlign: 'center' }}
                 >
-                  {MODE_COPY[key].label}
+                  {modeCopy[key].label}
                 </AppText>
               </Pressable>
             );
           })}
         </View>
         <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.md }}>
-          {MODE_COPY[mode].caption}
+          {modeCopy[mode].caption}
         </AppText>
 
-        {mode === 'gemini' ? (
+        {mode === 'ai' ? (
           <>
             <AppText variant="caption" color={colors.textMuted}>
               Ưu tiên đặc biệt (tuỳ chọn)
@@ -370,7 +395,7 @@ export function AiStudioScreen() {
             />
 
             <PrimaryButton
-              label={loading ? 'Gemini đang tạo…' : '✨ Tạo bộ từ'}
+              label={loading ? `${providerName} đang tạo…` : '✨ Tạo bộ từ'}
               onPress={() => void generate()}
               loading={loading}
               disabled={loading}
@@ -486,17 +511,17 @@ export function AiStudioScreen() {
         </View>
       ) : null}
 
-      {mode === 'gemini' && drafts.length > 0 && requestedCount > drafts.length ? (
+      {mode === 'ai' && drafts.length > 0 && requestedCount > drafts.length ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
             title={`Thiếu ${requestedCount - drafts.length} từ`}
-            body={`Bạn yêu cầu ${requestedCount} từ, Gemini trả về ${drafts.length} từ dùng được. Bấm "Tạo bộ từ" lần nữa để xin thêm, hoặc thêm tay bằng nút + ở tab Từ vựng.`}
+            body={`Bạn yêu cầu ${requestedCount} từ, ${providerName} trả về ${drafts.length} từ dùng được. Bấm "Tạo bộ từ" lần nữa để xin thêm, hoặc thêm tay bằng nút + ở tab Từ vựng.`}
           />
         </View>
       ) : null}
 
-      {mode === 'gemini' && warnings.length > 0 ? (
+      {mode === 'ai' && warnings.length > 0 ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
@@ -508,11 +533,11 @@ export function AiStudioScreen() {
 
       {modelNote ? (
         <View style={{ marginTop: spacing.md }}>
-          <Banner tone="warning" title="Đã tự đổi model Gemini" body={modelNote} />
+          <Banner tone="warning" title={`Đã tự đổi model ${providerName}`} body={modelNote} />
         </View>
       ) : null}
 
-      {mode === 'gemini' && rejected.length > 0 ? (
+      {mode === 'ai' && rejected.length > 0 ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
             tone="warning"
@@ -525,6 +550,23 @@ export function AiStudioScreen() {
       {mode === 'list' && wordList.entries.length > 0 ? (
         <>
           <SectionHeader title={`${wordList.selected.size}/${wordList.entries.length} từ sẽ thêm`} />
+          <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.sm }}>
+            Cấp độ do app tự xác định cho từng từ:{' '}
+            {wordList.entries.filter((entry) => entry.level !== null).length}/
+            {wordList.entries.filter((entry) => entry.status === 'found').length} từ tra được.
+          </AppText>
+          {wordList.levelsBusy ? (
+            <AppText variant="caption" color={colors.textMuted}>
+              Đang xác định cấp độ cho từng từ…
+            </AppText>
+          ) : null}
+          {wordList.levelError ? (
+            <Banner
+              tone="warning"
+              title="Cấp độ chưa xác định được"
+              body={`${wordList.levelError} Từ chưa rõ cấp độ sẽ dùng cấp độ trong Cài đặt (${LEVEL_SHORT[settings.level]}).`}
+            />
+          ) : null}
           <Banner
             tone={failedCount > 0 || notFoundCount > 0 ? 'warning' : 'info'}
             title={`${foundCount} tra được · ${notFoundCount} không có trong từ điển · ${failedCount} lỗi`}
@@ -563,12 +605,13 @@ export function AiStudioScreen() {
             color={colors.textFaint}
             style={{ marginTop: spacing.sm, textAlign: 'center' }}
           >
-            Từ tra bằng từ điển được lưu kèm nguồn và danh sách trường còn thiếu.
+            Từ tra bằng từ điển được lưu kèm nguồn, cấp độ do app xác định và danh sách trường
+            còn thiếu.
           </AppText>
         </>
       ) : null}
 
-      {mode === 'gemini' && drafts.length > 0 ? (
+      {mode === 'ai' && drafts.length > 0 ? (
         <>
           <SectionHeader title={`${selectedCount}/${drafts.length} từ sẽ thêm`} />
           {drafts.map((draft, index) => (
@@ -718,8 +761,9 @@ export function AiStudioScreen() {
         color={colors.textFaint}
         style={{ marginTop: spacing.xxl, textAlign: 'center' }}
       >
-        Gemini có hạn mức miễn phí theo model và theo ngày; hạn mức có thể thay đổi. Kiểm tra
-        ai.google.dev để biết giới hạn hiện hành. Ứng dụng không gọi Gemini khi bạn học hay ôn tập.
+        {providerName} có hạn mức miễn phí theo model và theo ngày; hạn mức có thể thay đổi vài
+        lần mỗi năm. Xem hạn mức hiện hành trong Cài đặt → AI. Ứng dụng không gọi AI khi bạn học
+        hay ôn tập.
       </AppText>
 
       <Pressable
@@ -825,6 +869,11 @@ function ListEntryCard({
       ) : null}
 
       <View style={styles.draftMeta}>
+        <AppText variant="micro" color={colors.textFaint}>
+          {entry.level !== null
+            ? `${LEVEL_SHORT[entry.level]} · ${entry.levelSource === 'pack' ? 'cấp độ có sẵn' : 'AI ước lượng'}`
+            : 'chưa rõ cấp độ'}
+        </AppText>
         <AppText variant="micro" color={colors.textFaint}>
           {(entry.partOfSpeech ?? 'chưa rõ từ loại').toUpperCase()} ·{' '}
           {entry.sources.length > 0 ? entry.sources.join(' + ') : 'chưa có nguồn'}

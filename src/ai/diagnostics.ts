@@ -1,3 +1,4 @@
+import type { AiProvider } from '../types';
 import { redactSecrets } from './errors';
 import type { AiErrorCode, AiStage } from './types';
 
@@ -15,6 +16,7 @@ export interface AiDiagnostic {
   at: string;
   phase: AiStage;
   outcome: 'ok' | 'retry' | 'error';
+  provider: AiProvider;
   model: string;
   attempt: number;
   durationMs: number;
@@ -40,9 +42,12 @@ function notify() {
   }
 }
 
-export function recordDiagnostic(input: Omit<AiDiagnostic, 'id' | 'at'>): AiDiagnostic {
+export function recordDiagnostic(
+  input: Omit<AiDiagnostic, 'id' | 'at' | 'provider'> & { provider?: AiProvider },
+): AiDiagnostic {
   const entry: AiDiagnostic = {
     ...input,
+    provider: input.provider ?? 'gemini',
     id: nextId++,
     at: new Date().toISOString(),
     ...(input.detail ? { detail: redactSecrets(input.detail).slice(0, 240) } : {}),
@@ -76,7 +81,12 @@ function clock(iso: string): string {
 }
 
 export function formatDiagnostic(entry: AiDiagnostic): string {
-  const parts = [clock(entry.at), entry.outcome.toUpperCase(), entry.phase];
+  const parts = [
+    clock(entry.at),
+    entry.outcome.toUpperCase(),
+    entry.phase,
+    entry.provider === 'groq' ? 'groq' : 'gemini',
+  ];
   if (entry.httpStatus !== undefined) parts.push(`HTTP ${entry.httpStatus}`);
   if (entry.code) parts.push(entry.code);
   parts.push(entry.model || 'model?');

@@ -2,13 +2,13 @@
 
 - **checkpoint_version:** 1
 - **last_updated:** 2026-10-23
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + Gemini reliability + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ: Gemini chọn từ và nhập danh sách có tra từ điển (2026-10-23)** — **typecheck 0 lỗi, 153/153 unit test xanh, schema v2 có migration đã chạy thử trên SQLite thật**; chưa build iOS, chưa kiểm chứng thiết bị
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ: AI chọn từ và nhập danh sách có tra từ điển** + **Groq là nhà cung cấp thứ hai, chọn trong Cài đặt; cấp độ CEFR của từng từ nhập được tra tự động (2026-10-23)** — **typecheck 0 lỗi, 186/186 unit test xanh trong 16 suite, schema v2 có migration đã chạy thử trên SQLite thật**; chưa build iOS, chưa kiểm chứng thiết bị, chưa gọi Groq thật
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
-- **current_branch / commit:** `main` · Dictionary API + nhập danh sách (2026-10-23, xem `git log`)
+- **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
 
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
-> là đã chạy trên iPhone: widget, micro, thông báo và Gemini **chưa được kiểm chứng thiết bị**.
+> là đã chạy trên iPhone: widget, micro, thông báo và AI (Gemini **và** Groq) **chưa được kiểm chứng thiết bị**.
 
 ---
 
@@ -137,21 +137,28 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Thống kê: streak, accuracy 7 ngày, 14 ngày hoạt động, phân bố cấp độ, trạng thái ghi nhớ, từ hay sai.
 - TTS en-US/en-GB, đọc từ và câu ví dụ.
 - Luyện nói: nhận diện giọng nói, ưu tiên on-device, so khớp từ + confidence; **không** chấm âm vị.
-- Gemini: tạo bộ từ theo track/level/topic/count/focus, tránh từ đã có, validate từng trường,
-  preview + sửa + chọn trước khi lưu, xử lý lỗi 401/403/429/5xx/mạng/timeout.
+- AI tạo bộ từ theo track/level/topic/count/focus, tránh từ đã có, validate từng trường,
+  preview + sửa + chọn trước khi lưu, xử lý lỗi 401/403/429/5xx/mạng/timeout. Hai nhà cung cấp:
+  **Gemini** (mặc định, tiếng Việt/IPA tốt hơn) và **Groq** (`openai/gpt-oss-120b`, rất nhanh,
+  8K token/phút) — chọn trong Cài đặt, mỗi bên có key + model riêng (`src/ai/groq.ts`,
+  `src/ai/provider.ts`, `src/ai/index.ts`).
 - **Tạo bộ từ từ danh sách tự nhập (2026-10-23)**: tách phẩy/chấm phẩy/xuống dòng, bỏ trùng,
   tra song song hai từ điển miễn phí (dict.minhqnd.com cho nghĩa Việt + IPA, api.dictionaryapi.dev
   cho định nghĩa/ví dụ tiếng Anh), giới hạn 3 request đồng thời, timeout 8 giây, retry 2 lần cho
   mạng/429/5xx, cache SQLite 30 ngày, đánh dấu trường thiếu (`missing_fields`), Gemini chỉ bổ sung
   nghĩa Việt cho tối đa 5 từ và được ghi rõ nguồn (`docs/DICTIONARY.md`).
 - Gợi ý chi tiết cho một từ cụ thể trong biểu mẫu (lookupTerm).
-- Key Gemini trong Keychain, không log, không backup, có xoá key.
+- **Cấp độ tự tra cho danh sách dán (2026-10-23)**: kho từ bundle trả lời ngay (miễn phí), phần
+  còn lại do **một** request AI xếp CEFR cho cả danh sách — chạy song song với tra từ điển, không
+  phải một request mỗi từ. Thẻ từ ghi band + nguồn ("có sẵn" / "AI ước lượng"); từ chưa rõ cấp độ
+  được ghi đúng như vậy và chỉ khi đó mới dùng cấp độ trong Cài đặt (`src/ai/levels.ts`).
+- Key AI trong Keychain, **mỗi nhà cung cấp một ô riêng**, không log, không backup, có xoá key.
 - Widget: 2 kind (home 3 size, lock screen 3 family), snapshot + timeline, sync sau mỗi thay đổi
   và khi app foreground, lỗi được nuốt an toàn.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 14 bộ unit test (FSRS, quiz, streak, text, settings, AI ×4, placement, word packs, dictionary ×2, dict cache).
+- 16 bộ unit test (FSRS, quiz, streak, text, settings, AI ×6 gồm Gemini/Groq/levels/retry/schema/errors, placement, word packs, dictionary ×2, dict cache).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -268,7 +275,9 @@ hạn môi trường, không phải lỗi code:**
 |---|---|---|
 | Install | `npm install` | exit 0 |
 | Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npm test -- --ci` | **14/14 suite, 153/153 test pass** (AI, placement, word packs, dictionary, dict cache) |
+| Unit test | `npx jest --ci --maxWorkers=2` | **16/16 suite, 186/186 test pass** (Gemini, Groq, levels, placement, word packs, dictionary, dict cache) |
+| Typecheck sau thay đổi | `npx tsc --noEmit` | **exit 0, 0 lỗi** |
+| Gọi Groq thật | — | **CHƯA CHẠY** — không có key trong môi trường này; request/parse/retry được test bằng `fetch` giả |
 | Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
 | Migration thật | `node:sqlite` chạy migration 1 → 2 | từ cũ giữ nguyên nghĩa/`reps`/`stability`/`due_at`; cột mới `NULL` / `'[]'` |
 | Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
