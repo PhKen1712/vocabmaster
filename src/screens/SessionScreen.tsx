@@ -60,6 +60,8 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
   const [retried, setRetried] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
+  const [coinNote, setCoinNote] = useState<{ amount: number; balance: number } | null>(null);
+  const [sessionCoins, setSessionCoins] = useState(0);
 
   const startedAt = useRef(Date.now());
   const questionStartedAt = useRef(Date.now());
@@ -95,6 +97,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
 
       const built = generateQuestions(candidates, pool.length > 0 ? pool : candidates, {
         limit: Math.min(20, candidates.length),
+        kinds: config.kinds,
       });
       setQuestions(built);
       setIndex(0);
@@ -106,6 +109,8 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
       setRetried(false);
       setWrongQuestions([]);
       setStats({ answered: 0, correct: 0 });
+      setCoinNote(null);
+      setSessionCoins(0);
       startedAt.current = Date.now();
       questionStartedAt.current = Date.now();
 
@@ -161,6 +166,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
 
   const finishWithGrade = useCallback(
     (result: GradeResult) => {
+      setCoinNote(null);
       setGrade(result);
       setPhase('feedback');
       setStats((previous) => ({
@@ -214,7 +220,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     try {
       const preview = previews.find((item) => item.rating === rating);
       if (!preview) throw new Error('Không tính được lịch ôn.');
-      await recordReview(db, {
+      const outcome = await recordReview(db, {
         word: question.word,
         rating,
         correct: grade.correct,
@@ -223,6 +229,10 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         schedule: preview.result,
         dailyGoal: settings.dailyGoal,
       });
+      if (outcome.coinChange !== 0) {
+        setCoinNote({ amount: outcome.coinChange, balance: outcome.coinBalance });
+        setSessionCoins((value) => value + outcome.coinChange);
+      }
       await notifyDataChanged();
 
       if (index + 1 >= questions.length) {
@@ -336,6 +346,14 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
           >
             Lịch ôn của từng từ đã được cập nhật. Từ trả lời sai sẽ quay lại sớm hơn.
           </AppText>
+          <AppText
+            variant="bodyStrong"
+            color={sessionCoins >= 0 ? colors.success : colors.danger}
+            style={{ marginTop: spacing.sm }}
+          >
+            {sessionCoins >= 0 ? '+' : ''}
+            {sessionCoins.toLocaleString('vi-VN')} xu trong buổi này
+          </AppText>
         </Card>
 
         {wrongQuestions.length > 0 && !retried ? (
@@ -366,6 +384,20 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         onBack={exit}
       />
       <ProgressBar value={progress} height={8} />
+
+      {coinNote ? (
+        <View style={{ marginTop: spacing.md }}>
+          <Banner
+            tone={coinNote.amount > 0 ? 'success' : 'warning'}
+            title={
+              coinNote.amount > 0
+                ? `+${coinNote.amount.toLocaleString('vi-VN')} xu`
+                : `${coinNote.amount.toLocaleString('vi-VN')} xu`
+            }
+            body={`Số dư hiện tại: ${coinNote.balance.toLocaleString('vi-VN')} xu`}
+          />
+        </View>
+      ) : null}
 
       <Card style={{ marginTop: spacing.lg, marginBottom: spacing.lg }}>
         <View style={styles.kindRow}>

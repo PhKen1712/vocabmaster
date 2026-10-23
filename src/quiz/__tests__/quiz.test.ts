@@ -144,4 +144,36 @@ describe('grading', () => {
     expect(comparison.matched).toEqual(['get', 'along']);
     expect(comparison.expected).toHaveLength(3);
   });
+
+  it('accepts a stored synonym when the question asks for meaning', () => {
+    const smart = makeWord({
+      id: '9',
+      term: 'intelligent',
+      meaningVi: 'thông minh',
+      synonyms: ['smart', 'clever', 'bright'],
+    });
+    const [question] = generateQuestions([smart], [...words, smart], {
+      kinds: ['typing'],
+      rng,
+    });
+    expect(gradeAnswer(question!, { text: 'smart' }).correct).toBe(true);
+    expect(gradeAnswer(question!, { text: 'Clever' }).correct).toBe(true);
+    expect(gradeAnswer(question!, { text: 'slow' }).correct).toBe(false);
+  });
+
+  it('keeps spelling and listening questions strict about synonyms', () => {
+    const smart = makeWord({
+      id: '10',
+      term: 'intelligent',
+      meaningVi: 'thông minh',
+      synonyms: ['smart'],
+      exampleEn: 'She is an intelligent student.',
+    });
+    const [cloze] = generateQuestions([smart], [...words, smart], {
+      kinds: ['cloze'],
+      rng,
+    });
+    expect(cloze?.options?.some((option) => option.label === 'intelligent')).toBe(true);
+    expect(cloze?.accepted).not.toContain('smart');
+  });
 });

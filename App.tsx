@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
@@ -25,10 +25,18 @@ import { WordFormScreen } from './src/screens/WordFormScreen';
 import { AiStudioScreen } from './src/screens/AiStudioScreen';
 import { SessionScreen } from './src/screens/SessionScreen';
 import { PlacementScreen } from './src/screens/PlacementScreen';
+import { ArcadeScreen } from './src/screens/ArcadeScreen';
+import { MusicScreen } from './src/screens/MusicScreen';
+import { AsteroidGameScreen } from './src/screens/AsteroidGameScreen';
+import { RushGameScreen } from './src/screens/RushGameScreen';
+import { MemoryGameScreen } from './src/screens/MemoryGameScreen';
+import { MusicProvider, useMusic } from './src/music/MusicProvider';
+import { PronunciationScreen } from './src/screens/PronunciationScreen';
+import { configureSpeech } from './src/speech/tts';
 
 configureNotificationHandler();
 
-const TAB_NAMES: TabName[] = ['today', 'study', 'words', 'stats', 'settings'];
+const TAB_NAMES: TabName[] = ['today', 'study', 'arcade', 'words', 'stats', 'settings'];
 
 function isTabRoute(name: string): name is TabName {
   return TAB_NAMES.includes(name as TabName);
@@ -72,6 +80,7 @@ function RootContent() {
   const { ready, bootError, settings } = useApp();
   const { current, goToTab, stack } = useNavigation();
   const { colors } = useTheme();
+  const music = useMusic();
 
   if (!ready) return <Splash />;
   if (bootError) return <BootError message={bootError} />;
@@ -90,6 +99,22 @@ function RootContent() {
     case 'study':
       content = <StudyScreen />;
       break;
+    case 'arcade':
+      content = <ArcadeScreen />;
+      break;
+    case 'music':
+      content = <MusicScreen />;
+      break;
+    case 'game':
+      content =
+        current.game === 'asteroid' ? (
+          <AsteroidGameScreen />
+        ) : current.game === 'rush' ? (
+          <RushGameScreen />
+        ) : (
+          <MemoryGameScreen />
+        );
+      break;
     case 'words':
       content = <WordsScreen />;
       break;
@@ -101,6 +126,9 @@ function RootContent() {
       break;
     case 'word':
       content = <WordDetailScreen id={current.id} />;
+      break;
+    case 'pronunciation':
+      content = <PronunciationScreen id={current.wordId} />;
       break;
     case 'wordForm':
       content = <WordFormScreen id={current.id} draft={current.draft} />;
@@ -122,6 +150,7 @@ function RootContent() {
     <KeyboardAvoidingView
       style={[styles.flex, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      onTouchStart={music.beginPlayback}
     >
       <View style={styles.flex}>{content}</View>
       {showTabBar ? (
@@ -134,6 +163,12 @@ function RootContent() {
 function ThemedApp() {
   const { settings } = useApp();
   const { isDark } = useTheme();
+
+  // Every screen speaks through the shared module, so one sync keeps the
+  // accent and male/female choice consistent everywhere.
+  useEffect(() => {
+    configureSpeech({ accent: settings.ttsAccent, voice: settings.ttsVoice });
+  }, [settings.ttsAccent, settings.ttsVoice]);
 
   return (
     <>
@@ -159,7 +194,9 @@ function ThemeGate() {
   const { settings } = useApp();
   return (
     <ThemeProvider mode={settings.themeMode}>
-      <ThemedApp />
+      <MusicProvider>
+        <ThemedApp />
+      </MusicProvider>
     </ThemeProvider>
   );
 }

@@ -1,5 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { DEFAULT_MUSIC_TRACK_ID, isMusicTrackId } from '../music/catalog';
+
 import {
   DEFAULT_AI_MODEL,
   DEFAULT_GROQ_MODEL,
@@ -30,7 +32,9 @@ export function sanitizeGroqModel(value: unknown): string {
 }
 
 export function sanitizeAiProvider(value: unknown): AiProvider {
-  return value === 'groq' ? 'groq' : 'gemini';
+  // Explicit Gemini choices are kept; a row saved before providers existed (or
+  // a corrupted value) gets Groq, which is the default for this release.
+  return value === 'gemini' ? 'gemini' : 'groq';
 }
 
 const SETTINGS_KEY = 'settings';
@@ -68,6 +72,8 @@ export function sanitizeSettings(raw: unknown): Settings {
         ? value.themeMode
         : DEFAULT_SETTINGS.themeMode,
     ttsAccent: value.ttsAccent === 'en-GB' ? 'en-GB' : 'en-US',
+    ttsVoice:
+      value.ttsVoice === 'female' || value.ttsVoice === 'male' ? value.ttsVoice : 'auto',
     remindersEnabled: Boolean(value.remindersEnabled),
     reminderHour: Math.round(asNumber(value.reminderHour, DEFAULT_SETTINGS.reminderHour, 0, 23)),
     reminderMinute: Math.round(
@@ -79,6 +85,18 @@ export function sanitizeSettings(raw: unknown): Settings {
     aiProvider: sanitizeAiProvider(value.aiProvider),
     aiModel: sanitizeAiModel(value.aiModel),
     groqModel: sanitizeGroqModel(value.groqModel),
+    // A row saved before music existed gets the new default (on); an explicit
+    // "off" is always respected.
+    musicEnabled:
+      value.musicEnabled === undefined ? DEFAULT_SETTINGS.musicEnabled : Boolean(value.musicEnabled),
+    musicTrackId: isMusicTrackId(value.musicTrackId)
+      ? value.musicTrackId
+      : DEFAULT_MUSIC_TRACK_ID,
+    musicVolume: asNumber(value.musicVolume, DEFAULT_SETTINGS.musicVolume, 0, 1),
+    musicMuted: Boolean(value.musicMuted),
+    bestAsteroid: Math.round(asNumber(value.bestAsteroid, 0, 0, 1_000_000)),
+    bestRush: Math.round(asNumber(value.bestRush, 0, 0, 1_000_000)),
+    bestMemory: Math.round(asNumber(value.bestMemory, 0, 0, 1_000_000)),
   };
 }
 

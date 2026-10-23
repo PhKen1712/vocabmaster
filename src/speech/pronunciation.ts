@@ -1,5 +1,6 @@
+import { displayTerm, normalizeAnswer } from '../lib/text';
 import { compareSpokenWords, gradeSpokenAnswer } from '../quiz/grading';
-import type { QuizQuestion } from '../types';
+import type { QuizQuestion, Word } from '../types';
 
 /**
  * What this module can and cannot do — important for honest feedback:
@@ -31,6 +32,27 @@ export interface SpeechCheckResult {
   segments: SpokenSegment[];
   /** Explanation to show under the result. */
   note: string;
+}
+
+/** A speaking question for a single saved word, used by the pronunciation lab. */
+export function pronunciationQuestion(word: Word): QuizQuestion {
+  return {
+    id: `pronunciation:${word.id}`,
+    wordId: word.id,
+    kind: 'speaking',
+    prompt: displayTerm(word.term),
+    helper: word.ipa,
+    example: word.exampleEn,
+    options: null,
+    answerId: null,
+    answerText: word.term,
+    accepted: [
+      normalizeAnswer(word.term),
+      normalizeAnswer(displayTerm(word.term)),
+      ...word.synonyms.map((synonym) => normalizeAnswer(synonym)),
+    ],
+    word,
+  };
 }
 
 export function buildSpeechCheck(

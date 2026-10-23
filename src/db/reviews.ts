@@ -1,5 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import {
+  getCoinBalance,
+  getValidStreakDays,
+  penalizeWordInTransaction,
+  rewardWordInTransaction,
+} from '../coins/ledger';
 import { dateKey } from '../lib/date';
 import { newId, nowIso } from '../lib/ids';
 import { isGoalMet } from '../streak/streak';
@@ -23,6 +29,9 @@ export interface RecordReviewResult {
   log: ReviewLog;
   word: Word;
   goalMet: boolean;
+  /** Signed coins change for this answer (0 when nothing moved). */
+  coinChange: number;
+  coinBalance: number;
 }
 
 /**
@@ -50,7 +59,12 @@ export async function recordReview(
 
   const wasNew = input.word.reps === 0;
   const day = dateKey(now);
+  // Read the multiplier before today's activity is updated: the answer that
+  // completes a milestone day still earns at the old step, matching the rule
+  // that old rewards are never recalculated.
+  const validDays = await getValidStreakDays(db, day);
   let goalMet = false;
+  let coinChange = 0;
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -116,6 +130,17 @@ export async function recordReview(
          updated_at = excluded.updated_at;`,
       [day, newWords, reviews, answered, correct, goalMet ? 1 : 0, timestamp],
     );
+
+    // Coins move inside the same transaction as the grade: a crash can never
+    // leave a paid word without its review, or the other way round. Speaking
+    // practice is intentionally excluded from both rewards and penalties.
+    if (input.mode !== 'speaking') {
+      if (input.correct) {
+        coinChange = await rewardWordInTransaction(db, input.word, validDays, now);
+      } else {
+        coinChange = await penalizeWordInTransaction(db, input.word, now);
+      }
+    }
   });
 
   const updatedWord: Word = {
@@ -130,7 +155,7 @@ export async function recordReview(
     updatedAt: timestamp,
   };
 
-  return { log, word: updatedWord, goalMet };
+  return { log, word: updatedWord, goalMet, coinChange, coinBalance: await getCoinBalance(db) };
 }
 
 export async function getWordHistory(

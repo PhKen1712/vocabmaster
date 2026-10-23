@@ -18,7 +18,7 @@ export type WordSource = 'manual' | 'ai' | 'seed' | 'import' | 'dictionary';
  */
 export type AiProvider = 'gemini' | 'groq';
 
-export const AI_PROVIDERS: readonly AiProvider[] = ['gemini', 'groq'];
+export const AI_PROVIDERS: readonly AiProvider[] = ['groq', 'gemini'];
 
 /**
  * Optional word fields a dictionary may not provide. Stored with the word so
@@ -194,6 +194,9 @@ export interface QuizQuestion {
 
 export type ThemeMode = 'system' | 'light' | 'dark';
 
+/** Preferred English voice. `auto` keeps whichever voice iOS ranks first. */
+export type TtsVoice = 'auto' | 'female' | 'male';
+
 export interface Settings {
   track: Track;
   level: Level;
@@ -203,6 +206,8 @@ export interface Settings {
   targetRetention: number;
   themeMode: ThemeMode;
   ttsAccent: 'en-US' | 'en-GB';
+  /** Male/female preference for the spoken voice; falls back per accent. */
+  ttsVoice: TtsVoice;
   remindersEnabled: boolean;
   reminderHour: number;
   reminderMinute: number;
@@ -216,6 +221,15 @@ export interface Settings {
   aiModel: string;
   /** Groq model id, used when `aiProvider` is `groq`. */
   groqModel: string;
+  /** Background music: on/off, selected loop, volume 0–1, temporary mute. */
+  musicEnabled: boolean;
+  musicTrackId: string;
+  musicVolume: number;
+  musicMuted: boolean;
+  /** Personal bests for the arcade modes, shown on the Chơi tab. */
+  bestAsteroid: number;
+  bestRush: number;
+  bestMemory: number;
 }
 
 /**
@@ -251,16 +265,38 @@ export const DEFAULT_SETTINGS: Settings = {
   targetRetention: 0.9,
   themeMode: 'system',
   ttsAccent: 'en-US',
+  ttsVoice: 'auto',
   remindersEnabled: false,
   reminderHour: 20,
   reminderMinute: 0,
   reminderWeekdays: [2, 3, 4, 5, 6, 7, 1],
   onboardingDone: false,
   widgetTrack: 'general',
-  aiProvider: 'gemini',
+  // Groq answered faster and stayed up while Gemini returned 503, so it is the
+  // default for new installs. Gemini is still one tap away in Settings.
+  aiProvider: 'groq',
   aiModel: DEFAULT_AI_MODEL,
   groqModel: DEFAULT_GROQ_MODEL,
+  musicEnabled: true,
+  musicTrackId: 'focus-forest',
+  musicVolume: 0.28,
+  musicMuted: false,
+  bestAsteroid: 0,
+  bestRush: 0,
+  bestMemory: 0,
 };
+
+/** One row of the in-app coin ledger. Coins are virtual and never cash. */
+export interface CoinEvent {
+  id: string;
+  kind: 'reward' | 'penalty' | 'reset';
+  wordId: string | null;
+  /** Signed change; rewards are positive, penalties and resets negative. */
+  amount: number;
+  balanceAfter: number;
+  reason: string | null;
+  createdAt: string;
+}
 
 export interface DailyStats {
   dueCount: number;

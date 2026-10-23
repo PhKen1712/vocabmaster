@@ -1,31 +1,39 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 
-import type { Level, Track, WordInput } from '../types';
+import type { Level, QuizKind, Track, WordInput } from '../types';
 
 export type SessionMode = 'mixed' | 'review' | 'new' | 'weak' | 'topic';
 
-export type TabName = 'today' | 'study' | 'words' | 'stats' | 'settings';
+export type TabName = 'today' | 'study' | 'arcade' | 'words' | 'stats' | 'settings';
+
+export type ArcadeGame = 'asteroid' | 'rush' | 'memory';
 
 export interface SessionConfig {
   mode: SessionMode;
   track: Track;
   topic?: string | null;
   level?: Level;
+  /** Restrict question types for a focused skill drill. */
+  kinds?: QuizKind[];
 }
 
 export type Route =
   | { name: 'today' }
   | { name: 'study' }
+  | { name: 'arcade' }
+  | { name: 'music' }
+  | { name: 'game'; game: ArcadeGame }
   | { name: 'words' }
   | { name: 'stats' }
   | { name: 'settings' }
   | { name: 'word'; id: string }
+  | { name: 'pronunciation'; wordId: string }
   | { name: 'wordForm'; id?: string; draft?: WordInput }
   | { name: 'ai' }
   | { name: 'session'; config: SessionConfig }
   | { name: 'placement' };
 
-export const TAB_ROUTES: TabName[] = ['today', 'study', 'words', 'stats', 'settings'];
+export const TAB_ROUTES: TabName[] = ['today', 'study', 'arcade', 'words', 'stats', 'settings'];
 
 interface NavigationContextValue {
   current: Route;

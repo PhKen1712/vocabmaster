@@ -3,10 +3,10 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-23",
-  "current_phase": "Phases 1-6 code written. 2026-10-23 added a second way to build a word set: paste a list and look it up through dict.minhqnd.com (Vietnamese meanings, IPA, audio) + api.dictionaryapi.dev (English definitions, examples), with schema v2 (dict_source, missing_fields, dictionary_cache), 3-request concurrency, 8 s deadline, single-layer retry, 30-day cache and honest missing-field labels. Typecheck 0 errors, 153/153 unit tests, live lookup of 6 words in 906 ms, migration 1→2 replayed on real SQLite. + **Groq là nhà cung cấp AI thứ hai, chọn được trong Cài đặt (2026-10-23)** + **cấp độ CEFR tự tra cho từng từ trong danh sách dán (2026-10-23)**",
+  "last_updated": "2026-10-24",
+  "current_phase": "Phases 1-6 code written. 2026-10-24 session 11: ambient music (5 generated loops, library/search/mute/volume, ducking while speaking), three arcade games built from the learner vocabulary, six focused skill drills, schema v3 coin ledger and streak_restores, one-day streak repair (double new-word goal, once per run, resets the coin multiplier), male/female TTS voice selection and a single-word pronunciation lab. Groq is the default provider. Typecheck 0 errors, 242/242 unit tests in 22 suites, verify ALL PASS, migration 1-3 replayed on real node:sqlite with duplicate-reward and duplicate-restore indexes proven.",
   "current_branch": "main",
-  "current_commit": "main · Groq provider + auto CEFR levels (2026-10-23, xem git log); remote phamkenn/vocabmaster (private)",
+  "current_commit": "main · music, arcade, coins and pronunciation (2026-10-24, xem git log); remote phamkenn/vocabmaster (private)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -170,6 +170,36 @@
       "name": "Per-word CEFR level detection for pasted word lists",
       "status": "tested",
       "evidence": "src/data/packs.ts packLevel (bundled packs, free and instant), src/ai/levels.ts (one batch request for the whole list, either provider), DictEntry.level/levelSource, useWordListLookup starts level estimation in parallel with the dictionary, AiStudioScreen shows band + source per card and saves the detected level. The settings level is only the fallback for words nobody could rate, and the screen says so. Tests: levels.test.ts (5), packLevel (3), entryToWordInput level (1)."
+    },
+    {
+      "name": "Ambient music with library, search, mute and volume controls",
+      "status": "tested",
+      "evidence": "scripts/generate-music.mjs synthesises five royalty-free loops (2.7 MB); src/music/catalog.ts metadata + search, tracks.ts static require map, MusicProvider.tsx single looping player that pauses in background, respects the silent switch and mixes with other audio, music/duck.ts lowers music to 22% while speech plays; MusicScreen.tsx library; Settings has enable, volume, mute. Tests: src/music/__tests__/catalog.test.ts."
+    },
+    {
+      "name": "Three arcade games built from the learner vocabulary",
+      "status": "tested",
+      "evidence": "Pure engines src/games/{asteroid,rush,memory}.ts with tests for spawn, typing prefixes, misses, timer and matching. Screens AsteroidGameScreen/RushGameScreen/MemoryGameScreen + GameShell + ArcadeScreen tab with personal bests. Words come from the local DB, weak words first and shuffled per run. Games never touch coins."
+    },
+    {
+      "name": "Six focused skill drills on the Study tab",
+      "status": "tested",
+      "evidence": "SessionConfig.kinds limits a session to typing, listening, cloze, context, confusable or speaking; StudyScreen lists all six with descriptions. Synonym answers are accepted for meaning questions only (src/quiz/generator.ts), with tests."
+    },
+    {
+      "name": "Virtual coin economy with append-only ledger",
+      "status": "tested",
+      "evidence": "src/coins/values.ts + ledger.ts; schema v3 coin_ledger with a partial unique reward index, bonus streak counter from daily_activity, penalties clipped at zero; recordReview writes coins in the same transaction as the review; Settings shows balance, multiplier, next milestone and history, with a confirm-gated reset that only zeroes the wallet. Speaking questions are excluded. Tests: src/coins/__tests__/coins.test.ts."
+    },
+    {
+      "name": "One-day streak repair with double new-word goal",
+      "status": "tested",
+      "evidence": "src/streak/streak.ts streakRestoreOffer + bonusStreakDays, src/db/streakRestore.ts (unique lost_from, progress re-read at completion), TodayScreen card with progress and confirmation. Repaired days show in the streak but are excluded from the coin multiplier. Tests: src/streak/__tests__/restore.test.ts."
+    },
+    {
+      "name": "Male/female TTS voices and single-word pronunciation lab",
+      "status": "tested",
+      "evidence": "src/speech/voices.ts picks a voice per accent/gender and reports exact/accent-only/none; configureSpeech keeps every screen consistent; Settings adds voice chips and a fallback warning. PronunciationScreen is reachable from word detail via Kiểm tra phát âm, reuses useSpeechCheck and clearly states recognition is not a phoneme score. No coins or streak changes. Tests: voices.test.ts, pronunciation.test.ts."
     }
   ],
   "in_progress_features": [
@@ -185,12 +215,6 @@
       "status_detail": "code_implemented_never_built",
       "evidence": "widgets/, app.json expo-widgets plugin",
       "blocked_by": "Apple Developer Program + EAS build + iPhone"
-    },
-    {
-      "name": "Pronunciation feedback",
-      "status": "implemented",
-      "status_detail": "word_match_only_no_phoneme_scoring",
-      "evidence": "src/speech/pronunciation.ts"
     },
     {
       "name": "Checkpoint consistency verification",
@@ -221,16 +245,6 @@
       "reason": "new screen, uses the same Gemini service layer"
     },
     {
-      "name": "Asteroid arcade minigame built from stored words",
-      "status": "planned",
-      "reason": "no game engine yet; evaluate React Native Animated before adding a library"
-    },
-    {
-      "name": "Extra study modes (context, collocation, sentence building)",
-      "status": "planned",
-      "reason": "quiz generator already covers 9 question types; extend rather than duplicate"
-    },
-    {
       "name": "EAS project init and credentials",
       "status": "planned",
       "reason": "requires Expo/Apple accounts"
@@ -259,6 +273,16 @@
       "name": "Widget tap deep link to a specific screen",
       "status": "planned",
       "reason": "no documented API in expo-widgets; widget opens app only"
+    },
+    {
+      "name": "Collocation training, sentence building and a dedicated synonym challenge",
+      "status": "planned",
+      "reason": "the six current drills cover typing, listening, cloze, context, confusable words and speaking; these three need new question kinds and grading rules"
+    },
+    {
+      "name": "Groq as the primary content source for manually pasted word lists",
+      "status": "planned",
+      "reason": "today the dictionary is primary (IPA/audio/offline) and AI only fills a missing Vietnamese meaning; switching sources needs a quality comparison and a merge rule"
     }
   ],
   "known_bugs": [
@@ -440,23 +464,43 @@
     {
       "capability": "Dictionary lookup works on the iPhone and the pasted-list mode saves words",
       "how_to_verify": "Install the 2026-10-23 build; open Tạo bộ từ → Nhập danh sách từ; paste criminal, civil, justice, evidence; confirm meanings appear one by one, then save and open Từ vựng"
+    },
+    {
+      "capability": "Background music plays, ducks while a word is spoken and restores its saved volume after a restart",
+      "how_to_verify": "Install the new build, choose a track, adjust volume, speak a word, background the app and reopen"
+    },
+    {
+      "capability": "The three arcade games run smoothly and pause/resume/exit correctly on an iPhone",
+      "how_to_verify": "Play each mode, let an asteroid reach the bottom, pause, background the app"
+    },
+    {
+      "capability": "Male/female English voices exist for the chosen accent and the fallback message is accurate",
+      "how_to_verify": "Settings → Phát âm: try both genders and accents, listen to the sample"
+    },
+    {
+      "capability": "Coins are awarded once per word and penalties never make the balance negative on device",
+      "how_to_verify": "Learn a new word correctly, review it wrong, open Settings → Kinh tế"
+    },
+    {
+      "capability": "A one-day broken streak is restored only after twice the daily new-word goal",
+      "how_to_verify": "Miss a day, learn the double quota, press Khôi phục streak on Today"
     }
   ],
   "test_results": {
-    "last_run": "2026-10-23",
+    "last_run": "2026-10-24",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npm run typecheck exit 0; npx jest --ci --maxWorkers=2: 16/16 suites, 186/186 tests. No test calls Gemini or Groq; both are mocked fetch fakes. A plain `npx jest --ci` runs out of worker memory on this Windows machine, so 2 workers are used.",
+    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 22/22 suites, 242/242 tests; node scripts/verify.mjs ALL PASS. No test calls Gemini, Groq, the dictionary APIs or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine.",
     "typecheck": {
-      "command": "npm run typecheck (tsc --noEmit, TypeScript 6.0.3)",
+      "command": "npx tsc --noEmit (TypeScript 6.0.3)",
       "exit_code": 0,
       "errors": 0
     },
     "unit_tests": {
-      "command": "npx jest --ci --maxWorkers=2",
+      "command": "npx jest --runInBand",
       "exit_code": 0,
-      "suites_passed": 16,
+      "suites_passed": 22,
       "suites_failed": 0,
-      "tests_passed": 186,
+      "tests_passed": 242,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -470,14 +514,15 @@
       "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
     },
     "commands_pending": [
-      "npm run verify on the final tree (documentation edits included)",
-      "Install the 2026-10-23 build and run both creation modes on the iPhone",
-      "Device verification of widget / speech / notifications / Gemini"
+      "Build the 2026-10-24 tree with the macOS workflow, install the IPA, and run the device checklist in NEXT_SESSION.md",
+      "Device verification of music (ducking, background pause, stored volume), all three games, male/female voices, pronunciation permission errors, coins and streak repair",
+      "Widget / speech / notifications / live Gemini / live dictionary are still unverified on device"
     ],
     "suites_written": [
       "src/srs/__tests__/fsrs.test.ts",
       "src/quiz/__tests__/quiz.test.ts",
       "src/streak/__tests__/streak.test.ts",
+      "src/streak/__tests__/restore.test.ts",
       "src/lib/__tests__/text.test.ts",
       "src/db/__tests__/settings.test.ts",
       "src/ai/__tests__/gemini.test.ts",
@@ -488,11 +533,16 @@
       "src/data/__tests__/packs.test.ts",
       "src/dict/__tests__/list.test.ts",
       "src/dict/__tests__/lookup.test.ts",
-      "src/db/__tests__/dictCache.test.ts"
+      "src/db/__tests__/dictCache.test.ts",
+      "src/coins/__tests__/coins.test.ts",
+      "src/music/__tests__/catalog.test.ts",
+      "src/games/__tests__/games.test.ts",
+      "src/speech/__tests__/voices.test.ts",
+      "src/speech/__tests__/pronunciation.test.ts"
     ],
     "device_tests": {
-      "status": "not_run",
-      "reason": "No installed build / no connected iPhone in this session"
+      "status": "user_reported_pass_partial",
+      "reason": "The user reported Groq generation working smoothly on the iPhone (2026-10-23). Nothing from the 2026-10-24 session (music, games, voices, pronunciation lab, coins, streak repair) has been run on a device."
     },
     "build_tests": {
       "status": "not_run",
@@ -513,13 +563,25 @@
         "truncated JSON salvage keeps complete items",
         "a hanging fetch is cancelled instantly when the learner leaves,",
         "a hanging fetch reports timeout at the per-attempt deadline instead of freezing",
-        "a timeout is not retried: one call, then the timeout message"
+        "a timeout is not retried: one call, then the timeout message",
+        "Groq request shape (Bearer key, json_object, hidden reasoning, max_completion_tokens)",
+        "Groq per-minute 429 honours retry-after; a daily 429 is not retried",
+        "Groq retired model is replaced once from GET /openai/v1/models",
+        "Groq key + model check without spending content tokens"
       ],
       "not_covered": [
         "any live Gemini call with a real key",
         "behaviour of the real Gemini 429 body for per-minute vs per-day quota",
         "on-device React Native AbortController behaviour"
-      ]
+      ],
+      "live": {
+        "status": "user_reported_pass",
+        "date": "2026-10-23",
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b (default)",
+        "evidence": "The user reported in chat: \"groq chạy cực mượt và tốt\" after using it in the app. No build number, screenshot or log was supplied, so this is a user report, not an inspection.",
+        "still_unverified": "A live Gemini call with the user key; latency and quota use were not measured."
+      }
     },
     "dictionary_checks": {
       "status": "live_endpoints_verified_ui_not",
@@ -537,6 +599,16 @@
         "React Native AbortController behaviour during a lookup",
         "a live Gemini call from the pasted-list flow (mocked only)",
         "published rate limits for dict.minhqnd.com (none documented; app self-limits to 3 concurrent)"
+      ]
+    },
+    "migration_checks": {
+      "command": "node:sqlite import of src/db/schema.ts, migrations 1-3 on :memory:",
+      "result": "OK",
+      "details": [
+        "coin_ledger and streak_restores created",
+        "a pre-existing learned word (reps 3) got a zero-amount legacy reward marker so coins are never paid retroactively",
+        "second reward for the same word rejected by the partial unique index",
+        "second repair anchored to the same lost run rejected by the unique lost_from index"
       ]
     }
   },
@@ -771,13 +843,10 @@
     }
   ],
   "next_steps": [
-    "Paste the Groq key in Cài đặt → AI → Groq, run one generation, then compare Vietnamese meaning and IPA quality against Gemini on the same words.",
-    "On the iPhone: Nhập danh sách từ with ~10 mixed-level words and check that each card shows its own band, including a word the bundled packs do not contain.",
-    "Run node scripts/verify.mjs, then push; the main-branch workflow builds one unsigned IPA containing these changes.",
-    "On the iPhone: Tạo bộ từ → Nhập danh sách từ with \"criminal, civil, justice, evidence\"; check Vietnamese meanings, IPA, the \"Thiếu:\" line and the retry button after airplane mode.",
-    "Expand the bundled packs in 200-300 word batches (general A1/A2 first) as planned in docs/WORD_BANK.md.",
-    "Add IPA for packed words from CMUdict (public licence) instead of inventing it.",
-    "Continue phases 4-6 of the upgrade plan (bilingual study view, translation workspace, asteroid minigame)."
+    "Build the 2026-10-24 tree with the macOS workflow, install the IPA and run the new device checklist in NEXT_SESSION.md.",
+    "Decide whether to keep the dictionary-first manual list flow, or add Groq primary generation plus a merge rule for IPA/audio.",
+    "Expand the bundled packs in 200-300 word batches and add CMUdict IPA.",
+    "Run node scripts/verify.mjs after any doc edit, then commit and push."
   ],
   "blocked_by": [
     {

@@ -4,6 +4,84 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-24 — Phiên 11: nhạc nền, ba trò chơi, xu ảo, khôi phục chuỗi, giọng đọc và phòng luyện phát âm
+
+### Bối cảnh
+
+- Người dùng muốn app "vui nhộn" hơn: nhạc nền có thể chọn/mute/chỉnh âm lượng, game học từ thật
+  (bắn thiên thạch), thêm cách học, giao diện đẹp hơn, **Groq làm AI mặc định**, ghi tên tác giả và
+  push lên Git. Yêu cầu kèm theo: sửa lỗi chấm từ đồng nghĩa, hệ thống xu, khôi phục streak và
+  kiểm tra phát âm ngay trong kho từ.
+- Ràng buộc giữ nguyên: dữ liệu SQLite trên máy, không server, không phá dữ liệu cũ, mọi tính năng
+  phải chạy offline (trừ phần gọi AI).
+
+### Đã thay đổi
+
+- **Nhạc nền** — `scripts/generate-music.mjs` tổng hợp 5 bản loop 32–64 giây (focus-forest,
+  lofi-night, pixel-run, sunrise, deep-space; 2,7 MB, không dùng mẫu âm thanh có bản quyền).
+  `src/music/catalog.ts` (metadata + tìm kiếm), `tracks.ts` (require tĩnh cho Metro),
+  `MusicProvider.tsx` (một player duy nhất, loop, **chỉ bắt đầu sau thao tác đầu tiên** để không tự
+  phát khi vừa mở app, dừng khi app xuống nền, tôn trọng công tắc im lặng, mix với audio khác),
+  `MusicScreen.tsx` (thư viện, tìm kiếm, phát thử, chọn bài, mute, âm lượng),
+  `music/duck.ts` + TTS tự giảm nhạc còn 22% khi phát âm. Cài đặt có bật/tắt, âm lượng, mute.
+- **Trò chơi** — engine thuần, có test: `src/games/asteroid.ts` (gõ đúng từ để bắn nổ, 3 khiên, combo,
+  tốc độ tăng dần, tạm dừng), `rush.ts` (60 giây, 4 đáp án), `memory.ts` (ghép cặp). Màn hình
+  `AsteroidGameScreen`, `RushGameScreen`, `MemoryGameScreen`, khung chung `GameShell`, tab **Chơi**
+  (`ArcadeScreen`) có kỷ lục từng game. Cả ba có nút **tạm dừng / tiếp tục / thoát** và tự tạm
+  dừng khi app xuống nền (`src/games/useGamePause.ts`). Từ của game lấy từ kho hiện tại, **ưu tiên
+  từ hay sai** và xáo thứ tự mỗi lượt. Game **không** cộng xu — đúng yêu cầu tách điểm game khỏi tiền xu.
+- **Luyện từng kỹ năng** — `SessionConfig.kinds` cho phép một buổi chỉ hỏi một dạng; StudyScreen có
+  sáu thẻ: Viết từ, Nghe & chọn, Điền vào câu, Theo định nghĩa, Phân biệt từ, Phát âm.
+- **Chấm từ đồng nghĩa** — câu hỏi gõ từ chấp nhận các synonym đã lưu (đã chuẩn hoá), nhưng câu
+  chính tả/nghe/cloze vẫn chấm đúng từng chữ; thêm test cho cả hai phía.
+- **Hệ thống xu** — `src/coins/values.ts` (bảng giá theo cấp, hệ số mỗi 10 ngày, chặn số dư âm),
+  `src/coins/ledger.ts` (ledger append-only; thưởng một lần/từ nhờ unique index; trừ khi ôn sai;
+  reset ghi sự kiện), schema **v3** thêm `coin_ledger` + `streak_restores`, và migration đánh dấu
+  mọi từ đã học trước bản này bằng một dòng 0 xu để **không thưởng hồi tố**. `recordReview` cộng/trừ
+  xu trong **cùng transaction** với điểm và ghi lịch sử ôn. Luyện nói không cộng/trừ.
+- **Khôi phục chuỗi** — `streakRestoreOffer` chỉ đề nghị khi bỏ lỡ đúng một ngày và ngày trước đó có
+  chuỗi; mục tiêu = 2 × mục tiêu ngày, **chỉ tính từ mới**; mỗi chuỗi chỉ cứu được một lần
+  (`lost_from` unique). Ngày đã cứu hiện trong streak nhưng **không** tính vào bộ đếm hệ số xu
+  (`bonusStreakDays` cắt tại ngày cứu). Thẻ khôi phục nằm trên trang Hôm nay, có xác nhận trước khi cứu.
+- **Xu trên giao diện** — trang Hôm nay hiện số dư + hệ số + số ngày hợp lệ; cuối buổi học hiện tổng
+  xu; Cài đặt → **Kinh tế · Xu ảo** có số dư, mốc hệ số kế tiếp, 8 giao dịch gần nhất và nút
+  **Reset tiền xu** (hộp thoại cảnh báo, chỉ reset số dư, không đụng từ/streak/lịch sử).
+- **Giọng đọc** — `src/speech/voices.ts` chọn giọng theo accent + nam/nữ, ưu tiên bản enhanced/premium,
+  báo `exact`/`accent-only`/`none`; `tts.ts` nhận lựa chọn chung qua `configureSpeech` (gọi một lần
+  trong `App.tsx`), nên mọi màn hình dùng đúng giọng. Cài đặt thêm ba nút Tự động/Nữ/Nam, cảnh báo
+  khi máy chưa cài tổ hợp đó và nút nghe thử.
+- **Phòng luyện phát âm** — nút **Kiểm tra phát âm** trong chi tiết từ mở `PronunciationScreen`:
+  nghe mẫu, micro, trạng thái nghe/xử lý, bản ghi nhận, kết quả khớp/không khớp, nói lại, chuyển sang
+  nhận diện qua mạng khi thiếu gói ngoại tuyến. Màn hình nói rõ đây là so khớp từ, **không phải điểm
+  phát âm**, và không đổi xu/streak.
+- **Groq là mặc định** — `DEFAULT_SETTINGS.aiProvider = 'groq'` (đã có từ phiên trước) và
+  `sanitizeAiProvider` nay trả `groq` cho settings cũ thiếu trường này; thứ tự nút trong Cài đặt là
+  Groq trước. Lựa chọn `gemini` đã lưu vẫn được giữ nguyên.
+- **Tác giả** — Cài đặt → Thông tin ghi **Dev: Phạm Bảo Lâm**; README cũng ghi tên tác giả.
+- **Tài liệu** — README, CHANGELOG, CHECKPOINT.md, CHECKPOINT.json, NEXT_SESSION.md cập nhật theo
+  trạng thái thật.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi** (đã sửa lỗi `TextInput` ref trong màn hình bắn thiên thạch).
+- `npx jest --runInBand` → **22/22 suite, 242/242 test pass**, gồm test mới cho xu, hệ số, khôi phục
+  chuỗi, chọn giọng, câu hỏi phát âm và chấm synonym.
+- `node scripts/verify.mjs` → **ALL PASS** (typecheck + 242 test + checkpoint validate).
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- **Chưa build/chạy trên iPhone** trong phiên này (Windows, không có macOS/EAS): nhạc thật, game,
+  micro, giọng nam/nữ và animation chưa được kiểm trên thiết bị.
+- Chưa gọi Groq/Gemini/từ điển thật trong phiên này; toàn bộ test AI vẫn dùng `fetch` giả.
+- **Nhập danh sách từ vẫn ưu tiên từ điển**, chỉ dùng AI bổ sung nghĩa khi từ điển thiếu — chưa đổi
+  sang "Groq là nguồn chính" cho chế độ này. Giữ từ điển vì IPA/audio/offline, nhưng nghĩa Việt vẫn
+  có thể hàn lâm ở một số từ.
+- Chưa có collocation training, sentence building hay synonym challenge riêng; mới có sáu dạng luyện
+  ở trên.
+- Hiệu ứng âm thanh trong game (SFX) chưa có; game dùng haptics của iOS.
+
+---
+
 ## 2026-10-23 — Phiên 10: Groq là nhà cung cấp AI thứ hai + cấp độ tự tra cho danh sách từ
 
 ### Bối cảnh
@@ -55,11 +133,17 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
   hết bộ nhớ worker trên Windows.
 - `node scripts/verify.mjs` → **ALL PASS**.
 
+### Đã kiểm chứng trên máy (người dùng báo, 2026-10-23)
+
+- **Groq chạy thật và mượt**: người dùng báo "groq chạy cực mượt và tốt" sau khi dùng trong app.
+  Đây là báo cáo của người dùng, **không phải** quan sát của phiên làm việc này: không có build
+  number, ảnh chụp hay log, và chưa đo latency/hạn mức.
+
 ### Chưa kiểm chứng (phải nói rõ)
 
-- **Chưa gọi Groq thật**: môi trường này không có key. Request shape, retry, quota, model replacement
-  chỉ được chứng minh bằng `fetch` giả.
-- Chưa chạy app trên iPhone: chưa thấy UI chọn provider, chưa thấy cấp độ hiện trên thẻ từ thật.
+- Chưa kiểm **thẻ cấp độ CEFR** ở chế độ Nhập danh sách trên máy, chưa kiểm Gemini sau thay đổi.
+- Request shape, retry, quota và model replacement của Groq trước đó chỉ được chứng minh bằng
+  `fetch` giả; đường chạy thật nay đã có người dùng xác nhận nhưng vẫn chưa đo số liệu.
 - Số liệu Groq dưới đây lấy từ docs ngày 2026-10-23, có thể đổi: `openai/gpt-oss-120b`,
   `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` là model production/preview còn dùng; `llama-3.3-70b-versatile`
   đã chuyển sang Enterprise (không dùng được với key miễn phí). Base limits ~30 RPM, 1K RPD,

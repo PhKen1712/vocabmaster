@@ -2,8 +2,11 @@
 
 Ứng dụng học từ vựng tiếng Anh cá nhân trên iPhone, viết bằng React Native + Expo, có
 **widget thật** trên màn hình chính và màn hình khóa, ôn tập theo FSRS, hai hệ thống
-General English / IELTS, phát âm, luyện nói, streak, nhắc nhở, gợi ý từ bằng Gemini và
-**tra từ điển miễn phí** (nghĩa Việt + IPA + ví dụ) cho danh sách từ bạn tự nhập.
+General English / IELTS, phát âm, luyện nói, streak, nhắc nhở, gợi ý từ bằng **Groq (mặc định)
+hoặc Gemini**, **tra từ điển miễn phí** (nghĩa Việt + IPA + ví dụ) cho danh sách từ bạn tự nhập,
+**nhạc nền tự tạo**, **ba trò chơi học từ**, **xu ảo** và **khôi phục chuỗi ngày học**.
+
+**Dev: Phạm Bảo Lâm**
 
 - Đường dẫn dự án: `C:\Users\Lenovo\Desktop\VocabMaster`
 - Nền tảng: iOS 18+ (iPhone), phát triển trên Windows
@@ -51,12 +54,12 @@ npm start
 Chọn nhà cung cấp trong **Cài đặt → AI** bằng hai nút **Gemini** / **Groq**. Mỗi bên có key và
 model riêng, lưu ở hai ô Keychain khác nhau, nên đổi qua lại **không mất key** và không phải dán lại.
 
-| | Gemini (mặc định) | Groq |
+| | Groq (mặc định) | Gemini |
 |---|---|---|
-| Lấy key | https://aistudio.google.com/apikey | https://console.groq.com/keys |
-| Dạng key | `AIza…` | `gsk_…` |
-| Model mặc định | `gemini-3.8-flash` | `openai/gpt-oss-120b` |
-| Điểm mạnh | Tiếng Việt và IPA tốt hơn | Trả lời rất nhanh, ít bị 503 hơn |
+| Lấy key | https://console.groq.com/keys | https://aistudio.google.com/apikey |
+| Dạng key | `gsk_…` | `AIza…` |
+| Model mặc định | `openai/gpt-oss-120b` | `gemini-3.8-flash` |
+| Điểm mạnh | Trả lời rất nhanh, ít bị 503 hơn | Tiếng Việt và IPA tốt hơn |
 | Hạn mức miễn phí | Theo model, theo ngày | ~1.000 request + 8.000 token/phút + 200.000 token/ngày |
 
 Groq dùng model nhỏ hơn Gemini nên nghĩa tiếng Việt và phiên âm có thể kém chính xác hơn — hãy
@@ -164,6 +167,33 @@ Thêm widget → VocabMaster.
 
 iOS quyết định thời điểm làm mới widget; app đẩy dữ liệu khi bạn học/sửa từ/mở lại app.
 Widget không gọi mạng và không gọi Gemini.
+
+## Nhạc nền, trò chơi và xu ảo
+
+- **Nhạc nền**: 5 bản loop tự tạo bằng script (`scripts/generate-music.mjs`), không dùng âm thanh có
+  bản quyền, tổng dung lượng khoảng 2,7 MB. Tab **Chơi → Nhạc nền** (hoặc Cài đặt) có tìm theo tên/tâm
+  trạng, chọn bài, bật/tắt, mute và âm lượng 0–100%. Nhạc **không tự phát khi vừa mở app** — chỉ bắt
+  đầu sau thao tác đầu tiên; sau đó tự dừng khi app xuống nền và tự giảm khi phát âm từ hoặc luyện
+  nói. Lựa chọn lưu trong SQLite nên mở lại app vẫn giữ nguyên.
+- **Ba trò chơi** dùng chính bộ từ của bạn (ưu tiên từ hay sai, đổi thứ tự mỗi lượt):
+  - **Bắn thiên thạch**: đọc nghĩa tiếng Việt trên thiên thạch và gõ đúng từ tiếng Anh để bắn nổ;
+    gõ sai không được điểm, thiên thạch chạm đáy mất một khiên, có combo và tạm dừng.
+  - **60 giây**: chọn nghĩa đúng nhanh nhất trong 60 giây.
+  - **Cặp đôi từ vựng**: lật thẻ ghép từ với nghĩa.
+
+  Cả ba game đều có nút **tạm dừng / tiếp tục / thoát**, và tự tạm dừng khi bạn chuyển app sang nền
+  để không mất lượt chơi trong lúc nghe điện thoại.
+- **Xu ảo** (không phải tiền thật, không quy đổi): từ mới trả 100 xu (Starter) → 1.000 xu (C1/C2)
+  khi bạn trả lời đúng **lần đầu**; mỗi 10 ngày học liên tục tăng hệ số 0,1; ôn sai bị trừ đúng giá
+  trị gốc của từ và số dư không bao giờ âm. Toàn bộ giao dịch nằm trong một ledger SQLite, mỗi từ chỉ
+  được thưởng một lần (ràng buộc bằng unique index), và không cộng/trừ xu khi luyện nói.
+- **Khôi phục chuỗi**: nếu bỏ lỡ đúng một ngày, app hiện thẻ "Bạn đã mất chuỗi N ngày"; học **gấp đôi**
+  số từ mới trong ngày (chỉ từ mới, không tính ôn) để nối lại. Chuỗi chỉ được cứu một lần, và sau khi
+  cứu hệ số thưởng xu trở về 1,0.
+- **Kiểm tra phát âm**: mở một từ trong kho → **Kiểm tra phát âm** để nghe mẫu và đọc lại. Kết quả nói
+  thật: app chỉ xác nhận hệ thống có nhận ra đúng từ hay không, không chấm điểm từng âm vị.
+- **Giọng đọc**: chọn Anh–Mỹ / Anh–Anh và Tự động / Nữ / Nam; nếu iPhone chưa cài tổ hợp đó, app nói
+  rõ đang dùng giọng thay thế thay vì âm thầm đổi giọng.
 
 ## Dữ liệu và sao lưu
 

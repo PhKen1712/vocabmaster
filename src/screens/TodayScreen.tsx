@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
+import { providerLabel } from '../ai/provider';
+import { getCoinSummary, type CoinSummary } from '../coins/ledger';
 import { getActivityForDate, getStreak } from '../db/activity';
+import { completeStreakRestore, getRestoreState, type RestoreState } from '../db/streakRestore';
 import { getCounts, getWeakWords, getWordOfTheDay } from '../db/words';
 import { dateKey, formatRelativeDue } from '../lib/date';
 import { displayTerm } from '../lib/text';
@@ -21,26 +24,32 @@ interface TodayData {
   streak: number;
   word: Word | null;
   weak: { word: Word; wrongCount: number }[];
+  coins: CoinSummary;
+  restore: RestoreState;
 }
 
 export function TodayScreen() {
-  const { db, settings, updateSettings, dataVersion, ready } = useApp();
+  const { db, settings, updateSettings, dataVersion, ready, notifyDataChanged } = useApp();
   const { push } = useNavigation();
   const { colors } = useTheme();
   const [data, setData] = useState<TodayData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [restoreDismissed, setRestoreDismissed] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   const load = useCallback(async () => {
     if (!db) return;
     setLoading(true);
     try {
       const today = dateKey();
-      const [counts, activity, streak, word, weak] = await Promise.all([
+      const [counts, activity, streak, word, weak, coins, restore] = await Promise.all([
         getCounts(db, settings.track),
         getActivityForDate(db, today),
         getStreak(db, today),
         getWordOfTheDay(db, settings.track, today),
         getWeakWords(db, settings.track, 3),
+        getCoinSummary(db, today),
+        getRestoreState(db, settings.dailyGoal, today),
       ]);
       setData({
         due: counts.due,
@@ -49,6 +58,8 @@ export function TodayScreen() {
         streak: streak.current,
         word,
         weak,
+        coins,
+        restore,
       });
     } finally {
       setLoading(false);
@@ -62,6 +73,38 @@ export function TodayScreen() {
   const goal = Math.max(1, settings.dailyGoal);
   const done = data?.done ?? 0;
   const streak = data?.streak ?? 0;
+  const coins = data?.coins ?? null;
+  const restore = restoreDismissed ? null : data?.restore.offer ?? null;
+
+  const confirmRestore = () => {
+    if (!restore || !db) return;
+    Alert.alert(
+      `Khôi phục chuỗi ${restore.lostDays} ngày?`,
+      `Bạn đã học đủ ${restore.progressNewWords} từ mới hôm nay, đạt mục tiêu ${restore.targetNewWords}. Sau khi khôi phục, hệ số thưởng xu sẽ về 1,0 và phải tích lại từ đầu.`,
+      [
+        { text: 'Để sau', style: 'cancel', onPress: () => setRestoreDismissed(true) },
+        {
+          text: 'Khôi phục',
+          onPress: async () => {
+            setRestoring(true);
+            try {
+              const ok = await completeStreakRestore(db, restore);
+              await notifyDataChanged();
+              await load();
+              Alert.alert(
+                ok ? 'Đã khôi phục chuỗi' : 'Chưa thể khôi phục',
+                ok
+                  ? 'Chuỗi ngày học đã được nối lại. Hệ số thưởng xu bắt đầu lại từ 1,0.'
+                  : 'Mục tiêu chưa hoàn tất hoặc chuỗi này đã được khôi phục trước đó.',
+              );
+            } finally {
+              setRestoring(false);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   if (!ready || loading) {
     return (
@@ -134,7 +177,54 @@ export function TodayScreen() {
             ? 'Đã đạt mục tiêu hôm nay. Học thêm vẫn được tính vào chuỗi.'
             : `Còn ${goal - done} lượt nữa để hoàn thành mục tiêu.`}
         </AppText>
+        <View style={styles.coinLine}>
+          <AppText variant="caption" color={colors.warning}>
+            🪙 {(coins?.balance ?? 0).toLocaleString('vi-VN')} xu
+          </AppText>
+          <AppText variant="caption" color={colors.textMuted}>
+            Hệ số x{(coins?.multiplier ?? 1).toFixed(1)} · {coins?.validStreakDays ?? 0} ngày hợp lệ
+          </AppText>
+        </View>
       </Card>
+
+      {restore ? (
+        <Card style={{ marginBottom: spacing.lg, borderColor: colors.warning }}>
+          <AppText variant="micro" color={colors.warning}>
+            CHUỖI BỊ ĐỨT
+          </AppText>
+          <AppText variant="headline" style={{ marginTop: 2 }}>
+            Bạn đã mất chuỗi {restore.lostDays} ngày
+          </AppText>
+          <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
+            Học gấp đôi số từ mới hôm nay để nối lại chuỗi. Chỉ từ mới hợp lệ được tính — ôn lại từ
+            cũ không giúp khôi phục.
+          </AppText>
+          <View style={{ marginTop: spacing.md }}>
+            <ProgressBar
+              value={restore.progressNewWords / Math.max(1, restore.targetNewWords)}
+              height={8}
+            />
+          </View>
+          <AppText variant="caption" color={colors.primary} style={{ marginTop: spacing.xs }}>
+            {restore.progressNewWords}/{restore.targetNewWords} từ mới hôm nay
+          </AppText>
+          <View style={styles.actionRow}>
+            <PrimaryButton
+              label="Khôi phục streak"
+              loading={restoring}
+              disabled={!restore.ready}
+              onPress={confirmRestore}
+              style={{ flex: 1 }}
+            />
+            <PrimaryButton
+              label="Để sau"
+              variant="ghost"
+              style={{ flex: 1 }}
+              onPress={() => setRestoreDismissed(true)}
+            />
+          </View>
+        </Card>
+      ) : null}
 
       <Card soft style={{ marginBottom: spacing.lg }}>
         <View style={styles.statsRow}>
@@ -294,7 +384,7 @@ export function TodayScreen() {
           onPress={() => push({ name: 'wordForm' })}
         />
         <PrimaryButton
-          label="✨ Gemini gợi ý"
+          label={`✨ ${providerLabel(settings.aiProvider)} gợi ý`}
           variant="ghost"
           style={{ flex: 1 }}
           onPress={() => push({ name: 'ai' })}
@@ -331,4 +421,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   weakRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  coinLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
 });

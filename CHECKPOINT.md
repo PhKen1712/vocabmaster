@@ -2,13 +2,14 @@
 
 - **checkpoint_version:** 1
 - **last_updated:** 2026-10-23
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ: AI chọn từ và nhập danh sách có tra từ điển** + **Groq là nhà cung cấp thứ hai, chọn trong Cài đặt; cấp độ CEFR của từng từ nhập được tra tự động (2026-10-23)** — **typecheck 0 lỗi, 186/186 unit test xanh trong 16 suite, schema v2 có migration đã chạy thử trên SQLite thật**; chưa build iOS, chưa kiểm chứng thiết bị, chưa gọi Groq thật
+- **current_phase:** Giai đoạn 1–6 (code đã viết) + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ** + **Groq là nhà cung cấp AI mặc định** + **nhạc nền 5 bản, ba game, sáu dạng luyện kỹ năng, xu ảo, khôi phục chuỗi, chọn giọng nam/nữ và phòng luyện phát âm (2026-10-24)** — **typecheck 0 lỗi, 242/242 unit test xanh trong 22 suite, schema v3 có migration đã chạy thử trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone, người dùng xác nhận mượt (2026-10-23)**; toàn bộ tính năng mới của 2026-10-24 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
 
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
-> là đã chạy trên iPhone: widget, micro, thông báo và AI (Gemini **và** Groq) **chưa được kiểm chứng thiết bị**.
+> là đã chạy trên iPhone: Groq đã dùng thật (người dùng báo), còn widget, micro, thông báo và
+> Gemini **chưa được kiểm chứng thiết bị**.
 
 ---
 
@@ -257,7 +258,14 @@ hạn môi trường, không phải lỗi code:**
    không phải điều sửa được trong code.
 4. Rủi ro chưa có bằng chứng: `@expo/ui` `Text` render nhiều children/number trong runtime
    widget; `expo-speech-recognition` shape của `event.results[0].segments` trong runtime;
-   độ chính xác của on-device speech model cho từ tiếng Anh ngắn.
+   độ chính xác của on-device speech model cho từ tiếng Anh ngắn; hành vi thật của nhạc nền
+   (ducking, dừng khi xuống nền, công tắc im lặng) và vòng lặp game trên iPhone.
+4b. **Chưa build/chạy bất kỳ tính năng mới nào của 2026-10-24 trên thiết bị** (Windows, không có
+   macOS/EAS). Nhạc, game, micro, giọng nam/nữ, xu và khôi phục chuỗi chỉ được kiểm bằng unit test
+   và typecheck.
+4c. **Nhập danh sách từ vẫn ưu tiên từ điển**; AI chỉ bổ sung nghĩa khi từ điển thiếu. Chưa chuyển
+   hẳn sang "Groq là nguồn chính" cho chế độ này. Chưa có collocation/sentence building/synonym
+   challenge riêng.
 5. **Gemini**: logic lỗi/retry/validate đã có test tự động, nhưng **chưa có lần gọi Gemini thật nào
    bằng key của người dùng** trong phiên này. Việc 503/429/404 thực tế có được xử lý đúng trên iPhone
    chỉ xác nhận được sau khi cài bản build mới và bấm "Tạo bộ từ". Không đánh dấu `verified`.
@@ -269,18 +277,16 @@ hạn môi trường, không phải lỗi code:**
 - `expo-speech-recognition` — đã cài và biên dịch được.
 - Version alignment SDK 58 — `expo-doctor` 20/20.
 
-## 14. Kết quả kiểm thử gần nhất (2026-10-23, đã chạy thật)
+## 14. Kết quả kiểm thử gần nhất (2026-10-24, đã chạy thật)
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
-| Install | `npm install` | exit 0 |
-| Typecheck | `npm run typecheck` (tsc 6.0.3) | **exit 0, 0 lỗi** |
-| Unit test | `npx jest --ci --maxWorkers=2` | **16/16 suite, 186/186 test pass** (Gemini, Groq, levels, placement, word packs, dictionary, dict cache) |
-| Typecheck sau thay đổi | `npx tsc --noEmit` | **exit 0, 0 lỗi** |
-| Gọi Groq thật | — | **CHƯA CHẠY** — không có key trong môi trường này; request/parse/retry được test bằng `fetch` giả |
+| Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** — đã sửa lỗi `TextInput` ref của màn hình game |
+| Unit test | `npx jest --runInBand` | **22/22 suite, 242/242 test pass** (thêm xu/hệ số, khôi phục chuỗi, chọn giọng, phát âm, synonym, music catalog, game engine) |
+| Verify tổng | `node scripts/verify.mjs` | **ALL PASS** — typecheck + 242 test + checkpoint validate; report ở `tools/verify-report.txt` |
+| Dùng Groq thật | Người dùng báo trong chat (2026-10-23) | **Mượt, kết quả tốt** — không có build number/screenshot/log, chưa đo latency hay hạn mức |
 | Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
-| Migration thật | `node:sqlite` chạy migration 1 → 2 | từ cũ giữ nguyên nghĩa/`reps`/`stability`/`due_at`; cột mới `NULL` / `'[]'` |
-| Verify tổng | `node scripts/verify.mjs` | chạy lại sau khi sửa docs — xem `tools/verify-report.txt` |
+| Migration thật | `node:sqlite` chạy migration 1 → 3 | bảng `coin_ledger` + `streak_restores` tạo đúng; từ đã học trước đó được đánh dấu 0 xu; **index chặn thưởng trùng và cứu chuỗi trùng** (đã thử insert lần hai, bị từ chối) |
 | Expo doctor | `npx expo-doctor` | **20/20 check pass** |
 | Config plugin | `npx expo config --type prebuild` | **exit 0** — 2 widget + group id compose đúng |
 | Checkpoint | `node scripts/validate-checkpoint.mjs` | **hợp lệ** |

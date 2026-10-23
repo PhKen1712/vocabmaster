@@ -40,7 +40,10 @@ export async function getActivityForDate(
 
 export async function getStreak(db: SQLiteDatabase, today = dateKey()): Promise<StreakSummary> {
   const rows = await db.getAllAsync<{ date: string }>(
-    'SELECT date FROM daily_activity WHERE goal_met = 1 ORDER BY date ASC;',
+    `SELECT date FROM daily_activity WHERE goal_met = 1
+     UNION
+     SELECT date FROM streak_restores
+     ORDER BY date ASC;`,
   );
   return computeStreak(
     rows.map((row) => row.date),

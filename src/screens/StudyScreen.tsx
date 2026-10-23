@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { providerLabel } from '../ai/provider';
 import { getLevelBreakdown, getTopics, listWords } from '../db/words';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing } from '../theme/tokens';
-import { LEVEL_LABELS, LEVEL_SHORT, type Level, type Track } from '../types';
+import { LEVEL_LABELS, LEVEL_SHORT, type Level, type QuizKind, type Track } from '../types';
 import { AppText, Card, Chip, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 
@@ -15,6 +16,16 @@ interface LevelRow {
   total: number;
   learned: number;
 }
+
+/** One focused drill per question type the generator can build. */
+const SKILL_DRILLS: { kind: QuizKind; icon: string; label: string; caption: string }[] = [
+  { kind: 'typing', icon: '⌨️', label: 'Viết từ', caption: 'Nhìn nghĩa, gõ tiếng Anh' },
+  { kind: 'listening', icon: '🎧', label: 'Nghe & chọn', caption: 'Nghe phát âm rồi chọn từ' },
+  { kind: 'cloze', icon: '🧩', label: 'Điền vào câu', caption: 'Chọn từ hợp ngữ cảnh' },
+  { kind: 'context', icon: '📖', label: 'Theo định nghĩa', caption: 'Đọc định nghĩa tiếng Anh' },
+  { kind: 'confusable', icon: '🔍', label: 'Phân biệt từ', caption: 'Cùng từ loại, khác nghĩa' },
+  { kind: 'speaking', icon: '🎙', label: 'Phát âm', caption: 'Đọc to, app nhận diện' },
+];
 
 export function StudyScreen() {
   const { db, settings, updateSettings, dataVersion, ready, stats } = useApp();
@@ -59,6 +70,13 @@ export function StudyScreen() {
   const setTrack = (next: Track) => {
     setTopic(null);
     void updateSettings({ track: next });
+  };
+
+  const startDrill = (kind: QuizKind) => {
+    push({
+      name: 'session',
+      config: { mode: 'mixed', track, level: settings.level, kinds: [kind] },
+    });
   };
 
   const startTopic = () => {
@@ -207,10 +225,14 @@ export function StudyScreen() {
             Ưu tiên từ bạn quên
           </AppText>
         </Card>
-        <Card style={{ flex: 1 }} onPress={() => push({ name: 'ai' })} accessibilityLabel="Tạo từ bằng Gemini">
+        <Card
+          style={{ flex: 1 }}
+          onPress={() => push({ name: 'ai' })}
+          accessibilityLabel={`Tạo từ bằng ${providerLabel(settings.aiProvider)}`}
+        >
           <AppText style={{ fontSize: 22 }}>✨</AppText>
           <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
-            Gemini tạo bộ từ
+            {providerLabel(settings.aiProvider)} tạo bộ từ
           </AppText>
           <AppText variant="caption" color={colors.textMuted}>
             Theo chủ đề, cấp độ
@@ -218,11 +240,34 @@ export function StudyScreen() {
         </Card>
       </View>
 
+      <SectionHeader title="Luyện từng kỹ năng" />
+      <AppText variant="caption" color={colors.textMuted} style={{ marginBottom: spacing.md }}>
+        Mỗi chế độ chỉ hỏi đúng một kiểu, để bạn luyện phần còn yếu thay vì đoán qua loa.
+      </AppText>
+      <View style={styles.skillGrid}>
+        {SKILL_DRILLS.map((drill) => (
+          <Card
+            key={drill.kind}
+            style={styles.skillCard}
+            onPress={() => startDrill(drill.kind)}
+            accessibilityLabel={drill.label}
+          >
+            <AppText style={{ fontSize: 22 }}>{drill.icon}</AppText>
+            <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
+              {drill.label}
+            </AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              {drill.caption}
+            </AppText>
+          </Card>
+        ))}
+      </View>
+
       <SectionHeader title="Kiểm tra theo chủ đề" />
       {topics.length === 0 ? (
         <Card soft>
           <AppText variant="body" color={colors.textMuted}>
-            Chưa có chủ đề nào. Thêm từ kèm chủ đề hoặc dùng Gemini để tạo bộ từ theo chủ đề.
+            Chưa có chủ đề nào. Thêm từ kèm chủ đề hoặc dùng AI để tạo bộ từ theo chủ đề.
           </AppText>
         </Card>
       ) : (
@@ -299,6 +344,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   sessionRow: { flexDirection: 'row', alignItems: 'center' },
   twoColumn: { flexDirection: 'row', gap: spacing.md },
+  skillGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  skillCard: { flexBasis: '46%', flexGrow: 1 },
   levelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   levelBadge: {
     width: 44,

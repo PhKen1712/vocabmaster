@@ -99,7 +99,7 @@ export function OnboardingScreen() {
         color={colors.textFaint}
         style={{ marginTop: spacing.md, textAlign: 'center' }}
       >
-        Gemini và nhắc nhở là tuỳ chọn. Bạn có thể thêm API key sau trong Cài đặt. Widget chỉ hoạt
+        AI và nhắc nhở là tuỳ chọn. Bạn có thể thêm API key sau trong Cài đặt. Widget chỉ hoạt
         động trên bản build native đã cài vào iPhone, không hoạt động trong Expo Go.
       </AppText>
     </Screen>

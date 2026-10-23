@@ -6,7 +6,9 @@
     "orientation": "portrait",
     "scheme": "vocabmaster",
     "userInterfaceStyle": "automatic",
-    "platforms": ["ios"],
+    "platforms": [
+      "ios"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.vocabmaster.personal",
@@ -35,7 +37,11 @@
               "displayName": "Từ vựng hôm nay",
               "description": "Từ cần học, số từ cần ôn và tiến độ mục tiêu trong ngày.",
               "ios": {
-                "supportedFamilies": ["systemSmall", "systemMedium", "systemLarge"],
+                "supportedFamilies": [
+                  "systemSmall",
+                  "systemMedium",
+                  "systemLarge"
+                ],
                 "initialLayout": "widgets/DailyWordWidget.tsx"
               }
             },
@@ -44,13 +50,18 @@
               "displayName": "Ôn tập nhanh",
               "description": "Số từ cần ôn và chuỗi ngày học trên màn hình khóa.",
               "ios": {
-                "supportedFamilies": ["accessoryCircular", "accessoryRectangular", "accessoryInline"],
+                "supportedFamilies": [
+                  "accessoryCircular",
+                  "accessoryRectangular",
+                  "accessoryInline"
+                ],
                 "initialLayout": "widgets/ReviewGlanceWidget.tsx"
               }
             }
           ]
         }
-      ]
+      ],
+      "expo-audio"
     ]
   }
 }

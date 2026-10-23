@@ -39,6 +39,12 @@ describe('sanitizeSettings', () => {
     expect(DEFAULT_SETTINGS.aiModel).not.toContain('2.5');
   });
 
+  it('sanitises the saved voice preference', () => {
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, ttsVoice: 'male' }).ttsVoice).toBe('male');
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, ttsVoice: 'female' }).ttsVoice).toBe('female');
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, ttsVoice: 'robot' }).ttsVoice).toBe('auto');
+  });
+
   it('keeps both provider models while switching provider', () => {
     const settings = sanitizeSettings({
       ...DEFAULT_SETTINGS,
@@ -52,9 +58,9 @@ describe('sanitizeSettings', () => {
     expect(settings.groqModel).toBe('openai/gpt-oss-20b');
   });
 
-  it('defaults a settings row saved before Groq existed', () => {
+  it('defaults a settings row saved before Groq existed to Groq', () => {
     const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, aiProvider: undefined, groqModel: undefined });
-    expect(settings.aiProvider).toBe('gemini');
+    expect(settings.aiProvider).toBe('groq');
     expect(settings.groqModel).toBe(DEFAULT_GROQ_MODEL);
   });
 });
@@ -63,8 +69,8 @@ describe('sanitizeAiProvider', () => {
   it('accepts only the known providers', () => {
     expect(sanitizeAiProvider('groq')).toBe('groq');
     expect(sanitizeAiProvider('gemini')).toBe('gemini');
-    expect(sanitizeAiProvider('openai')).toBe('gemini');
-    expect(sanitizeAiProvider(undefined)).toBe('gemini');
+    expect(sanitizeAiProvider('openai')).toBe('groq');
+    expect(sanitizeAiProvider(undefined)).toBe('groq');
   });
 });
 

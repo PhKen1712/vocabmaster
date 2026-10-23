@@ -141,6 +141,13 @@ export function WordDetailScreen({ id }: { id: string }) {
             {word.definitionEn}
           </AppText>
         ) : null}
+        <PrimaryButton
+          label="Kiểm tra phát âm"
+          icon="🎙"
+          variant="ghost"
+          onPress={() => push({ name: 'pronunciation', wordId: word.id })}
+          style={{ marginTop: spacing.md }}
+        />
       </Card>
 
       {word.exampleEn ? (

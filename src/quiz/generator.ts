@@ -249,6 +249,11 @@ function buildQuestion(
         accepted: uniqueStrings([
           normalizeAnswer(word.term),
           normalizeAnswer(displayTerm(word.term)),
+          // Stored synonyms are real English replacements, so a learner who
+          // types "smart" for "intelligent" is right. Other question kinds
+          // (spelling, cloze, listening) stay strict: there, the exact word is
+          // the thing being tested.
+          ...word.synonyms.map((synonym) => normalizeAnswer(synonym)),
         ]),
       };
     }

@@ -10,6 +10,7 @@ import { AppText } from './ui';
 const TABS: { name: TabName; label: string; icon: string }[] = [
   { name: 'today', label: 'Hôm nay', icon: '☀' },
   { name: 'study', label: 'Học', icon: '◎' },
+  { name: 'arcade', label: 'Chơi', icon: '◈' },
   { name: 'words', label: 'Bộ từ', icon: '▤' },
   { name: 'stats', label: 'Tiến độ', icon: '◔' },
   { name: 'settings', label: 'Cài đặt', icon: '⚙' },

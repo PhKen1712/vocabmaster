@@ -10,7 +10,7 @@ import type {
   WordSource,
 } from '../types';
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /**
  * Forward-only migrations. Every entry runs exactly once, inside a transaction.
@@ -101,6 +101,44 @@ export const MIGRATIONS: { version: number; statements: string[] }[] = [
         fetched_at INTEGER NOT NULL
       );`,
       `CREATE INDEX IF NOT EXISTS idx_dict_cache_fetched ON dictionary_cache (fetched_at);`,
+    ],
+  },
+  {
+    version: 3,
+    statements: [
+      // Virtual coin ledger. Balance = SUM(amount), so a crash between reading
+      // the balance and writing a row can never create coins out of nothing.
+      `CREATE TABLE IF NOT EXISTS coin_ledger (
+        id TEXT PRIMARY KEY NOT NULL,
+        kind TEXT NOT NULL,
+        word_id TEXT,
+        amount INTEGER NOT NULL,
+        balance_after INTEGER NOT NULL,
+        reason TEXT,
+        created_at TEXT NOT NULL
+      );`,
+      // One reward per word, enforced by the database rather than by UI code.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_reward_word
+        ON coin_ledger (word_id) WHERE kind = 'reward';`,
+      `CREATE INDEX IF NOT EXISTS idx_coin_ledger_time ON coin_ledger (created_at DESC);`,
+      // Days repaired with a streak restore. Kept apart from daily_activity so
+      // a repaired day can show in the streak while never feeding the coin
+      // multiplier, and so the same lost streak cannot be repaired twice.
+      `CREATE TABLE IF NOT EXISTS streak_restores (
+        date TEXT PRIMARY KEY NOT NULL,
+        lost_from TEXT NOT NULL,
+        lost_days INTEGER NOT NULL,
+        target_new_words INTEGER NOT NULL,
+        restored_at TEXT NOT NULL
+      );`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_streak_restores_lost_from
+        ON streak_restores (lost_from);`,
+      // Words learned before coins existed must not pay out retroactively.
+      // A zero-amount marker row satisfies the one-reward-per-word index and
+      // stays out of the visible history.
+      `INSERT OR IGNORE INTO coin_ledger (id, kind, word_id, amount, balance_after, reason, created_at)
+        SELECT 'legacy:' || id, 'reward', id, 0, 0, 'legacy', created_at
+        FROM words WHERE reps > 0;`,
     ],
   },
 ];

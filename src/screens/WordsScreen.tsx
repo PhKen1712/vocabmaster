@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Card, Chip, EmptyState, PrimaryButton, Screen } from '../components/ui';
+import { providerLabel } from '../ai/provider';
 import { ChipRow, Input, ScreenHeader, TrackSwitcher } from '../components/patterns';
 import { WordCard } from '../components/patterns';
 import { listWords, setFavorite } from '../db/words';
@@ -118,7 +119,7 @@ export function WordsScreen() {
           onPress={() => push({ name: 'settings' })}
         />
         <PrimaryButton
-          label="Gemini tạo từ"
+          label={`${providerLabel(settings.aiProvider)} tạo từ`}
           variant="ghost"
           style={{ flex: 1 }}
           onPress={() => push({ name: 'ai' })}
@@ -145,7 +146,9 @@ export function WordsScreen() {
           <EmptyState
             emoji="📚"
             title="Bộ từ đang trống"
-            body="Thêm từ đầu tiên bằng biểu mẫu hoặc để Gemini gợi ý theo cấp độ của bạn."
+            body={`Thêm từ đầu tiên bằng biểu mẫu hoặc để ${providerLabel(
+              settings.aiProvider,
+            )} gợi ý theo cấp độ của bạn.`}
             actionLabel="Thêm từ mới"
             onAction={() => push({ name: 'wordForm' })}
           />

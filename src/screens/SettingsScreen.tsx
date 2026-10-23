@@ -1,7 +1,15 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 
-import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
+import {
+  AppText,
+  Banner,
+  Card,
+  Divider,
+  PrimaryButton,
+  Screen,
+  SectionHeader,
+} from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 import {
   checkProviderKey,
@@ -28,11 +36,22 @@ import {
   requestNotificationPermission,
   scheduleReminders,
 } from '../notifications/reminders';
-import { speak } from '../speech/tts';
+import { getCoinSummary, listCoinHistory, resetCoins, type CoinSummary } from '../coins/ledger';
+import { getRestoreState } from '../db/streakRestore';
+import { useMusic } from '../music/MusicProvider';
+import { getEnglishVoices, speak, voiceAvailability, type VoiceLike } from '../speech/tts';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
-import { AI_PROVIDERS, DEFAULT_AI_MODEL, DEFAULT_GROQ_MODEL, type AiProvider, type ThemeMode } from '../types';
+import {
+  AI_PROVIDERS,
+  DEFAULT_AI_MODEL,
+  DEFAULT_GROQ_MODEL,
+  type AiProvider,
+  type CoinEvent,
+  type ThemeMode,
+  type TtsVoice,
+} from '../types';
 import { useNavigation } from '../navigation/NavigationProvider';
 
 const WEEKDAYS = [
@@ -46,9 +65,10 @@ const WEEKDAYS = [
 ];
 
 export function SettingsScreen() {
-  const { db, settings, updateSettings, notifyDataChanged, widgetStatus, stats } = useApp();
-  const { pop } = useNavigation();
+  const { db, settings, updateSettings, notifyDataChanged, widgetStatus, stats, dataVersion } = useApp();
+  const { pop, push } = useNavigation();
   const { colors } = useTheme();
+  const music = useMusic();
 
   const [keyStatus, setKeyStatus] = useState<'loading' | 'missing' | 'saved'>('loading');
   const [keyInput, setKeyInput] = useState('');
@@ -58,10 +78,38 @@ export function SettingsScreen() {
   const [notificationStatus, setNotificationStatus] = useState<string>('…');
   const [busy, setBusy] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<AiDiagnostic[]>(() => getDiagnostics());
+  const [voices, setVoices] = useState<VoiceLike[]>([]);
+  const [coins, setCoins] = useState<CoinSummary | null>(null);
+  const [coinHistory, setCoinHistory] = useState<CoinEvent[]>([]);
+  const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
 
   // In-memory only: it survives navigation, not an app restart, and never holds
   // the API key or the learner's content.
   useEffect(() => subscribeDiagnostics(() => setDiagnostics(getDiagnostics())), []);
+
+  useEffect(() => {
+    void getEnglishVoices().then(setVoices);
+  }, []);
+
+  const loadCoins = useCallback(async () => {
+    if (!db) return;
+    const [summary, history, restore] = await Promise.all([
+      getCoinSummary(db),
+      listCoinHistory(db, 8),
+      getRestoreState(db, settings.dailyGoal),
+    ]);
+    setCoins(summary);
+    setCoinHistory(history);
+    setRestoreTarget(
+      restore.offer
+        ? `${restore.offer.lostDays} ngày · cần ${restore.offer.progressNewWords}/${restore.offer.targetNewWords} từ mới hôm nay`
+        : null,
+    );
+  }, [db, settings.dailyGoal]);
+
+  useEffect(() => {
+    void loadCoins();
+  }, [loadCoins, dataVersion]);
 
   // Model Google đề xuất khi model đang cấu hình đã bị ngừng.
   const suggestedModel = checkResult && !checkResult.ok ? checkResult.suggestedModel ?? null : null;
@@ -282,6 +330,26 @@ export function SettingsScreen() {
     } catch (error) {
       Alert.alert('Không nhập được CSV', error instanceof Error ? error.message : 'Lỗi không rõ.');
     }
+  };
+
+  const confirmResetCoins = () => {
+    Alert.alert(
+      'Reset tiền xu?',
+      `Số dư hiện tại (${(coins?.balance ?? 0).toLocaleString('vi-VN')} xu) sẽ về 0. Từ vựng, lịch sử học và chuỗi ngày vẫn được giữ nguyên. Hành động này không thể hoàn tác.`,
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Xác nhận reset',
+          style: 'destructive',
+          onPress: async () => {
+            if (!db) return;
+            await resetCoins(db);
+            await notifyDataChanged();
+            await loadCoins();
+          },
+        },
+      ],
+    );
   };
 
   const confirmReset = () => {
@@ -542,6 +610,83 @@ export function SettingsScreen() {
         </View>
       </Card>
 
+      <SectionHeader title="Kinh tế · Xu ảo" />
+      <Card>
+        <View style={styles.rowBetween}>
+          <View>
+            <AppText variant="micro" color={colors.textFaint}>
+              SỐ DƯ XU
+            </AppText>
+            <AppText variant="display">
+              {(coins?.balance ?? 0).toLocaleString('vi-VN')}
+            </AppText>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <AppText variant="headline" color={colors.warning}>
+              x{(coins?.multiplier ?? 1).toFixed(1)}
+            </AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              {coins?.validStreakDays ?? 0} ngày hợp lệ
+            </AppText>
+          </View>
+        </View>
+        <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
+          Mỗi từ mới trả xu theo cấp độ. Còn{' '}
+          {coins?.nextMilestone.remaining ?? 10} ngày liên tục để lên hệ số x
+          {(coins?.nextMilestone.multiplier ?? 1.1).toFixed(1)}. Trả lời sai khi ôn sẽ bị trừ xu
+          theo giá trị gốc, không bao giờ âm.
+        </AppText>
+        {restoreTarget ? (
+          <AppText variant="caption" color={colors.primary} style={{ marginTop: spacing.xs }}>
+            Chuỗi đang chờ khôi phục: {restoreTarget}
+          </AppText>
+        ) : null}
+
+        <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.lg }}>
+          LỊCH SỬ GẦN ĐÂY
+        </AppText>
+        {coinHistory.length > 0 ? (
+          coinHistory.map((event) => (
+            <View key={event.id} style={styles.coinRow}>
+              <View style={{ flex: 1 }}>
+                <AppText variant="caption">
+                  {event.kind === 'reset'
+                    ? 'Reset số dư'
+                    : event.kind === 'penalty'
+                      ? 'Ôn sai'
+                      : 'Học từ mới'}
+                </AppText>
+                <AppText variant="micro" color={colors.textFaint}>
+                  {new Date(event.createdAt).toLocaleString('vi-VN')}
+                </AppText>
+              </View>
+              <AppText
+                variant="bodyStrong"
+                color={event.amount >= 0 ? colors.success : colors.danger}
+              >
+                {event.amount >= 0 ? '+' : ''}
+                {event.amount.toLocaleString('vi-VN')}
+              </AppText>
+            </View>
+          ))
+        ) : (
+          <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
+            Chưa có giao dịch. Hãy học một từ mới và trả lời đúng để nhận xu đầu tiên.
+          </AppText>
+        )}
+
+        <PrimaryButton
+          label="Reset tiền xu"
+          variant="danger"
+          onPress={confirmResetCoins}
+          style={{ marginTop: spacing.md }}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Reset chỉ đưa số dư về 0 và ghi lại một sự kiện trong lịch sử. Từ vựng, lịch sử học,
+          chuỗi ngày và cài đặt khác không bị xoá. Không thể hoàn tác.
+        </AppText>
+      </Card>
+
       <SectionHeader title="Giao diện" />
       <Card>
         <ChipRow>
@@ -567,6 +712,60 @@ export function SettingsScreen() {
             </Pressable>
           ))}
         </ChipRow>
+      </Card>
+
+      <SectionHeader title="Nhạc nền" />
+      <Card>
+        <View style={styles.rowBetween}>
+          <AppText variant="bodyStrong">Phát nhạc khi học</AppText>
+          <Switch
+            value={settings.musicEnabled}
+            onValueChange={(value) => void updateSettings({ musicEnabled: value })}
+            trackColor={{ true: colors.primary, false: colors.border }}
+          />
+        </View>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Mở thư viện nhạc nền"
+          onPress={() => push({ name: 'music' })}
+          style={[
+            styles.musicRow,
+            { backgroundColor: colors.surfaceAlt, borderColor: colors.border },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodyStrong">{music.track.name}</AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              {music.track.mood} · {music.track.bpm} BPM · {Math.round(settings.musicVolume * 100)}%
+            </AppText>
+          </View>
+          <AppText variant="caption" color={colors.primary}>
+            Chọn nhạc ›
+          </AppText>
+        </Pressable>
+        <Stepper
+          label="Âm lượng nhạc"
+          value={Math.round(settings.musicVolume * 100)}
+          min={0}
+          max={100}
+          step={10}
+          suffix="%"
+          onChange={(value) =>
+            void updateSettings({ musicVolume: value / 100, musicMuted: false })
+          }
+        />
+        <View style={styles.rowBetween}>
+          <AppText variant="bodyStrong">Tắt tiếng tạm thời</AppText>
+          <Switch
+            value={settings.musicMuted}
+            onValueChange={(value) => void updateSettings({ musicMuted: value })}
+            trackColor={{ true: colors.primary, false: colors.border }}
+          />
+        </View>
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Nhạc lưu sẵn trong app, tự dừng khi bạn rời ứng dụng và không cần mạng. Mở thư viện để
+          tìm theo tên hoặc tâm trạng.
+        </AppText>
       </Card>
 
       <SectionHeader title="Phát âm" />
@@ -599,12 +798,55 @@ export function SettingsScreen() {
             ))}
           </ChipRow>
         </View>
+        <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.md }}>
+          Giọng đọc ưu tiên
+        </AppText>
+        <View style={{ marginTop: spacing.sm }}>
+          <ChipRow>
+            {(['auto', 'female', 'male'] as TtsVoice[]).map((voice) => (
+              <Pressable
+                key={voice}
+                onPress={() => void updateSettings({ ttsVoice: voice })}
+                style={[
+                  styles.choice,
+                  {
+                    borderColor: settings.ttsVoice === voice ? colors.primary : colors.border,
+                    backgroundColor:
+                      settings.ttsVoice === voice ? colors.primarySoft : 'transparent',
+                  },
+                ]}
+              >
+                <AppText
+                  variant="caption"
+                  color={settings.ttsVoice === voice ? colors.primary : colors.textMuted}
+                >
+                  {voice === 'auto' ? 'Tự động' : voice === 'female' ? 'Giọng nữ' : 'Giọng nam'}
+                </AppText>
+              </Pressable>
+            ))}
+          </ChipRow>
+        </View>
+        {settings.ttsVoice !== 'auto' &&
+        voiceAvailability(voices, settings.ttsAccent, settings.ttsVoice) === 'accent-only' ? (
+          <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+            iPhone này chưa cài giọng {settings.ttsVoice === 'male' ? 'nam' : 'nữ'}{' '}
+            {settings.ttsAccent === 'en-GB' ? 'Anh–Anh' : 'Anh–Mỹ'}. Đang dùng giọng phù hợp nhất
+            hiện có; thêm giọng trong Cài đặt iOS → Trợ năng → Nội dung đọc → Giọng.
+          </AppText>
+        ) : null}
+        {voiceAvailability(voices, settings.ttsAccent, settings.ttsVoice) === 'none' ? (
+          <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+            Chưa tìm thấy giọng tiếng Anh nào trên máy. Hãy tải giọng trong Cài đặt iOS → Trợ năng
+            → Nội dung đọc → Giọng → Tiếng Anh.
+          </AppText>
+        ) : null}
         <PrimaryButton
           label="Nghe thử"
           variant="ghost"
           onPress={() =>
             speak('Practice a little every day, and the words will stay.', {
               accent: settings.ttsAccent,
+              voice: settings.ttsVoice,
             })
           }
           style={{ marginTop: spacing.sm }}
@@ -770,6 +1012,13 @@ export function SettingsScreen() {
 
       <SectionHeader title="Thông tin" />
       <Card>
+        <AppText variant="micro" color={colors.textFaint}>
+          NHÀ PHÁT TRIỂN
+        </AppText>
+        <AppText variant="headline" style={{ marginTop: 2 }}>
+          Dev: Phạm Bảo Lâm
+        </AppText>
+        <Divider />
         <AppText variant="caption" color={colors.textMuted}>
           VocabMaster 0.1.0 · Expo SDK 58 · dữ liệu lưu cục bộ bằng SQLite.
         </AppText>
@@ -803,5 +1052,22 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
+  },
+  coinRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(140,148,173,0.18)',
+  },
+  musicRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
   },
 });

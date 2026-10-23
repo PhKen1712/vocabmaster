@@ -283,6 +283,10 @@ export async function restoreBackup(
     if (mode === 'replace') {
       await db.execAsync('DELETE FROM reviews;');
       await db.execAsync('DELETE FROM daily_activity;');
+      // Coins and streak repairs belong to the data being replaced; keeping
+      // them would leave rewards pointing at words that no longer exist.
+      await db.execAsync('DELETE FROM coin_ledger;');
+      await db.execAsync('DELETE FROM streak_restores;');
       await db.execAsync('DELETE FROM words;');
     }
 

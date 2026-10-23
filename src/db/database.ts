@@ -153,6 +153,8 @@ export async function resetDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.execAsync('DELETE FROM reviews;');
     await db.execAsync('DELETE FROM daily_activity;');
+    await db.execAsync('DELETE FROM coin_ledger;');
+    await db.execAsync('DELETE FROM streak_restores;');
     await db.execAsync('DELETE FROM words;');
     await db.execAsync('DELETE FROM app_settings;');
   });
