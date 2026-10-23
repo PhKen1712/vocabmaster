@@ -106,8 +106,9 @@ Màn hình **Tạo bộ từ** có hai chế độ, cùng nằm trên tab Từ v
 1. **AI chọn từ** — chọn track/level/chủ đề/số từ, Gemini hoặc Groq (theo Cài đặt) đề xuất, bạn
    sửa và chọn từng từ.
 2. **Nhập danh sách từ** — dán `criminal, civil, justice, evidence` (cách nhau bằng phẩy, chấm phẩy
-   hoặc xuống dòng). App chuẩn hoá danh sách rồi **tra từ điển**, không gọi Gemini trừ khi từ điển
-   không có nghĩa tiếng Việt. Không cần API key cho chế độ này.
+   hoặc xuống dòng). App chuẩn hoá danh sách, **tra từ điển** để lấy IPA/audio, và nếu đã cấu hình key
+   thì gửi **một** request AI viết nghĩa tiếng Việt đời thường cho tối đa 20 từ đầu. Không có key vẫn
+   dùng được bằng nghĩa từ điển.
 
 Chế độ 2 dùng hai nguồn miễn phí, không cần key:
 
@@ -122,7 +123,11 @@ Chế độ 2 dùng hai nguồn miễn phí, không cần key:
 - Kết quả được **cache trên máy 30 ngày**: tra lại cùng từ không tốn request và vẫn dùng được offline.
 - Trường thiếu được **đánh dấu**, không bịa: thẻ từ ghi "Thiếu: phiên âm IPA, từ đồng nghĩa…",
   lưu vào `missing_fields` và hiện lại ở màn hình chi tiết.
-- Từ không có nghĩa tiếng Việt: AI bổ sung tối đa 5 từ và được ghi rõ **"AI bổ sung"**.
+- Nghĩa tiếng Việt ưu tiên bản **AI viết ngắn, đời thường** thay vì gloss hàn lâm của từ điển
+  (ví dụ `make a decision` → "đưa ra quyết định", không phải "thi hành phán quyết"); nghĩa từ điển cũ
+  vẫn được giữ ở mục "nghĩa khác", IPA/audio/từ loại vẫn lấy từ từ điển và thẻ từ ghi rõ nguồn AI.
+  Danh sách dài hơn 20 từ: các từ sau dùng nghĩa từ điển, từ nào từ điển không có nghĩa mới để AI bổ
+  sung tối đa 5 từ như trước.
 - **Cấp độ được tra tự động cho từng từ**, không lấy theo mức bạn chọn: từ có trong kho từ kèm app
   lấy ngay cấp độ đã kiểm tra; các từ còn lại được AI xếp CEFR trong **một** request cho cả danh
   sách (không phải một request mỗi từ). Thẻ từ ghi rõ `A2` / `B1`… kèm nguồn ("cấp độ có sẵn"

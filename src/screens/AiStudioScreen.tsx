@@ -560,6 +560,23 @@ export function AiStudioScreen() {
               Đang xác định cấp độ cho từng từ…
             </AppText>
           ) : null}
+          {wordList.explainBusy ? (
+            <AppText variant="caption" color={colors.textMuted}>
+              AI đang viết nghĩa tiếng Việt đơn giản cho danh sách…
+            </AppText>
+          ) : null}
+          {wordList.explainNote ? (
+            <AppText variant="caption" color={colors.textMuted}>
+              {wordList.explainNote}
+            </AppText>
+          ) : null}
+          {wordList.explainError ? (
+            <Banner
+              tone="warning"
+              title="Nghĩa AI chưa dùng được"
+              body={`${wordList.explainError} Bạn vẫn có thể lưu bằng nghĩa từ điển.`}
+            />
+          ) : null}
           {wordList.levelError ? (
             <Banner
               tone="warning"
@@ -605,8 +622,9 @@ export function AiStudioScreen() {
             color={colors.textFaint}
             style={{ marginTop: spacing.sm, textAlign: 'center' }}
           >
-            Từ tra bằng từ điển được lưu kèm nguồn, cấp độ do app xác định và danh sách trường
-            còn thiếu.
+            Nghĩa tiếng Việt ưu tiên bản đơn giản do AI viết; IPA, audio và dữ liệu kiểm chứng
+            vẫn lấy từ từ điển. Từ nào AI không giải nghĩa được sẽ dùng nghĩa từ điển và ghi rõ
+            nguồn, cấp độ cùng các trường còn thiếu.
           </AppText>
         </>
       ) : null}

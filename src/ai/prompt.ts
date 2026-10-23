@@ -19,6 +19,11 @@ const TRACK_NOTES: Record<Track, string> = {
 };
 
 export function buildPrompt(request: AiRequest): string {
+  const explain = (request.explainTerms ?? []).map((term) => term.trim()).filter(Boolean);
+  if (explain.length > 0) {
+    return buildExplainPrompt(explain, request);
+  }
+
   if (request.lookupTerm && request.lookupTerm.trim()) {
     return buildLookupPrompt(request.lookupTerm.trim(), request);
   }
@@ -54,6 +59,36 @@ export function buildPrompt(request: AiRequest): string {
   ]
     .filter((line) => line !== '')
     .join('\n');
+}
+
+/**
+ * One batch request for a pasted list. The learner already chose the words, so
+ * the model must not pick different ones; it explains these exact items with a
+ * short, everyday Vietnamese meaning instead of copying an academic dictionary
+ * sense.
+ */
+function buildExplainPrompt(terms: string[], request: AiRequest): string {
+  return [
+    `Explain exactly ${terms.length} English item(s) for a Vietnamese learner.`,
+    `Track: ${request.track === 'ielts' ? 'IELTS Vocabulary' : 'General English'}. Learner level: ${request.level}.`,
+    '',
+    'Items (keep this order and the exact spelling):',
+    ...terms.map((term, index) => `${index + 1}. ${term}`),
+    '',
+    'Meaning rules — this is the part that matters most:',
+    '- meaningVi must be the most common, everyday Vietnamese meaning a learner meets first (2–8 words), not an academic or technical sense.',
+    '- Prefer a clear explanation over a dictionary gloss: "make a decision" → "đưa ra quyết định", not "thi hành phán quyết".',
+    '- If the item has several common senses, use the everyday sense; put another genuinely common sense in a second array if useful.',
+    '- A phrase, idiom or collocation is ONE unit. Never split it into separate words or translate it word by word.',
+    '- definitionEn must be simple A2–B1 English, not dictionary jargon.',
+    '- exampleEn must be a natural sentence containing the item exactly; exampleVi is its natural translation.',
+    '- partOfSpeech must match the chosen sense; omit ipa unless you are confident.',
+    '- Do not add items that were not asked for and do not skip an item. If you cannot explain one, still return it with the best honest meaning.',
+    '- Return valid JSON only, no markdown fences, no commentary.',
+    '',
+    'JSON shape:',
+    '{"words":[{"term":"string","ipa":"/.../","partOfSpeech":"noun|verb|adjective|adverb|phrase|idiom|phrasal verb","meaningVi":"string","definitionEn":"string","exampleEn":"string","exampleVi":"string","synonyms":["string"],"antonyms":["string"],"collocations":["string"],"wordFamily":["string"],"topic":"string","level":0}]}',
+  ].join('\n');
 }
 
 function buildLookupPrompt(term: string, request: AiRequest): string {

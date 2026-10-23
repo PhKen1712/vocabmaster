@@ -18,6 +18,15 @@ export function assertRequest(request: AiRequest): void {
   if (!Array.isArray(request.avoidTerms) || !Array.isArray(request.weakTerms)) {
     problems.push('danh sách từ kèm theo không hợp lệ');
   }
+  if (request.explainTerms !== undefined) {
+    if (!Array.isArray(request.explainTerms)) {
+      problems.push('danh sách từ cần giải nghĩa không hợp lệ');
+    } else if (request.explainTerms.length > 20) {
+      problems.push('chỉ giải nghĩa tối đa 20 từ mỗi lần');
+    } else if (request.explainTerms.some((term) => typeof term !== 'string' || !term.trim())) {
+      problems.push('danh sách từ cần giải nghĩa có mục rỗng');
+    }
+  }
   if (problems.length > 0) {
     throw new AiError('validation', problems.join('; '), { stage: 'config' });
   }

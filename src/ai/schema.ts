@@ -232,7 +232,10 @@ export function parseSuggestions(raw: unknown, request: AiRequest): AiParseResul
     suggestions.push({
       term,
       meaningVi,
-      partOfSpeech: partOfSpeech ?? 'phrase',
+      // A pasted-list explanation may legitimately omit the part of speech;
+      // defaulting a single word to "phrase" would then be a lie. Normal
+      // generation still needs a usable label.
+      partOfSpeech: partOfSpeech ?? (request.explainTerms?.length ? null : 'phrase'),
       ipa,
       definitionEn: definitionEn ?? null,
       exampleEn: exampleEn ?? null,

@@ -515,3 +515,70 @@ describe('generateVocabulary retry and failure handling', () => {
     await expect(running).resolves.toBeDefined();
   });
 });
+
+describe('generateVocabulary for a pasted list', () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    mockGetItem.mockReset();
+    mockGetItem.mockResolvedValue('AIza-test-key-1234567890');
+    resetGenerationState();
+    clearDiagnostics();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('asks for everyday meanings for the exact pasted terms', async () => {
+    const answer = {
+      candidates: [
+        {
+          finishReason: 'STOP',
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  words: [
+                    {
+                      term: 'make a decision',
+                      meaningVi: 'đưa ra quyết định',
+                      definitionEn: 'to choose after thinking about it',
+                      partOfSpeech: 'phrase',
+                      exampleEn: 'We need to make a decision today.',
+                    },
+                    {
+                      term: 'run out of',
+                      meaningVi: 'hết, không còn nữa',
+                      partOfSpeech: 'phrasal verb',
+                    },
+                  ],
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    };
+    let sent = '';
+    globalThis.fetch = jest.fn(async (_url: string, init?: { body?: string }) => {
+      sent = init?.body ?? '';
+      return jsonResponse(200, answer);
+    }) as unknown as typeof fetch;
+
+    const result = await generateVocabulary({
+      ...request,
+      count: 2,
+      explainTerms: ['make a decision', 'run out of'],
+    });
+
+    expect(sent).toContain('Explain exactly 2 English item(s)');
+    expect(sent).toContain('1. make a decision');
+    expect(sent).toContain('2. run out of');
+    expect(sent).toContain('most common, everyday Vietnamese meaning');
+    expect(result.suggestions.map((item) => item.meaningVi)).toEqual([
+      'đưa ra quyết định',
+      'hết, không còn nữa',
+    ]);
+  });
+});

@@ -4,6 +4,87 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-24 — Phiên 11c: sửa chế độ 60 giây bị đứng ở màn hình trống
+
+### Bối cảnh
+
+- Người dùng báo **chế độ 60 giây không hoạt động**. Đọc code thì đúng: `RushGameScreen` khởi tạo
+  `createRush([])`, mà danh sách rỗng trả `status: 'over'`, `questions: []`. Khi từ của người dùng
+  tải xong, màn hình **không tạo lại** bộ câu hỏi, nên chỉ hiện `—`, bốn nút trống và không có nút
+  Bắt đầu; overlay giới thiệu chỉ hiện khi `status === 'ready'`, overlay kết quả chỉ hiện khi có câu
+  hỏi. Vì vậy game chết ngay từ lần mở đầu tiên.
+
+### Đã thay đổi
+
+- `src/screens/RushGameScreen.tsx` — thêm effect tạo lại bộ câu khi từ đã tải xong và game còn rỗng
+  (cũng chạy lại khi người dùng thêm từ rồi quay về); overlay giới thiệu hiện cả khi `questions`
+  rỗng để luôn có nút **Bắt đầu** hoặc **Thêm từ mới**; điều kiện chơi dùng đúng quy tắc của engine
+  (≥ 4 từ và ≥ 4 nghĩa khác nhau) thay vì chỉ đếm số từ; bỏ rung báo "hết giờ" khi vừa mở màn hình.
+- `CHANGELOG.md` — ghi lại lỗi và cách sửa.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi**.
+- `npx jest src/games --runInBand` → **20/20 test pass** (engine rush/memory/asteroid không đổi).
+
+### Chưa kiểm chứng
+
+- Chưa bấm thử trên iPhone trong phiên này; luồng mở game → Bắt đầu → hết giờ cần người dùng xác
+  nhận trên máy. Chưa có test render cho React Native nên bước tạo lại câu hỏi chỉ được suy luận từ
+  code, không phải test UI.
+
+---
+
+## 2026-10-24 — Phiên 11b: nghĩa tiếng Việt đời thường cho danh sách từ dán vào
+
+### Bối cảnh
+
+- Phiên 11 ghi rõ hạn chế: ở chế độ **Nhập danh sách từ**, nghĩa Việt vẫn lấy nguyên từ từ điển nên
+  một số từ bị hàn lâm. Người dùng hỏi lại đúng điểm này, nên phiên này sửa nó.
+- Ràng buộc: vẫn giữ dữ liệu đã kiểm chứng (IPA, audio, từ loại) của từ điển; không cần key vẫn dùng
+  được chế độ danh sách; không thêm thư viện.
+
+### Đã thay đổi
+
+- `src/ai/prompt.ts` — `buildExplainPrompt`: khi request có `explainTerms`, model **chỉ giải nghĩa
+  đúng các mục đã dán**, theo thứ tự, và bị yêu cầu viết "nghĩa phổ thông gặp đầu tiên" (2–8 chữ),
+  không dùng gloss học thuật; cụm/idiom là một đơn vị, không dịch từng chữ; định nghĩa tiếng Anh
+  ở mức A2–B1.
+- `src/ai/types.ts`, `src/ai/validate.ts` — thêm `explainTerms` (tối đa 20, không rỗng) và chặn
+  request sai trước khi gọi API; `src/ai/gemini.ts`, `src/ai/groq.ts` thêm nó vào chữ ký
+  single-flight để hai danh sách khác nhau không dùng chung một request.
+- `src/dict/explain.ts` (mới) — `applyExplanations`: thay `meaningVi` bằng bản AI viết, giữ IPA/
+  audio/từ loại đã kiểm chứng, đưa nghĩa cũ sang "nghĩa khác", ghi `aiFilled` + nguồn `gemini` (nhãn
+  "AI") và tính lại `missing`.
+- `src/screens/useWordListLookup.ts` — chạy **song song** một request giải nghĩa cho 20 từ đầu với
+  tra từ điển và xác định cấp độ (chờ request chậm nhất, không cộng dồn); danh sách dài hơn 20 từ vẫn
+  giữ fallback cũ (AI bổ sung tối đa 5 từ thiếu nghĩa), nhưng bỏ qua các từ đã có trong lô đầu.
+  Không có key → dùng nghĩa từ điển và báo nhẹ, không phải lỗi.
+- `src/screens/AiStudioScreen.tsx` — hiện trạng thái "AI đang viết nghĩa…", số từ đã dùng nghĩa AI,
+  và cảnh báo khi AI lỗi kèm nhắc rằng nghĩa từ điển vẫn lưu được.
+- `src/ai/schema.ts` — khi giải nghĩa danh sách, thiếu `partOfSpeech` thì để trống thay vì gán bừa
+  "phrase" cho từ đơn.
+- README — mô tả lại chế độ nhập danh sách và nguồn của từng trường.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi**.
+- `npx jest --runInBand` → **24/24 suite, 251/251 test pass**; test mới: `prompt.test.ts` (danh sách
+  dùng prompt giải nghĩa, không thành prompt chọn từ), `dict/__tests__/explain.test.ts` (thay nghĩa,
+  giữ IPA/audio/POS, IPA AI chỉ dùng khi từ điển trống, khớp không phân biệt hoa thường, bỏ qua mục
+  rỗng), và một test ở `gemini.test.ts` kiểm tra body gửi đúng thứ tự từ đã dán và nghĩa đời thường
+  được trả về.
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- **Chưa gọi AI thật** với key của người dùng trong phiên này; toàn bộ test vẫn dùng `fetch` giả.
+  Chất lượng câu chữ thực tế còn phụ thuộc model và cần người dùng thử một danh sách thật.
+- Chưa chạy trên iPhone: màn hình trạng thái mới chưa được xem trên thiết bị.
+- Từ điển không tìm thấy cụm (ví dụ `civil law`) vẫn không lưu được, dù AI có giải nghĩa — status
+  `notFound` giữ nguyên để không âm thầm biến từ sai chính tả thành từ hợp lệ.
+
+---
+
 ## 2026-10-24 — Phiên 11: nhạc nền, ba trò chơi, xu ảo, khôi phục chuỗi, giọng đọc và phòng luyện phát âm
 
 ### Bối cảnh

@@ -432,6 +432,7 @@ function requestSignature(request: AiRequest, model: string): string {
     request.focus ?? '',
     request.lookupTerm ?? '',
     request.avoidTerms.length,
+    request.explainTerms?.join('|') ?? '',
   ]);
 }
 

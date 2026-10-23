@@ -44,6 +44,12 @@ export interface AiRequest {
   focus?: string | null;
   /** When set, Gemini explains this exact term instead of choosing new ones. */
   lookupTerm?: string | null;
+  /**
+   * Explain these exact terms in one batch (pasted word lists). The provider
+   * writes a simple learner-facing meaning for each, instead of picking words.
+   * At most 20 items, matching the `count` limit.
+   */
+  explainTerms?: string[];
   /** Terms already in the local database, sent so Gemini avoids duplicates. */
   avoidTerms: string[];
   /** Words the learner frequently gets wrong, for targeted practice. */

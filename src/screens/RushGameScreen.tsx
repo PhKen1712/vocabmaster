@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -30,6 +30,13 @@ export function RushGameScreen() {
   const [game, setGame] = useState<RushState>(() => createRush([]));
   const gameRef = useRef(game);
   gameRef.current = game;
+
+  // The rush needs four words whose Vietnamese meanings differ, otherwise the
+  // three distractors cannot be built. The arcade gate uses the same rule.
+  const canPlay = useMemo(() => {
+    const meanings = new Set(pool.map((word) => word.meaningVi.trim()));
+    return pool.length >= 4 && meanings.size >= 4;
+  }, [pool]);
   const { paused, toggle: togglePause, resume } = useGamePause(game.status === 'playing');
 
   const [reveal, setReveal] = useState<Reveal | null>(null);
@@ -47,7 +54,7 @@ export function RushGameScreen() {
   useEffect(() => () => clearRevealTimer(), []);
 
   const start = useCallback(() => {
-    if (pool.length < 4) return;
+    if (!canPlay) return;
     clearRevealTimer();
     setReveal(null);
     revealRef.current = null;
@@ -55,7 +62,19 @@ export function RushGameScreen() {
     const fresh = startRush(createRush(pool));
     gameRef.current = fresh;
     setGame(fresh);
-  }, [pool]);
+  }, [pool, canPlay]);
+
+  // `createRush([])` starts in "over" with no questions. Once the learner's
+  // words arrive, build the real set so the intro card can appear; without this
+  // the screen stayed on a dash with no button to start (the 60-second mode
+  // looked broken).
+  useEffect(() => {
+    if (loading) return;
+    if (gameRef.current.status !== 'over' || gameRef.current.questions.length > 0) return;
+    const next = createRush(pool);
+    gameRef.current = next;
+    setGame(next);
+  }, [loading, pool]);
 
   useEffect(() => {
     if (game.status !== 'playing' || paused) return;
@@ -70,7 +89,8 @@ export function RushGameScreen() {
   }, [game.status, paused]);
 
   useEffect(() => {
-    if (game.status !== 'over') return;
+    // Do not buzz when the screen first opens with an empty pool.
+    if (game.status !== 'over' || game.questions.length === 0) return;
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     if (game.score > settings.bestRush) {
       void updateSettings({ bestRush: game.score });
@@ -239,22 +259,23 @@ export function RushGameScreen() {
           </View>
         )}
 
-        {game.status === 'ready' ? (
+        {game.status === 'ready' ||
+        (game.status === 'over' && game.questions.length === 0) ? (
           <GameOverlay
             emoji="⚡"
-            title={pool.length >= 4 ? '60 giây' : 'Cần ít nhất 4 từ'}
+            title={canPlay ? '60 giây' : 'Cần ít nhất 4 từ khác nghĩa'}
             subtitle={
-              pool.length >= 4
+              canPlay
                 ? 'Một từ tiếng Anh, bốn nghĩa tiếng Việt, 60 giây. Chọn đúng càng nhanh, chuỗi điểm càng cao.'
-                : 'Trò chơi cần ít nhất 4 từ có nghĩa để tạo đáp án nhiễu. Thêm vài từ rồi quay lại nhé.'
+                : 'Trò chơi cần ít nhất 4 từ có nghĩa tiếng Việt khác nhau để tạo đáp án nhiễu. Thêm vài từ rồi quay lại nhé.'
             }
             note={
-              pool.length >= 4
+              canPlay
                 ? 'Mỗi câu đúng cộng thêm thời gian; trả lời sai chỉ bị trừ giây chứ không kết thúc lượt chơi.'
                 : undefined
             }
-            primaryLabel={pool.length >= 4 ? 'Bắt đầu' : 'Thêm từ mới'}
-            onPrimary={pool.length >= 4 ? start : () => push({ name: 'wordForm' })}
+            primaryLabel={canPlay ? 'Bắt đầu' : 'Thêm từ mới'}
+            onPrimary={canPlay ? start : () => push({ name: 'wordForm' })}
             secondaryLabel="Về sảnh game"
             onSecondary={pop}
           />

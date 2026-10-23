@@ -5,7 +5,9 @@ import { generateVocabulary } from '../ai';
 import { estimateLevels } from '../ai/levels';
 import { createSqliteDictCache } from '../db/dictCache';
 import { packLevel } from '../data/packs';
+import { applyExplanations } from '../dict/explain';
 import { parseWordList } from '../dict/list';
+import { normalizeTerm } from '../lib/text';
 import { createHttpClient, lookupWords } from '../dict/lookup';
 import type { DictEntry } from '../dict/types';
 import type { AiProvider, Level, Track } from '../types';
@@ -39,6 +41,12 @@ export interface WordListLookup {
   levelsBusy: boolean;
   /** Why some levels are missing (no key, network…), if they are. */
   levelError: string | null;
+  /** True while AI is writing simple meanings for the pasted list. */
+  explainBusy: boolean;
+  /** Why the AI meanings could not be written; dictionary meanings remain. */
+  explainError: string | null;
+  /** Informational line (how many meanings came from AI). */
+  explainNote: string | null;
   /** Found words with a Vietnamese meaning but no estimated level. */
   unknownLevels: number;
   lookUp: () => void;
@@ -76,6 +84,9 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
   const [error, setError] = useState<string | null>(null);
   const [levelsBusy, setLevelsBusy] = useState(false);
   const [levelError, setLevelError] = useState<string | null>(null);
+  const [explainBusy, setExplainBusy] = useState(false);
+  const [explainError, setExplainError] = useState<string | null>(null);
+  const [explainNote, setExplainNote] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const parsed = useMemo(() => parseWordList(text), [text]);
@@ -97,6 +108,7 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     abortRef.current = null;
     setRunning(false);
     setLevelsBusy(false);
+    setExplainBusy(false);
   }, []);
 
   const run = useCallback(
@@ -109,6 +121,12 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
       setError(null);
       setLevelError(null);
       setLevelsBusy(false);
+      setExplainError(null);
+      setExplainNote(
+        terms.length > 20
+          ? 'Chỉ 20 từ đầu được AI viết nghĩa đơn giản; các từ còn lại dùng nghĩa từ điển.'
+          : null,
+      );
       setDone(0);
       setTotal(terms.length);
       setEntries(startingEntries);
@@ -117,6 +135,36 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
       let settledCount = 0;
       const cache = createSqliteDictCache(db);
       const client = createHttpClient();
+
+      // One batch request writes a short, everyday Vietnamese meaning for the
+      // pasted terms. It runs next to the dictionary lookups, so the learner
+      // waits for the slower source rather than both in sequence. If it fails
+      // (no key, quota, offline), the dictionary meaning is kept untouched.
+      const explainTerms = terms.slice(0, 20);
+      setExplainBusy(explainTerms.length > 0);
+      const explainPromise = explainTerms.length
+        ? generateVocabulary(
+            {
+              track,
+              level,
+              topic: topic.trim() || null,
+              count: explainTerms.length,
+              explainTerms,
+              avoidTerms: [],
+              weakTerms: [],
+            },
+            { provider, model: aiModel, signal: controller.signal },
+          )
+            .then((result) => ({ suggestions: result.suggestions, error: null as string | null }))
+            .catch((caught: unknown) => ({
+              suggestions: [],
+              error: caught instanceof Error ? caught.message : 'AI chưa viết được nghĩa.',
+            }))
+        : Promise.resolve({ suggestions: [], error: null as string | null });
+
+      // Words already covered by the batch above must not also trigger a
+      // per-word translation request.
+      const explainedKeys = new Set(explainTerms.map((term) => normalizeTerm(term)));
 
       // Start the one level request now, in parallel with the dictionary. The
       // learner waits for the slower of the two instead of the sum of both, and
@@ -152,11 +200,11 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
               return next;
             });
           },
-          // Vietnamese meanings are the one thing a dictionary can miss; the AI
-          // fills at most five, and every filled word records which source it
-          // came from.
+          // The batch above covers the first 20 terms. A longer list still gets
+          // the old per-word fallback, but only for words the batch could not
+          // reach and only when the dictionary had no Vietnamese meaning.
           aiTranslate: async (term) => {
-            if (controller.signal.aborted) return null;
+            if (controller.signal.aborted || explainedKeys.has(normalizeTerm(term))) return null;
             try {
               const result = await generateVocabulary(
                 {
@@ -186,14 +234,40 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
         for (const entry of result) merged.set(entry.normalized, entry);
         const withLevels = [...merged.values()].map((entry) => withPackLevel(entry, track));
 
-        setEntries(withLevels);
+        // Wait for the AI meaning, then merge it over the dictionary data. The
+        // dictionary keeps IPA/audio; the AI supplies the learner-facing
+        // meaning.
+        const explanation = await explainPromise;
+        if (controller.signal.aborted) return;
+        const explained = applyExplanations(withLevels, explanation.suggestions);
+        setEntries(explained);
         setSelected(
           new Set(
-            withLevels
+            explained
               .filter((entry) => entry.status === 'found' && Boolean(entry.meaningVi))
               .map((entry) => entry.normalized),
           ),
         );
+        if (explanation.error) {
+          if (/api key/i.test(explanation.error)) {
+            // The list flow never requires a key; say so instead of showing a
+            // scary error when the learner has not configured AI at all.
+            setExplainNote(
+              'Chưa có API key AI nên nghĩa tiếng Việt lấy từ từ điển. Thêm key trong Cài đặt → AI để có nghĩa đơn giản hơn.',
+            );
+          } else {
+            setExplainError(
+              `Không viết được nghĩa AI: ${explanation.error} Đang dùng nghĩa từ điển.`,
+            );
+          }
+        } else if (explanation.suggestions.length > 0) {
+          setExplainNote(
+            `Đã dùng nghĩa đơn giản do AI viết cho ${explanation.suggestions.length} từ; IPA và audio vẫn lấy từ từ điển.` +
+              (terms.length > explainTerms.length
+                ? ' Các từ còn lại dùng nghĩa từ điển.'
+                : ''),
+          );
+        }
 
         const failed = result.filter((entry) => entry.status === 'failed').length;
         if (failed > 0) {
@@ -228,6 +302,7 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
         if (abortRef.current === controller) abortRef.current = null;
         setRunning(false);
         setLevelsBusy(false);
+        setExplainBusy(false);
       }
     },
     [db, running, track, level, topic, provider, aiModel],
@@ -280,6 +355,9 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     setSelected(new Set());
     setError(null);
     setLevelError(null);
+    setExplainError(null);
+    setExplainNote(null);
+    setExplainBusy(false);
     setDone(0);
     setTotal(0);
   }, []);
@@ -303,6 +381,9 @@ export function useWordListLookup(options: UseWordListLookupOptions): WordListLo
     error,
     levelsBusy,
     levelError,
+    explainBusy,
+    explainError,
+    explainNote,
     unknownLevels,
     lookUp,
     retryFailed,
