@@ -1,19 +1,20 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ExpoSpeechRecognitionModule,
   useSpeechRecognitionEvent,
 } from 'expo-speech-recognition';
 
 import { buildSpeechCheck, type SpeechCheckResult, type SpokenSegment } from './pronunciation';
+import { canFallBackToNetwork, speechErrorMessage } from './recognition';
 import type { QuizQuestion } from '../types';
 
 /**
  * Speech recognition wrapper.
  *
  * `requiresOnDeviceRecognition` is requested by default so audio stays on the
- * phone. If the iPhone does not have the English on-device model, iOS reports
- * an error; the UI then offers an explicit "use network recognition" retry
- * instead of silently sending audio to Apple.
+ * phone. If the iPhone has no English on-device model (or Siri is off), the
+ * hook switches to network recognition once and shows a note saying audio is
+ * sent to Apple; it never changes modes silently.
  */
 
 export interface SpeechCheckState {
@@ -22,28 +23,14 @@ export interface SpeechCheckState {
   transcript: string;
   result: SpeechCheckResult | null;
   error: string | null;
+  /** Explains an automatic switch to network recognition, if it happened. */
+  modeNote: string | null;
   onDevice: boolean;
   setOnDevice: (value: boolean) => void;
-  start: (question: QuizQuestion) => Promise<void>;
+  /** `network: true` forces one network attempt, ignoring the on-device switch. */
+  start: (question: QuizQuestion, options?: { network?: boolean }) => Promise<void>;
   stop: () => void;
   reset: () => void;
-}
-
-function messageForError(code: string, message?: string): string {
-  switch (code) {
-    case 'not-allowed':
-      return 'Bạn chưa cấp quyền micro và nhận diện giọng nói. Mở Cài đặt iOS → VocabMaster để bật.';
-    case 'service-not-allowed':
-      return 'Nhận diện giọng nói chưa được bật trên thiết bị này.';
-    case 'no-speech':
-      return 'Không nghe thấy giọng nói. Thử lại và đọc to hơn.';
-    case 'network':
-      return 'Nhận diện trên thiết bị không khả dụng và đang cần mạng.';
-    case 'busy':
-      return 'Bộ nhận diện đang bận. Thử lại sau một giây.';
-    default:
-      return message?.trim() || `Không nhận diện được giọng nói (${code}).`;
-  }
 }
 
 export function useSpeechCheck(): SpeechCheckState {
@@ -52,7 +39,13 @@ export function useSpeechCheck(): SpeechCheckState {
   const [transcript, setTranscript] = useState('');
   const [result, setResult] = useState<SpeechCheckResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modeNote, setModeNote] = useState<string | null>(null);
   const [onDevice, setOnDevice] = useState(true);
+  // Set for the attempt currently running, used to decide whether an error can
+  // be fixed by switching from on-device to network recognition.
+  const usedOnDeviceRef = useRef(false);
+  const autoRetriedRef = useRef(false);
+  const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // A ref, not state: the native event listener must read the current question
   // even if it was registered on an earlier render.
   const activeQuestionRef = useRef<QuizQuestion | null>(null);
@@ -93,32 +86,105 @@ export function useSpeechCheck(): SpeechCheckState {
   });
 
   useSpeechRecognitionEvent('error', (event) => {
+    const code = event.error ?? 'unknown';
+    // iOS reports a missing offline English model (or disabled Siri) as
+    // service-not-allowed/language-not-supported. Instead of dead-ending with
+    // "micro không dùng được", fall back to network recognition once and say so.
+    const canFallBack = canFallBackToNetwork({
+      code,
+      usedOnDevice: usedOnDeviceRef.current,
+      alreadyRetried: autoRetriedRef.current,
+    });
+
+    if (canFallBack) {
+      autoRetriedRef.current = true;
+      usedOnDeviceRef.current = false;
+      setListening(false);
+      setError(null);
+      setProcessing(true);
+      setModeNote(
+        'iPhone chưa có gói nhận diện tiếng Anh ngoại tuyến nên đã tự chuyển sang nhận diện qua mạng. Âm thanh được gửi tới Apple.',
+      );
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = setTimeout(() => {
+        retryTimerRef.current = null;
+        if (!activeQuestionRef.current) {
+          setProcessing(false);
+          return;
+        }
+        try {
+          ExpoSpeechRecognitionModule.start({
+            lang: 'en-US',
+            interimResults: true,
+            continuous: false,
+            requiresOnDeviceRecognition: false,
+            addsPunctuation: false,
+          });
+        } catch (caught) {
+          setProcessing(false);
+          setError(
+            caught instanceof Error ? caught.message : 'Không khởi động được nhận diện qua mạng.',
+          );
+        }
+      }, 450);
+      return;
+    }
+
     setListening(false);
     setProcessing(false);
-    setError(messageForError(event.error ?? 'unknown', event.message));
+    setError(speechErrorMessage(code, event.message));
   });
 
+  useEffect(
+    () => () => {
+      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+    },
+    [],
+  );
+
   const start = useCallback(
-    async (question: QuizQuestion) => {
+    async (question: QuizQuestion, options: { network?: boolean } = {}) => {
       setError(null);
       setResult(null);
       setTranscript('');
+      setModeNote(null);
+      autoRetriedRef.current = false;
       activeQuestionRef.current = question;
 
       try {
         const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (!permission.granted) {
           setError(
-            'Bạn chưa cấp quyền micro và nhận diện giọng nói. Mở Cài đặt iOS → VocabMaster để bật.',
+            'Bạn chưa cấp quyền micro hoặc nhận diện giọng nói. Mở Cài đặt iOS → VocabMaster → Micro / Nhận diện giọng nói để bật.',
           );
           return;
         }
+
+        // Do not ask iOS for on-device recognition when this phone has no
+        // offline English model: it would fail before the microphone is used.
+        let useOnDevice = options.network ? false : onDevice;
+        if (useOnDevice) {
+          let supported = false;
+          try {
+            supported = ExpoSpeechRecognitionModule.supportsOnDeviceRecognition();
+          } catch {
+            supported = false;
+          }
+          if (!supported) {
+            useOnDevice = false;
+            setModeNote(
+              'iPhone chưa có gói nhận diện tiếng Anh ngoại tuyến nên lần này dùng nhận diện qua mạng. Âm thanh được gửi tới Apple.',
+            );
+          }
+        }
+
+        usedOnDeviceRef.current = useOnDevice;
         setProcessing(true);
         ExpoSpeechRecognitionModule.start({
           lang: 'en-US',
           interimResults: true,
           continuous: false,
-          requiresOnDeviceRecognition: onDevice,
+          requiresOnDeviceRecognition: useOnDevice,
           addsPunctuation: false,
         });
       } catch (caught) {
@@ -134,6 +200,10 @@ export function useSpeechCheck(): SpeechCheckState {
   );
 
   const stop = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     try {
       ExpoSpeechRecognitionModule.stop();
     } catch {
@@ -144,9 +214,14 @@ export function useSpeechCheck(): SpeechCheckState {
   }, []);
 
   const reset = useCallback(() => {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
     setTranscript('');
     setResult(null);
     setError(null);
+    setModeNote(null);
     activeQuestionRef.current = null;
     setProcessing(false);
   }, []);
@@ -158,12 +233,13 @@ export function useSpeechCheck(): SpeechCheckState {
       transcript,
       result,
       error,
+      modeNote,
       onDevice,
       setOnDevice,
       start,
       stop,
       reset,
     }),
-    [listening, processing, transcript, result, error, onDevice, start, stop, reset],
+    [listening, processing, transcript, result, error, modeNote, onDevice, start, stop, reset],
   );
 }

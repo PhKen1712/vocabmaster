@@ -4,6 +4,53 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-24 — Phiên 11d: micro / nhận diện giọng nói báo “chưa dùng được”
+
+### Bối cảnh
+
+- Người dùng báo **không có chỗ nào dùng micro được**; màn hình chỉ ghi “chưa dùng được micro”.
+
+### Nguyên nhân tìm được trong code
+
+- Banner cũ gộp **mọi** lỗi nhận diện thành tiêu đề “Chưa dùng được micro”, nên lỗi thiếu gói tiếng Anh
+  ngoại tuyến trông như lỗi quyền micro.
+- `useSpeechCheck` luôn đặt `requiresOnDeviceRecognition: true`. Nếu iPhone chưa có gói en-US ngoại
+  tuyến, hoặc Siri/Đọc chính tả đang tắt, iOS trả `service-not-allowed` / `language-not-supported`
+  ngay khi bắt đầu — trước cả khi micro được dùng.
+- Nút “Thử nhận diện qua mạng” ở phòng phát âm gọi `setOnDevice(false)` rồi `start()` trong cùng một
+  nhịp, nên `start` vẫn đọc giá trị `onDevice` cũ và thử ngoại tuyến lần nữa; phiên học không có nút
+  này, chỉ có “Bỏ qua”.
+
+### Đã thay đổi
+
+- `src/speech/useSpeechCheck.ts` — trước khi bắt đầu, hỏi `supportsOnDeviceRecognition()`; máy không
+  có gói ngoại tuyến thì dùng mạng ngay và ghi rõ lý do; nếu iOS vẫn trả `service-not-allowed` /
+  `language-not-supported` khi đang thử ngoại tuyến thì **tự chuyển sang mạng một lần** (có ghi chú
+  âm thanh gửi tới Apple), không lặp vô hạn. `start(question, { network: true })` ép một lần qua mạng;
+  thông báo lỗi tách riêng quyền micro, thiếu gói/Siri, không có mạng, micro bận và bị ngắt; dọn timer
+  khi dừng/đặt lại.
+- `src/screens/PronunciationScreen.tsx`, `src/screens/SessionScreen.tsx` — đổi tiêu đề thành “Chưa
+  nhận diện được giọng nói”, hiện ghi chú chế độ đang dùng, thêm nút **Thử nhận diện qua mạng** trong
+  phiên học và nút **Mở Cài đặt iOS** khi lỗi là do quyền.
+- README — thêm hành vi tự chuyển mạng và cách xử lý.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi**.
+- `npx jest --runInBand` → **25/25 suite, 256/256 test pass**; thêm `src/speech/__tests__/
+  recognition.test.ts` cho câu báo lỗi và quy tắc chỉ fallback mạng **một lần**, đúng loại lỗi.
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- **Chưa có log lỗi thật từ iPhone của người dùng**, nên nguyên nhân chính xác (quyền bị từ chối, thiếu
+  gói ngoại tuyến, hay Siri tắt) chưa được xác nhận; bản sửa xử lý cả ba và hiện đúng lỗi thay vì câu
+  chung “chưa dùng được micro”.
+- Cần **build lại và cài bản mới** mới có thay đổi; bản đang cài trên máy vẫn là code cũ.
+- Auto-fallback gửi âm thanh tới Apple; người dùng được thông báo ngay trên màn hình, nhưng đây là thay
+  đổi quyền riêng tư cần người dùng chấp nhận khi dùng.
+
+---
+
 ## 2026-10-24 — Phiên 11c: sửa chế độ 60 giây bị đứng ở màn hình trống
 
 ### Bối cảnh

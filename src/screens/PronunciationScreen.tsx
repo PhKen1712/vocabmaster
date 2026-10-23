@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Linking, StyleSheet, Switch, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen } from '../components/ui';
 import { ScreenHeader } from '../components/patterns';
@@ -57,7 +57,7 @@ export function PronunciationScreen({ id }: { id: string }) {
     if (!question) return;
     speech.setOnDevice(false);
     speech.reset();
-    void speech.start(question);
+    void speech.start(question, { network: true });
   }, [question, speech]);
 
   if (loading) {
@@ -148,6 +148,12 @@ export function PronunciationScreen({ id }: { id: string }) {
           </View>
         ) : null}
 
+        {speech.modeNote ? (
+          <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
+            {speech.modeNote}
+          </AppText>
+        ) : null}
+
         {!listening ? (
           <PrimaryButton
             label={result ? 'Nói lại' : 'Bắt đầu đọc'}
@@ -169,14 +175,22 @@ export function PronunciationScreen({ id }: { id: string }) {
         <>
           <Banner
             tone="warning"
-            title="Chưa dùng được micro"
-            body={`${speech.error} Hãy kiểm tra Cài đặt iOS → VocabMaster → Micro và Nhận diện giọng nói.`}
+            title="Chưa nhận diện được giọng nói"
+            body={speech.error}
           />
           {speech.onDevice ? (
             <PrimaryButton
               label="Thử nhận diện qua mạng"
               variant="ghost"
               onPress={retryWithNetwork}
+              style={{ marginBottom: spacing.sm }}
+            />
+          ) : null}
+          {speech.error.includes('quyền') ? (
+            <PrimaryButton
+              label="Mở Cài đặt iOS"
+              variant="ghost"
+              onPress={() => void Linking.openSettings()}
               style={{ marginBottom: spacing.md }}
             />
           ) : null}

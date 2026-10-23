@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   StyleSheet,
   TextInput,
@@ -594,8 +595,35 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
               ) : null}
             </Card>
           ) : null}
+          {speech.modeNote ? (
+            <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
+              {speech.modeNote}
+            </AppText>
+          ) : null}
           {speech.error ? (
-            <Banner tone="warning" title="Chưa dùng được micro" body={speech.error} />
+            <>
+              <Banner tone="warning" title="Chưa nhận diện được giọng nói" body={speech.error} />
+              {speech.onDevice ? (
+                <PrimaryButton
+                  label="Thử nhận diện qua mạng"
+                  variant="ghost"
+                  onPress={() => {
+                    speech.setOnDevice(false);
+                    speech.reset();
+                    void speech.start(question, { network: true });
+                  }}
+                  style={{ marginTop: spacing.sm }}
+                />
+              ) : null}
+              {speech.error.includes('quyền') ? (
+                <PrimaryButton
+                  label="Mở Cài đặt iOS"
+                  variant="ghost"
+                  onPress={() => void Linking.openSettings()}
+                  style={{ marginTop: spacing.sm }}
+                />
+              ) : null}
+            </>
           ) : null}
           {speech.listening ? (
             <PrimaryButton

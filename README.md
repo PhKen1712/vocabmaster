@@ -196,7 +196,10 @@ Widget không gọi mạng và không gọi Gemini.
   số từ mới trong ngày (chỉ từ mới, không tính ôn) để nối lại. Chuỗi chỉ được cứu một lần, và sau khi
   cứu hệ số thưởng xu trở về 1,0.
 - **Kiểm tra phát âm**: mở một từ trong kho → **Kiểm tra phát âm** để nghe mẫu và đọc lại. Kết quả nói
-  thật: app chỉ xác nhận hệ thống có nhận ra đúng từ hay không, không chấm điểm từng âm vị.
+  thật: app chỉ xác nhận hệ thống có nhận ra đúng từ hay không, không chấm điểm từng âm vị. Nếu
+  iPhone chưa có gói nhận diện tiếng Anh ngoại tuyến (hoặc Siri/Đọc chính tả đang tắt), app tự chuyển
+  sang nhận diện qua mạng **một lần** và ghi rõ âm thanh được gửi tới Apple; lỗi quyền micro có nút
+  mở thẳng Cài đặt iOS.
 - **Giọng đọc**: chọn Anh–Mỹ / Anh–Anh và Tự động / Nữ / Nam; nếu iPhone chưa cài tổ hợp đó, app nói
   rõ đang dùng giọng thay thế thay vì âm thầm đổi giọng.
 
@@ -256,7 +259,7 @@ VocabMaster/
 | Widget không xuất hiện | Mở app một lần; kiểm tra target extension trong `ios/`; build lại |
 | Widget không đổi số liệu | Mở app lại; iOS trễ refresh; kiểm tra App Group trong Signing |
 | Không phát âm thanh | Tắt chế độ im lặng; tăng âm lượng; cài voice trong Cài đặt iOS |
-| Micro không nhận | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói |
+| Micro không nhận / "chưa nhận diện được giọng nói" | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói; bật Siri/Đọc chính tả nếu dùng nhận diện ngoại tuyến; hoặc tắt "Nhận diện trên thiết bị" để dùng qua mạng |
 | 429 (Gemini hoặc Groq) | Chờ vài phút; giảm số từ; kiểm tra hạn mức model. Nếu là hạn mức theo ngày, app báo riêng và không tự thử lại |
 | 403 / 401 | Key sai, hoặc key Groq dán vào ô Gemini (hoặc ngược lại) |
 | 503 / "đang bận" | App đã tự thử lại 3 lần (Gemini còn tự đổi model khi model quá tải); chờ khoảng 1 phút rồi bấm **Thử lại** |
