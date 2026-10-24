@@ -1,8 +1,11 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import {
+  ensureWordStudied,
   getCoinBalance,
   getValidStreakDays,
+  getWordStudyState,
+  isFirstRewardEligible,
   penalizeWordInTransaction,
   rewardWordInTransaction,
 } from '../coins/ledger';
@@ -21,6 +24,11 @@ export interface RecordReviewInput {
   durationMs: number;
   schedule: ScheduleResult;
   dailyGoal: number;
+  /**
+   * Stable id for this answer. A repeated tap or a retried write uses the same
+   * id, so the review and the coin movement can never be applied twice.
+   */
+  eventId?: string;
   /** Injected for deterministic tests. */
   now?: Date;
 }
@@ -32,6 +40,10 @@ export interface RecordReviewResult {
   /** Signed coins change for this answer (0 when nothing moved). */
   coinChange: number;
   coinBalance: number;
+  /** Plain-language reason, shown even when the change is 0. */
+  coinReason: string | null;
+  /** True when this exact answer event had already been saved. */
+  duplicate: boolean;
 }
 
 /**
@@ -45,8 +57,27 @@ export async function recordReview(
 ): Promise<RecordReviewResult> {
   const now = input.now ?? new Date();
   const timestamp = now.toISOString();
+  const eventId = input.eventId?.trim() || newId();
+
+  // Idempotency at the data layer: the same answer can be submitted again after
+  // a double tap or a retry without creating a second review or coin movement.
+  const previous = await db.getFirstAsync<ReviewRow>('SELECT * FROM reviews WHERE id = ?;', [
+    eventId,
+  ]);
+  if (previous) {
+    return {
+      log: rowToReview(previous),
+      word: input.word,
+      goalMet: false,
+      coinChange: 0,
+      coinBalance: await getCoinBalance(db),
+      coinReason: 'Câu trả lời này đã được ghi nhận trước đó.',
+      duplicate: true,
+    };
+  }
+
   const log: ReviewLog = {
-    id: newId(),
+    id: eventId,
     wordId: input.word.id,
     rating: input.rating,
     correct: input.correct,
@@ -65,6 +96,7 @@ export async function recordReview(
   const validDays = await getValidStreakDays(db, day);
   let goalMet = false;
   let coinChange = 0;
+  let coinReason: string | null = null;
 
   await db.withTransactionAsync(async () => {
     await db.runAsync(
@@ -131,15 +163,52 @@ export async function recordReview(
       [day, newWords, reviews, answered, correct, goalMet ? 1 : 0, timestamp],
     );
 
+    // A permanent per-term history answers "was this item studied before?"
+    // even if the word row was deleted and created again. Read it before the
+    // update: the first *correct* answer is the only one that can pay, so a
+    // word first seen wrong can still earn on its first valid completion.
+    const priorState = await getWordStudyState(db, input.word);
+    const studiedBefore = await ensureWordStudied(db, input.word, input.correct, now);
+
     // Coins move inside the same transaction as the grade: a crash can never
     // leave a paid word without its review, or the other way round. Speaking
     // practice is intentionally excluded from both rewards and penalties.
-    if (input.mode !== 'speaking') {
-      if (input.correct) {
-        coinChange = await rewardWordInTransaction(db, input.word, validDays, now);
+    if (input.mode === 'speaking') {
+      coinReason = 'Luyện nói không tính xu.';
+    } else if (input.correct) {
+      // Eligibility is "never completed correctly before", not "this row is
+      // new". A learner who saw the word once and answered wrong can still
+      // earn on the first correct answer; one reward per term, forever.
+      const firstValidCompletion = isFirstRewardEligible(priorState);
+      if (!firstValidCompletion) {
+        coinReason = priorState.rewarded
+          ? '0 xu — từ này đã nhận thưởng ở lần học đầu tiên.'
+          : '0 xu — từ đã học trước đó nên không cộng thưởng lần nữa.';
       } else {
-        coinChange = await penalizeWordInTransaction(db, input.word, now);
+        const outcome = await rewardWordInTransaction(
+          db,
+          input.word,
+          validDays,
+          log.id,
+          now,
+        );
+        coinChange = outcome.amount;
+        coinReason = outcome.alreadyRewarded
+          ? '0 xu — từ này đã nhận thưởng trước đó.'
+          : outcome.amount > 0
+            ? `+${outcome.amount.toLocaleString('vi-VN')} xu — hoàn thành từ mới lần đầu.`
+            : '0 xu — từ này chưa có mức thưởng.';
       }
+    } else if (wasNew && !studiedBefore) {
+      coinReason = 'Từ mới: trả lời sai chưa bị trừ xu.';
+    } else {
+      const outcome = await penalizeWordInTransaction(db, input.word, log.id, now);
+      coinChange = outcome.amount;
+      coinReason = outcome.duplicate
+        ? 'Câu trả lời này đã được xử lý trước đó.'
+        : outcome.amount < 0
+          ? `${outcome.amount.toLocaleString('vi-VN')} xu — trả lời sai khi ôn lại.`
+          : '0 xu — số dư đã bằng 0 nên không trừ thêm.';
     }
   });
 
@@ -155,7 +224,15 @@ export async function recordReview(
     updatedAt: timestamp,
   };
 
-  return { log, word: updatedWord, goalMet, coinChange, coinBalance: await getCoinBalance(db) };
+  return {
+    log,
+    word: updatedWord,
+    goalMet,
+    coinChange,
+    coinBalance: await getCoinBalance(db),
+    coinReason,
+    duplicate: false,
+  };
 }
 
 export async function getWordHistory(

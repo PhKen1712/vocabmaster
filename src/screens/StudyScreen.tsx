@@ -73,6 +73,11 @@ export function StudyScreen() {
   };
 
   const startDrill = (kind: QuizKind) => {
+    // Pending reviews always win: a drill must not become a way around them.
+    if (dueCount > 0) {
+      push({ name: 'session', config: { mode: 'review', track } });
+      return;
+    }
     push({
       name: 'session',
       config: { mode: 'mixed', track, level: settings.level, kinds: [kind] },
@@ -81,6 +86,10 @@ export function StudyScreen() {
 
   const startTopic = () => {
     if (!topic) return;
+    if (dueCount > 0) {
+      push({ name: 'session', config: { mode: 'review', track } });
+      return;
+    }
     push({
       name: 'session',
       config: { mode: 'topic', track, topic, level: settings.level },
@@ -105,6 +114,26 @@ export function StudyScreen() {
       <ScreenHeader title="Học" subtitle="Lộ trình và các dạng luyện tập" />
 
       <TrackSwitcher value={track} onChange={setTrack} />
+
+      {dueCount > 0 ? (
+        <Card style={{ marginBottom: spacing.lg, borderColor: colors.warning }}>
+          <AppText variant="micro" color={colors.warning}>
+            ÔN TẬP ĐANG CHỜ
+          </AppText>
+          <AppText variant="bodyStrong" style={{ marginTop: 2 }}>
+            {dueCount} từ đến hạn — Học từ mới, AI và nhập danh sách đang tạm khoá
+          </AppText>
+          <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
+            Các từ này đã được lên lịch ôn. Ứng dụng chặn mọi đường thêm từ mới cho tới khi bạn xử
+            lý xong, kể cả khi mở bằng màn hình khác.
+          </AppText>
+          <PrimaryButton
+            label={`Ôn ngay ${dueCount} từ`}
+            onPress={() => push({ name: 'session', config: { mode: 'review', track } })}
+            style={{ marginTop: spacing.md }}
+          />
+        </Card>
+      ) : null}
 
       <Card style={{ marginBottom: spacing.lg }}>
         <AppText variant="micro" color={colors.textFaint}>
@@ -166,12 +195,35 @@ export function StudyScreen() {
         : null}
 
       <SectionHeader title="Luyện tập" />
-      <Card style={{ marginBottom: spacing.md }} onPress={() => push({ name: 'session', config: { mode: 'mixed', track, level: settings.level } })}>
+      <Card
+        style={{ marginBottom: spacing.md }}
+        onPress={() => {
+          if (dueCount > 0) {
+            push({ name: 'session', config: { mode: 'review', track } });
+            return;
+          }
+          if (freshCount > 0) {
+            push({ name: 'learn', track, level: settings.level });
+            return;
+          }
+          push({ name: 'session', config: { mode: 'weak', track } });
+        }}
+      >
         <View style={styles.sessionRow}>
           <View style={{ flex: 1 }}>
-            <AppText variant="bodyStrong">Buổi học tổng hợp</AppText>
+            <AppText variant="bodyStrong">
+              {dueCount > 0
+                ? 'Ôn tập đến hạn'
+                : freshCount > 0
+                  ? 'Học từ mới có hướng dẫn'
+                  : 'Luyện lại từ hay sai'}
+            </AppText>
             <AppText variant="caption" color={colors.textMuted}>
-              {dueCount} từ cần ôn · {Math.min(settings.dailyGoal, freshCount)} từ mới
+              {dueCount > 0
+                ? `${dueCount} từ cần ôn · hoàn thành trước khi học từ mới`
+                : freshCount > 0
+                  ? `Giới thiệu trước, ${Math.min(settings.dailyGoal, freshCount)} từ mới sau`
+                  : 'Không còn từ mới ở cấp này — ôn các từ hay quên'}
             </AppText>
           </View>
           <AppText variant="headline" color={colors.primary}>
@@ -195,27 +247,35 @@ export function StudyScreen() {
           </AppText>
         </Card>
         <Card
-          style={{ flex: 1 }}
-          onPress={() =>
-            push({ name: 'session', config: { mode: 'new', track, level: settings.level } })
-          }
-          accessibilityLabel="Học từ mới"
+          style={{ flex: 1, opacity: dueCount > 0 ? 0.55 : 1 }}
+          onPress={() => {
+            if (dueCount > 0) {
+              push({ name: 'session', config: { mode: 'review', track } });
+              return;
+            }
+            push({ name: 'learn', track, level: settings.level });
+          }}
+          accessibilityLabel={dueCount > 0 ? 'Học từ mới đang khoá' : 'Học từ mới'}
         >
-          <AppText style={{ fontSize: 22 }}>🌱</AppText>
+          <AppText style={{ fontSize: 22 }}>{dueCount > 0 ? '🔒' : '🌱'}</AppText>
           <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
             Học từ mới
           </AppText>
           <AppText variant="caption" color={colors.textMuted}>
-            {freshCount} từ chưa học
+            {dueCount > 0 ? `Khoá · còn ${dueCount} từ cần ôn` : `${freshCount} từ chưa học`}
           </AppText>
         </Card>
       </View>
 
       <View style={[styles.twoColumn, { marginTop: spacing.md }]}>
         <Card
-          style={{ flex: 1 }}
-          onPress={() => push({ name: 'session', config: { mode: 'weak', track } })}
-          accessibilityLabel="Luyện từ hay sai"
+          style={{ flex: 1, opacity: dueCount > 0 ? 0.55 : 1 }}
+          onPress={() =>
+            dueCount > 0
+              ? push({ name: 'session', config: { mode: 'review', track } })
+              : push({ name: 'session', config: { mode: 'weak', track } })
+          }
+          accessibilityLabel={dueCount > 0 ? 'Luyện từ hay sai đang khoá' : 'Luyện từ hay sai'}
         >
           <AppText style={{ fontSize: 22 }}>🎯</AppText>
           <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
@@ -226,11 +286,15 @@ export function StudyScreen() {
           </AppText>
         </Card>
         <Card
-          style={{ flex: 1 }}
-          onPress={() => push({ name: 'ai' })}
-          accessibilityLabel={`Tạo từ bằng ${providerLabel(settings.aiProvider)}`}
+          style={{ flex: 1, opacity: dueCount > 0 ? 0.55 : 1 }}
+          onPress={() => (dueCount > 0 ? undefined : push({ name: 'ai' }))}
+          accessibilityLabel={
+            dueCount > 0
+              ? 'Tạo bộ từ đang khoá vì còn từ cần ôn'
+              : `Tạo từ bằng ${providerLabel(settings.aiProvider)}`
+          }
         >
-          <AppText style={{ fontSize: 22 }}>✨</AppText>
+          <AppText style={{ fontSize: 22 }}>{dueCount > 0 ? '🔒' : '✨'}</AppText>
           <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
             {providerLabel(settings.aiProvider)} tạo bộ từ
           </AppText>
@@ -286,7 +350,7 @@ export function StudyScreen() {
           <PrimaryButton
             label={topic ? `Kiểm tra chủ đề ${topic}` : 'Chọn một chủ đề'}
             onPress={startTopic}
-            disabled={!topic}
+            disabled={!topic || dueCount > 0}
             style={{ marginTop: spacing.md }}
           />
         </>

@@ -2,7 +2,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { dateKey } from '../lib/date';
 import { newId } from '../lib/ids';
-import type { CoinEvent, Level } from '../types';
+import { normalizeTerm } from '../lib/text';
+import type { CoinEvent, Level, Track } from '../types';
 import { bonusStreakDays } from '../streak/streak';
 import { applyPenalty, coinMultiplier, coinReward, nextCoinMilestone } from './values';
 
@@ -21,6 +22,11 @@ interface LedgerRow {
   balance_after: number;
   reason: string | null;
   created_at: string;
+}
+
+/** Stable identity of a learned item, independent of its current row id. */
+export function wordTermKey(word: { term: string; track: Track }): string {
+  return `${normalizeTerm(word.term)}|${word.track}`;
 }
 
 function asKind(value: string): CoinEvent['kind'] {
@@ -108,62 +114,212 @@ export async function listCoinHistory(
   return rows.map(rowToEvent);
 }
 
+export interface WordStudyState {
+  /** True when the term appears in the permanent history at all. */
+  studied: boolean;
+  /** ISO time of the first correct answer, or null while never correct. */
+  firstCorrectAt: string | null;
+  /** True when a reward row already exists for this term. */
+  rewarded: boolean;
+}
+
 /**
- * Award a word once. Must be called inside the review transaction so the
- * reward and the grade commit together. Returns the coins added (0 when the
- * word was already rewarded or the word has no reward value).
+ * The single rule for paying a word: no reward row yet, and the term has never
+ * been answered correctly before. A wrong first attempt does not use up the
+ * reward; a correct one does, forever.
+ */
+export function isFirstRewardEligible(state: WordStudyState): boolean {
+  return !state.rewarded && state.firstCorrectAt === null;
+}
+
+/** Read the permanent per-term history without changing it. */
+export async function getWordStudyState(
+  db: SQLiteDatabase,
+  word: { id: string; term: string; track: Track },
+): Promise<WordStudyState> {
+  const termKey = wordTermKey(word);
+  const row = await db.getFirstAsync<{ first_correct_at: string | null }>(
+    'SELECT first_correct_at FROM word_study_history WHERE term_key = ?;',
+    [termKey],
+  );
+  const reward = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
+    [termKey, word.id],
+  );
+  return {
+    studied: Boolean(row),
+    firstCorrectAt: row?.first_correct_at ?? null,
+    rewarded: Boolean(reward),
+  };
+}
+
+/**
+ * Remember that this term has been studied, independently of the words row.
+ * Returns true when the term was already studied before this answer, which is
+ * what makes delete-and-re-add ineligible for another reward.
+ */
+export async function ensureWordStudied(
+  db: SQLiteDatabase,
+  word: { id: string; term: string; track: Track },
+  correct: boolean,
+  now = new Date(),
+): Promise<boolean> {
+  const termKey = wordTermKey(word);
+  const existing = await db.getFirstAsync<{ first_correct_at: string | null }>(
+    'SELECT first_correct_at FROM word_study_history WHERE term_key = ?;',
+    [termKey],
+  );
+  if (existing) {
+    if (correct && !existing.first_correct_at) {
+      await db.runAsync(
+        'UPDATE word_study_history SET first_correct_at = ? WHERE term_key = ? AND first_correct_at IS NULL;',
+        [now.toISOString(), termKey],
+      );
+    }
+    return true;
+  }
+
+  await db.runAsync(
+    `INSERT OR IGNORE INTO word_study_history
+      (term_key, term, track, first_studied_at, first_correct_at)
+     VALUES (?, ?, ?, ?, ?);`,
+    [
+      termKey,
+      word.term,
+      word.track,
+      now.toISOString(),
+      correct ? now.toISOString() : null,
+    ],
+  );
+  return false;
+}
+
+/** True when this exact term already has a reward row (from any past row id). */
+export async function hasRewardForTerm(
+  db: SQLiteDatabase,
+  word: { id: string; term: string; track: Track },
+): Promise<boolean> {
+  const row = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
+    [wordTermKey(word), word.id],
+  );
+  return Boolean(row);
+}
+
+export interface RewardOutcome {
+  /** Coins actually added; 0 when this word already paid or is not eligible. */
+  amount: number;
+  /** True when an earlier reward for this same term still exists. */
+  alreadyRewarded: boolean;
+}
+
+export interface PenaltyOutcome {
+  /** Signed change; 0 when nothing moved. */
+  amount: number;
+  /** True when the exact answer event was already processed. */
+  duplicate: boolean;
+}
+
+async function sourceAlreadyProcessed(
+  db: SQLiteDatabase,
+  sourceId: string,
+): Promise<CoinEvent | null> {
+  const row = await db.getFirstAsync<LedgerRow>(
+    'SELECT * FROM coin_ledger WHERE source_id = ? LIMIT 1;',
+    [sourceId],
+  );
+  return row ? rowToEvent(row) : null;
+}
+
+/**
+ * Award a word once, for the first successful study of its *term*, not of its
+ * current database row. Deleting a word and adding it again therefore cannot
+ * pay twice, and resetting coins does not delete the reward marker either.
+ *
+ * Must be called inside the review transaction so the reward and the grade
+ * commit together. A word that was already studied before this answer never
+ * becomes eligible retroactively.
  */
 export async function rewardWordInTransaction(
   db: SQLiteDatabase,
-  word: { id: string; level: Level },
+  word: { id: string; term: string; track: Track; level: Level },
   validStreakDays: number,
+  sourceId: string,
   now = new Date(),
-): Promise<number> {
+): Promise<RewardOutcome> {
+  const termKey = wordTermKey(word);
   const existing = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND word_id = ? LIMIT 1;",
-    [word.id],
+    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
+    [termKey, word.id],
   );
-  if (existing) return 0;
+  if (existing) return { amount: 0, alreadyRewarded: true };
+
+  const processed = await sourceAlreadyProcessed(db, sourceId);
+  if (processed) return { amount: 0, alreadyRewarded: true };
 
   const base = coinReward(word.level, validStreakDays);
-  if (base <= 0) return 0;
+  if (base <= 0) return { amount: 0, alreadyRewarded: false };
 
   const balance = await readBalance(db);
   const result = await db.runAsync(
     `INSERT OR IGNORE INTO coin_ledger
-      (id, kind, word_id, amount, balance_after, reason, created_at)
-     VALUES (?, 'reward', ?, ?, ?, ?, ?);`,
-    [newId(), word.id, base, balance + base, 'Học từ mới', now.toISOString()],
+      (id, kind, word_id, term_key, source_id, amount, balance_after, reason, created_at)
+     VALUES (?, 'reward', ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      newId(),
+      word.id,
+      termKey,
+      sourceId,
+      base,
+      balance + base,
+      'Học từ mới lần đầu',
+      now.toISOString(),
+    ],
   );
-  return result.changes > 0 ? base : 0;
+  if (result.changes > 0) {
+    await db.runAsync(
+      'UPDATE word_study_history SET rewarded_at = ? WHERE term_key = ?;',
+      [now.toISOString(), termKey],
+    );
+    return { amount: base, alreadyRewarded: false };
+  }
+  return { amount: 0, alreadyRewarded: true };
 }
 
 /**
- * Subtract a word's base value after a wrong review. No-op for words that were
- * never rewarded (so a technical slip cannot drain a new learner's balance).
+ * Subtract a word's base value after a wrong answer on a word that had already
+ * been studied at least once. A newly introduced word can be answered wrong
+ * without a penalty, and a technical failure/skip never reaches this function.
  */
 export async function penalizeWordInTransaction(
   db: SQLiteDatabase,
-  word: { id: string; level: Level },
+  word: { id: string; term: string; track: Track; level: Level },
+  sourceId: string,
   now = new Date(),
-): Promise<number> {
-  const rewarded = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND word_id = ? LIMIT 1;",
-    [word.id],
-  );
-  if (!rewarded) return 0;
+): Promise<PenaltyOutcome> {
+  const processed = await sourceAlreadyProcessed(db, sourceId);
+  if (processed) return { amount: 0, duplicate: true };
 
   const balance = await readBalance(db);
   const change = applyPenalty(balance, word.level);
-  if (change >= 0) return 0;
+  if (change >= 0) return { amount: 0, duplicate: false };
 
   await db.runAsync(
     `INSERT INTO coin_ledger
-      (id, kind, word_id, amount, balance_after, reason, created_at)
-     VALUES (?, 'penalty', ?, ?, ?, ?, ?);`,
-    [newId(), word.id, change, balance + change, 'Ôn sai', now.toISOString()],
+      (id, kind, word_id, term_key, source_id, amount, balance_after, reason, created_at)
+     VALUES (?, 'penalty', ?, ?, ?, ?, ?, ?, ?);`,
+    [
+      newId(),
+      word.id,
+      wordTermKey(word),
+      sourceId,
+      change,
+      balance + change,
+      'Trả lời sai khi ôn lại',
+      now.toISOString(),
+    ],
   );
-  return change;
+  return { amount: change, duplicate: false };
 }
 
 /** Wallet reset: records the event, keeps every other kind of study data. */

@@ -1,8 +1,8 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-23
-- **current_phase:** Giai đoạn 1–6 (code đã viết) + sửa kiểm tra đầu vào + kho từ bundle 134/5.000 + **hai cách tạo bộ từ** + **Groq là nhà cung cấp AI mặc định** + **nhạc nền 5 bản, ba game, sáu dạng luyện kỹ năng, xu ảo, khôi phục chuỗi, chọn giọng nam/nữ và phòng luyện phát âm (2026-10-24)** — **typecheck 0 lỗi, 242/242 unit test xanh trong 22 suite, schema v3 có migration đã chạy thử trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone, người dùng xác nhận mượt (2026-10-23)**; toàn bộ tính năng mới của 2026-10-24 **chưa chạy trên thiết bị**
+- **last_updated:** 2026-10-25
+- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **khoá học từ mới khi còn từ đến hạn ở tầng dữ liệu** + **bài học từ mới nhiều giai đoạn** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** — **typecheck 0 lỗi, 241/241 unit test xanh trong 24 suite, schema v4 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
@@ -143,23 +143,30 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
   **Gemini** (mặc định, tiếng Việt/IPA tốt hơn) và **Groq** (`openai/gpt-oss-120b`, rất nhanh,
   8K token/phút) — chọn trong Cài đặt, mỗi bên có key + model riêng (`src/ai/groq.ts`,
   `src/ai/provider.ts`, `src/ai/index.ts`).
-- **Tạo bộ từ từ danh sách tự nhập (2026-10-23)**: tách phẩy/chấm phẩy/xuống dòng, bỏ trùng,
-  tra song song hai từ điển miễn phí (dict.minhqnd.com cho nghĩa Việt + IPA, api.dictionaryapi.dev
-  cho định nghĩa/ví dụ tiếng Anh), giới hạn 3 request đồng thời, timeout 8 giây, retry 2 lần cho
-  mạng/429/5xx, cache SQLite 30 ngày, đánh dấu trường thiếu (`missing_fields`), Gemini chỉ bổ sung
-  nghĩa Việt cho tối đa 5 từ và được ghi rõ nguồn (`docs/DICTIONARY.md`).
+- **Tạo bộ từ từ danh sách tự nhập (2026-10-25)**: tách phẩy/chấm phẩy/xuống dòng, giữ nguyên cụm
+  (`take into account` là một mục), bỏ trùng không phân biệt hoa/thường, giữ thứ tự; AI (Groq mặc
+  định, Gemini là lựa chọn) viết toàn bộ nghĩa/IPA/định nghĩa/ví dụ/collocations/level cho cả từ đơn
+  và cụm từ; chia lô, cache theo nội dung, single-flight, timeout 20 giây, retry có backoff chỉ cho
+  lỗi mạng/429/5xx; báo rõ số mục thành công/thất bại và cho **Thử lại** phần lỗi. **Không còn API
+  từ điển, không còn điều kiện từ điển phải xác nhận** (`src/wordlist/parse.ts`,
+  `src/screens/useWordListImport.ts`, `src/ai/cache.ts`).
 - Gợi ý chi tiết cho một từ cụ thể trong biểu mẫu (lookupTerm).
-- **Cấp độ tự tra cho danh sách dán (2026-10-23)**: kho từ bundle trả lời ngay (miễn phí), phần
-  còn lại do **một** request AI xếp CEFR cho cả danh sách — chạy song song với tra từ điển, không
-  phải một request mỗi từ. Thẻ từ ghi band + nguồn ("có sẵn" / "AI ước lượng"); từ chưa rõ cấp độ
-  được ghi đúng như vậy và chỉ khi đó mới dùng cấp độ trong Cài đặt (`src/ai/levels.ts`).
+- **Cấp độ tự tra cho danh sách dán**: kho từ bundle trả lời ngay, phần còn lại do AI xếp CEFR trong
+  cùng request; thẻ từ ghi band + nguồn ("có sẵn" / "AI ước lượng"); từ chưa rõ ghi đúng như vậy.
+- **Khoá học từ mới (2026-10-25)**: `countDueWords` / `getStudyGate` / `assertNewLearningAllowed`
+  (`src/study/gate.ts`); `createWord` gọi assert, nên cả AI, nhập danh sách, form thủ công đều bị
+  chặn khi còn từ đến hạn, không chỉ ẩn nút.
+- **Học từ mới nhiều giai đoạn (2026-10-25)**: giới thiệu → lật thẻ (định nghĩa, 2 chiều ví dụ,
+  collocations, đồng nghĩa) → một câu kiểm tra → tự đánh giá; chỉ bước cuối ghi `recordReview`.
+- **Âm thanh (2026-10-25)**: `src/audio/session.ts` nâng audio session lên playback trước khi TTS để
+  từ vựng nghe được ở chế độ im lặng, rồi trả về media; TTS dừng trước khi mở micro.
 - Key AI trong Keychain, **mỗi nhà cung cấp một ô riêng**, không log, không backup, có xoá key.
 - Widget: 2 kind (home 3 size, lock screen 3 family), snapshot + timeline, sync sau mỗi thay đổi
   và khi app foreground, lỗi được nuốt an toàn.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 16 bộ unit test (FSRS, quiz, streak, text, settings, AI ×6 gồm Gemini/Groq/levels/retry/schema/errors, placement, word packs, dictionary ×2, dict cache).
+- 24 bộ unit test (FSRS, quiz, placement, streak ×2, text, settings, AI ×6, word packs, coins ×2, game engine ×2, study gate, word-list parser, music, speech ×3).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -168,7 +175,7 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 |---|---|---|
 | Widget | UI, snapshot, sync, config plugin | Build native, App Group thật, kiểm chứng máy thật |
 | Luyện nói | Thu transcript, so khớp từ, hiển thị confidence | Chấm âm vị/trọng âm (không có công nghệ miễn phí phù hợp) |
-| Âm thanh từ | TTS on-device cho từ và câu | Audio thu sẵn theo từ điển (`audio_url` có trường nhưng chưa dùng) |
+| Âm thanh từ | TTS on-device cho từ và câu, phát được ở chế độ im lặng | Chưa có audio thu sẵn; chất lượng phụ thuộc gói giọng iOS |
 | Kiểm tra đầu vào | 6 câu, gợi ý cấp độ | Chưa hiệu chỉnh độ khó, chưa lưu lịch sử bài test |
 | Deep link widget | Chạm widget mở app | Chưa điều hướng tới màn hình cụ thể (expo-widgets không nêu API) |
 | Backup | JSON/CSV, merge/replace | Chưa tự động backup định kỳ |
@@ -263,9 +270,8 @@ hạn môi trường, không phải lỗi code:**
 4b. **Chưa build/chạy bất kỳ tính năng mới nào của 2026-10-24 trên thiết bị** (Windows, không có
    macOS/EAS). Nhạc, game, micro, giọng nam/nữ, xu và khôi phục chuỗi chỉ được kiểm bằng unit test
    và typecheck.
-4c. **Nhập danh sách từ vẫn ưu tiên từ điển**; AI chỉ bổ sung nghĩa khi từ điển thiếu. Chưa chuyển
-   hẳn sang "Groq là nguồn chính" cho chế độ này. Chưa có collocation/sentence building/synonym
-   challenge riêng.
+4c. ~~Nhập danh sách từ vẫn ưu tiên từ điển~~ — **đã sửa 2026-10-25**: API từ điển bị xoá, Groq là
+   nguồn chính cho cả từ đơn và cụm từ. Vẫn chưa có bài riêng cho collocation/sentence building.
 5. **Gemini**: logic lỗi/retry/validate đã có test tự động, nhưng **chưa có lần gọi Gemini thật nào
    bằng key của người dùng** trong phiên này. Việc 503/429/404 thực tế có được xử lý đúng trên iPhone
    chỉ xác nhận được sau khi cài bản build mới và bấm "Tạo bộ từ". Không đánh dấu `verified`.
@@ -281,9 +287,9 @@ hạn môi trường, không phải lỗi code:**
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
-| Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** — đã sửa lỗi `TextInput` ref của màn hình game |
-| Unit test | `npx jest --runInBand` | **22/22 suite, 242/242 test pass** (thêm xu/hệ số, khôi phục chuỗi, chọn giọng, phát âm, synonym, music catalog, game engine) |
-| Verify tổng | `node scripts/verify.mjs` | **ALL PASS** — typecheck + 242 test + checkpoint validate; report ở `tools/verify-report.txt` |
+| Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** (2026-10-25) |
+| Unit test | `npx jest --runInBand` | **24/24 suite, 241/241 test pass** (2026-10-25) |
+| Migration | `node scripts/check-migrations.mjs` | **OK** — schema 1→4 trên SQLite thật, gồm backfill và unique index |
 | Dùng Groq thật | Người dùng báo trong chat (2026-10-23) | **Mượt, kết quả tốt** — không có build number/screenshot/log, chưa đo latency hay hạn mức |
 | Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
 | Migration thật | `node:sqlite` chạy migration 1 → 3 | bảng `coin_ledger` + `streak_restores` tạo đúng; từ đã học trước đó được đánh dấu 0 xu; **index chặn thưởng trùng và cứu chuỗi trùng** (đã thử insert lần hai, bị từ chối) |
@@ -384,7 +390,7 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 | Chưa xác minh | Cách xác minh |
 |---|---|
 | Code compile | `npm run typecheck` |
-| Unit test pass | `npm test` (11 file, 125 test) |
+| Unit test pass | `npm test` (24 file, 241 test) |
 | Kho từ nạp đúng, không ghi đè từ đã sửa | Cài bản mới lên máy có dữ liệu cũ, đếm từ + kiểm tra từ đã sửa nghĩa |
 | Gemini retry/backoff/validate | `npm test -- src/ai` — mock fetch, không gọi API thật |
 | Prebuild tạo widget target | `npx expo prebuild --platform ios --clean`, xem `ios/` |
@@ -402,10 +408,10 @@ Yêu cầu lớn của người dùng chia 7 giai đoạn. Trạng thái thật:
 |---|---|---|
 | 1. Kiểm tra & chẩn đoán | đọc code, xác định framework/DB/luồng Gemini, tìm nguyên nhân lỗi chập chờn | **xong** (xem mục 12) |
 | 2. Sửa Gemini API | phân loại lỗi, retry/backoff, validate, chống trùng, log | **code + test xong**, chưa kiểm chứng thiết bị |
-| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **đang làm** — kho bundle 134/5.000 từ (`docs/WORD_BANK.md`); **đã có nguồn + trạng thái thiếu + hai cách tạo bộ từ** (`docs/DICTIONARY.md`); phần song ngữ khi học chưa làm |
+| 3. Cải thiện dữ liệu từ vựng | Anh/Việt/song ngữ khi học, nguồn + trạng thái xác minh, tạo bộ từ nâng cao | **một phần** — kho bundle 134/5.000 từ (`docs/WORD_BANK.md`); hai cách tạo bộ từ đều qua AI, hỗ trợ cụm từ; phần song ngữ khi học chưa làm |
 | 4. Nâng cấp học tập | thêm chế độ học, câu ví dụ, thống kê cá nhân hóa | **một phần** — đã có 9 dạng quiz, FSRS, từ yếu |
 | 5. Dịch thuật | khu vực dịch câu + giải thích ngữ cảnh | **chưa làm** |
-| 6. Minigame bắn thiên thạch | arcade từ dữ liệu đã lưu | **chưa làm** |
+| 6. Minigame bắn thiên thạch | arcade từ dữ liệu đã lưu | **code + test xong**, chưa chơi trên iPhone |
 | 7. Kiểm thử & phát hành | thiết bị, offline, hạn mức, IPA | **một phần** — unit test xanh, chưa có thiết bị |
 
 Nguyên tắc đã thống nhất: không viết lại app, không đổi schema khi chưa có migration, không tuyên bố

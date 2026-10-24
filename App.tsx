@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
 import { AppText, Banner, Screen } from './src/components/ui';
+import { ScreenTransition } from './src/components/ScreenTransition';
 import { TabBar } from './src/components/TabBar';
 import {
   NavigationProvider,
@@ -24,6 +25,7 @@ import { WordDetailScreen } from './src/screens/WordDetailScreen';
 import { WordFormScreen } from './src/screens/WordFormScreen';
 import { AiStudioScreen } from './src/screens/AiStudioScreen';
 import { SessionScreen } from './src/screens/SessionScreen';
+import { LearnScreen } from './src/screens/LearnScreen';
 import { PlacementScreen } from './src/screens/PlacementScreen';
 import { ArcadeScreen } from './src/screens/ArcadeScreen';
 import { MusicScreen } from './src/screens/MusicScreen';
@@ -139,6 +141,9 @@ function RootContent() {
     case 'session':
       content = <SessionScreen config={current.config} />;
       break;
+    case 'learn':
+      content = <LearnScreen track={current.track} level={current.level} />;
+      break;
     case 'placement':
       content = <PlacementScreen />;
       break;
@@ -152,7 +157,7 @@ function RootContent() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       onTouchStart={music.beginPlayback}
     >
-      <View style={styles.flex}>{content}</View>
+      <ScreenTransition key={JSON.stringify(current)}>{content}</ScreenTransition>
       {showTabBar ? (
         <TabBar active={current.name as TabName} onChange={(tab) => goToTab(tab)} />
       ) : null}

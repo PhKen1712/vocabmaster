@@ -6,6 +6,7 @@ import {
 
 import { buildSpeechCheck, type SpeechCheckResult, type SpokenSegment } from './pronunciation';
 import { canFallBackToNetwork, speechErrorMessage } from './recognition';
+import { stopSpeaking } from './tts';
 import type { QuizQuestion } from '../types';
 
 /**
@@ -33,6 +34,27 @@ export interface SpeechCheckState {
   reset: () => void;
 }
 
+/**
+ * Hard cap for one attempt. iOS occasionally ends the audio task without
+ * sending a final result (the learner stops manually, a call interrupts the
+ * microphone, the app loses focus), which used to leave the button stuck on
+ * "Đang nghe…" forever. After this long we stop the task and keep whatever was
+ * transcribed instead of discarding the attempt.
+ */
+const RECOGNITION_TIMEOUT_MS = 9_000;
+
+function readSegments(first: unknown): SpokenSegment[] {
+  const raw = (first as { segments?: { text?: string; confidence?: number }[] } | undefined)
+    ?.segments;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((segment) => typeof segment?.text === 'string')
+    .map((segment) => ({
+      text: segment.text ?? '',
+      confidence: typeof segment.confidence === 'number' ? segment.confidence : 0,
+    }));
+}
+
 export function useSpeechCheck(): SpeechCheckState {
   const [listening, setListening] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -49,6 +71,24 @@ export function useSpeechCheck(): SpeechCheckState {
   // A ref, not state: the native event listener must read the current question
   // even if it was registered on an earlier render.
   const activeQuestionRef = useRef<QuizQuestion | null>(null);
+  // Interim transcripts and segments arrive before `isFinal`; keep them so the
+  // attempt still produces a result when iOS never sends a final event.
+  const transcriptRef = useRef('');
+  const segmentsRef = useRef<SpokenSegment[]>([]);
+  const resultRef = useRef<SpeechCheckResult | null>(null);
+
+  const finalizeFromTranscript = useCallback(() => {
+    const question = activeQuestionRef.current;
+    const text = transcriptRef.current.trim();
+    if (!question || !text || resultRef.current) {
+      setProcessing(false);
+      return;
+    }
+    const built = buildSpeechCheck(question, text, segmentsRef.current);
+    resultRef.current = built;
+    setResult(built);
+    setProcessing(false);
+  }, []);
 
   useSpeechRecognitionEvent('start', () => {
     setListening(true);
@@ -58,29 +98,24 @@ export function useSpeechCheck(): SpeechCheckState {
   useSpeechRecognitionEvent('end', () => {
     setListening(false);
     setProcessing(false);
+    // Some iOS versions end the task without a final result. Use the last
+    // interim transcript rather than losing what the learner just said.
+    finalizeFromTranscript();
   });
 
   useSpeechRecognitionEvent('result', (event) => {
     const first = event.results?.[0];
     const text = first?.transcript?.trim() ?? '';
     if (!text) return;
+    transcriptRef.current = text;
     setTranscript(text);
+    const segments = readSegments(first);
+    if (segments.length > 0) segmentsRef.current = segments;
     const question = activeQuestionRef.current;
     if (event.isFinal && question) {
-      // The package exposes per-segment confidence, but guard the shape so a
-      // future change cannot crash the session screen.
-      const rawSegments = (first as {
-        segments?: { text?: string; confidence?: number }[];
-      } | undefined)?.segments;
-      const segments: SpokenSegment[] = Array.isArray(rawSegments)
-        ? rawSegments
-            .filter((segment) => typeof segment?.text === 'string')
-            .map((segment) => ({
-              text: segment.text ?? '',
-              confidence: typeof segment.confidence === 'number' ? segment.confidence : 0,
-            }))
-        : [];
-      setResult(buildSpeechCheck(question, text, segments));
+      const built = buildSpeechCheck(question, text, segments);
+      resultRef.current = built;
+      setResult(built);
       setProcessing(false);
     }
   });
@@ -142,6 +177,29 @@ export function useSpeechCheck(): SpeechCheckState {
     [],
   );
 
+  // A watchdog, not a normal end path: if the recogniser goes silent without
+  // an error or a final result, stop it and keep the interim transcript.
+  useEffect(() => {
+    if (!listening && !processing) return;
+    const timer = setTimeout(() => {
+      try {
+        ExpoSpeechRecognitionModule.stop();
+      } catch {
+        // Nothing to stop; the fallback below still produces feedback.
+      }
+      setListening(false);
+      if (!transcriptRef.current.trim()) {
+        setProcessing(false);
+        setError(
+          'Không nghe thấy giọng nói. Bấm micro, đọc to từ mục tiêu rồi thử lại ở nơi ít tiếng ồn.',
+        );
+        return;
+      }
+      finalizeFromTranscript();
+    }, RECOGNITION_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [listening, processing, finalizeFromTranscript]);
+
   const start = useCallback(
     async (question: QuizQuestion, options: { network?: boolean } = {}) => {
       setError(null);
@@ -150,8 +208,15 @@ export function useSpeechCheck(): SpeechCheckState {
       setModeNote(null);
       autoRetriedRef.current = false;
       activeQuestionRef.current = question;
+      transcriptRef.current = '';
+      segmentsRef.current = [];
+      resultRef.current = null;
 
       try {
+        // A sample word playing through expo-speech still owns the audio
+        // session; starting recognition on top of it fails with
+        // audio-capture on a real iPhone.
+        await stopSpeaking();
         const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
         if (!permission.granted) {
           setError(
@@ -210,8 +275,10 @@ export function useSpeechCheck(): SpeechCheckState {
       // The module throws when nothing is listening; ignore safely.
     }
     setListening(false);
-    setProcessing(false);
-  }, []);
+    // Do not wait for an `end` event that may never arrive: grade what was
+    // already transcribed when the learner taps "Dừng ghi âm".
+    finalizeFromTranscript();
+  }, [finalizeFromTranscript]);
 
   const reset = useCallback(() => {
     if (retryTimerRef.current) {
@@ -223,6 +290,9 @@ export function useSpeechCheck(): SpeechCheckState {
     setError(null);
     setModeNote(null);
     activeQuestionRef.current = null;
+    transcriptRef.current = '';
+    segmentsRef.current = [];
+    resultRef.current = null;
     setProcessing(false);
   }, []);
 

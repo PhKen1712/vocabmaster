@@ -14,16 +14,23 @@
  */
 
 import { normalizeTerm } from '../lib/text';
+import type { Level } from '../types';
 
 export interface AsteroidWord {
   term: string;
   meaningVi: string;
+  /** Drives how many letters are hidden; optional for older callers. */
+  level?: Level;
 }
 
 export interface Asteroid {
   id: number;
   term: string;
   meaning: string;
+  /** The term with some letters replaced by `_`, shown on the asteroid. */
+  maskedTerm: string;
+  /** Character indexes that are hidden until the learner types past them. */
+  blanked: number[];
   /** 0–1 across the play area. */
   x: number;
   /** 0–1 down the play area; 1 means it reached the bottom. */
@@ -54,8 +61,72 @@ export interface AsteroidState {
 }
 
 export const ASTEROID_LIVES = 3;
-export const ASTEROID_MAX_ON_SCREEN = 5;
-export const ASTEROID_SPAWN_MS = 2_400;
+export const ASTEROID_MAX_ON_SCREEN = 4;
+/** A calm, predictable beat: one new word roughly every 3.2 seconds. */
+export const ASTEROID_SPAWN_MS = 3_200;
+
+/**
+ * Hide a few letters of the word so the learner has to recall its spelling.
+ *
+ * Rules: never hide the first letter of a word (that would make the asteroid
+ * unreadable), never hide spaces, and keep at least one visible letter in every
+ * word. Longer words and higher levels hide a little more. A very short word
+ * (2 letters or fewer) is shown whole rather than turned into a single dash.
+ */
+export function blankTerm(
+  term: string,
+  level: Level | undefined,
+  rng: () => number = Math.random,
+): { masked: string; blanked: number[] } {
+  const chars = [...term];
+  const words: { start: number; end: number }[] = [];
+  let start = -1;
+  for (let i = 0; i <= chars.length; i += 1) {
+    const char = chars[i];
+    const letter = char !== undefined && /[a-z]/i.test(char);
+    if (letter && start < 0) start = i;
+    if (!letter && start >= 0) {
+      words.push({ start, end: i });
+      start = -1;
+    }
+  }
+
+  const ratio = Math.min(0.4, 0.2 + Math.max(0, level ?? 2) * 0.025);
+  const blanked: number[] = [];
+  for (const word of words) {
+    const length = word.end - word.start;
+    if (length <= 2) continue;
+    const hideCount = Math.max(1, Math.round(length * ratio));
+    const candidates: number[] = [];
+    // Index 0 is the first letter of the word and is deliberately excluded.
+    for (let i = word.start + 1; i < word.end; i += 1) candidates.push(i);
+    for (let i = candidates.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rng() * (i + 1));
+      const a = candidates[i];
+      const b = candidates[j];
+      if (a !== undefined && b !== undefined) {
+        candidates[i] = b;
+        candidates[j] = a;
+      }
+    }
+    blanked.push(...candidates.slice(0, Math.min(hideCount, length - 1)));
+  }
+
+  const masked = chars
+    .map((char, index) => (blanked.includes(index) ? '_' : char))
+    .join('');
+  return { masked, blanked };
+}
+
+/** Prefer a free lane so two cards do not overlap and hide each other. */
+function pickLane(active: Asteroid[], rng: () => number): number {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const x = 0.08 + rng() * 0.84;
+    const clear = active.every((asteroid) => Math.abs(asteroid.x - x) > 0.22);
+    if (clear) return x;
+  }
+  return 0.08 + rng() * 0.84;
+}
 
 export function createAsteroidGame(): AsteroidState {
   return {
@@ -109,12 +180,15 @@ export function spawnAsteroid(
   }
   const word = pickAsteroidWord(pool, state.asteroids, rng);
   if (!word) return state;
+  const { masked, blanked } = blankTerm(word.term, word.level, rng);
 
   const asteroid: Asteroid = {
     id: state.nextId,
     term: word.term,
     meaning: word.meaningVi,
-    x: 0.08 + rng() * 0.84,
+    maskedTerm: masked,
+    blanked,
+    x: pickLane(state.asteroids, rng),
     y: -0.08,
     speed: asteroidSpeed(state.elapsedMs),
   };

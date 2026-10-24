@@ -16,7 +16,7 @@ import type { Track, Word } from '../types';
  */
 export function useGameWords(track: Track): {
   words: Word[];
-  pool: { term: string; meaningVi: string }[];
+  pool: { term: string; meaningVi: string; level: Word['level'] }[];
   loading: boolean;
 } {
   const { db, dataVersion } = useApp();
@@ -52,7 +52,11 @@ export function useGameWords(track: Track): {
             merged[j] = a;
           }
         }
-        if (!cancelled) setWords(merged);
+        // Games practise words the learner has already met. A brand-new word
+        // is introduced on the learning screen first; a completely fresh
+        // collection may still play so the arcade is never empty.
+        const studied = merged.filter((word) => word.reps > 0);
+        if (!cancelled) setWords(studied.length > 0 ? studied : merged);
       } catch {
         if (!cancelled) setWords([]);
       } finally {
@@ -67,7 +71,7 @@ export function useGameWords(track: Track): {
 
   const pool = useMemo(() => {
     const seen = new Set<string>();
-    const result: { term: string; meaningVi: string }[] = [];
+    const result: { term: string; meaningVi: string; level: Word['level'] }[] = [];
     for (const word of words) {
       const term = displayTerm(word.term).trim();
       const meaningVi = word.meaningVi.trim();
@@ -75,7 +79,7 @@ export function useGameWords(track: Track): {
       const key = term.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      result.push({ term, meaningVi });
+      result.push({ term, meaningVi, level: word.level });
     }
     return result;
   }, [words]);

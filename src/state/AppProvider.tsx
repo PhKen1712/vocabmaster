@@ -10,9 +10,9 @@ import React, {
 import { AppState, type AppStateStatus } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
+import { pruneAiCache } from '../ai/cache';
 import { getDailyStats } from '../db/activity';
 import { getDatabase, seedDatabase } from '../db/database';
-import { pruneDictCache } from '../db/dictCache';
 import { loadSettings, saveSettings } from '../db/settings';
 import type { DailyStats, Settings } from '../types';
 import { DEFAULT_SETTINGS } from '../types';
@@ -53,9 +53,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const database = await getDatabase();
         if (cancelled) return;
         await seedDatabase(database);
-        // Drop lookup answers nobody has asked for in 90 days. Best effort:
-        // a failed prune must never stop the app from opening.
-        void pruneDictCache(database, 90 * 24 * 60 * 60 * 1000);
+        // Drop cached AI explanations nobody has asked for in 180 days.
+        // Best effort: a failed prune must never stop the app from opening.
+        void pruneAiCache(database, 180 * 24 * 60 * 60 * 1000);
         const loaded = await loadSettings(database);
         if (cancelled) return;
         setDb(database);

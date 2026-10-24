@@ -4,7 +4,14 @@ import * as Haptics from 'expo-haptics';
 
 import { GameFrame, GameOverlay, HudPill } from '../components/GameShell';
 import { AppText, Card, PrimaryButton, ProgressBar } from '../components/ui';
-import { answerRush, createRush, startRush, tickRush, type RushState } from '../games/rush';
+import {
+  answerRush,
+  continueRush,
+  createRush,
+  startRush,
+  tickRush,
+  type RushState,
+} from '../games/rush';
 import { useGamePause } from '../games/useGamePause';
 import { useGameWords } from '../games/useGameWords';
 import { useNavigation } from '../navigation/NavigationProvider';
@@ -105,7 +112,10 @@ export function RushGameScreen() {
     if (!question) return;
 
     const correct = choice === question.answerIndex;
-    const next = answerRush(current, choice);
+    const answered = answerRush(current, choice);
+    // Refill a finished batch while the clock still runs, so a small word
+    // collection still gets a full 60 seconds instead of a 5-second round.
+    const next = continueRush(answered, pool);
     gameRef.current = next;
     setGame(next);
 
@@ -130,8 +140,7 @@ export function RushGameScreen() {
 
   const shownIndex = reveal ? reveal.questionIndex : game.index;
   const question = game.questions[shownIndex] ?? null;
-  const finished =
-    game.questions.length > 0 && game.correct + game.wrong >= game.questions.length;
+  const finished = game.timeLeftMs > 0 && game.correct + game.wrong > 0;
   const seconds = Math.ceil(game.timeLeftMs / 1000);
   const urgent = game.timeLeftMs <= 10_000;
 

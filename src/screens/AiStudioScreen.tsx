@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Linking, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
@@ -7,16 +7,16 @@ import { generateVocabulary } from '../ai';
 import { providerLabel } from '../ai/provider';
 import { describeAiError, type AiErrorView } from '../ai/errors';
 import type { AiSuggestion } from '../ai/types';
-import { entryToWordInput } from '../dict/lookup';
-import { DICT_FIELD_LABELS, describeDictError, type DictEntry } from '../dict/types';
-import { DuplicateWordError, createWord, listWords } from '../db/words';
+import { DuplicateWordError, createWord, getAllWords } from '../db/words';
+import { getStudyGate, ReviewsDueError } from '../study/gate';
+import { entryToWordInput, type ListEntry } from '../wordlist/types';
 import { formatList, splitList } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing } from '../theme/tokens';
 import { LEVEL_SHORT, type Level, type Track } from '../types';
-import { useWordListLookup } from './useWordListLookup';
+import { useWordListImport } from './useWordListImport';
 
 interface Draft extends AiSuggestion {
   include: boolean;
@@ -25,7 +25,7 @@ interface Draft extends AiSuggestion {
 type CreationMode = 'ai' | 'list';
 
 export function AiStudioScreen() {
-  const { db, settings, notifyDataChanged, updateSettings } = useApp();
+  const { db, settings, notifyDataChanged, updateSettings, dataVersion } = useApp();
   const { pop, goToTab } = useNavigation();
   const { colors } = useTheme();
 
@@ -48,6 +48,7 @@ export function AiStudioScreen() {
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
   const [listSaving, setListSaving] = useState(false);
+  const [dueCount, setDueCount] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
   const providerName = providerLabel(settings.aiProvider);
@@ -55,26 +56,38 @@ export function AiStudioScreen() {
   const modeCopy: Record<CreationMode, { label: string; caption: string }> = {
     ai: {
       label: `${providerName} chọn từ`,
-      caption: `${providerName} đề xuất từ theo cấp độ và chủ đề, rồi từ điển kiểm tra lại.`,
+      caption: `${providerName} đề xuất từ theo cấp độ và chủ đề; bạn đọc lại rồi mới lưu.`,
     },
     list: {
-      label: 'Nhập danh sách từ',
-      caption: 'Bạn đã có từ rồi? Dán vào, ứng dụng tra từ điển và tự xác định cấp độ từng từ.',
+      label: 'Nhập danh sách từ / cụm từ',
+      caption: 'Groq viết nghĩa cho đúng từng mục, kể cả cụm động từ, thành ngữ và collocation.',
     },
   };
 
-  const wordList = useWordListLookup({
+  const wordList = useWordListImport({
     db,
     track,
     level,
     topic,
-    provider: settings.aiProvider,
-    aiModel: providerModel,
+    // Pasted lists always go to Groq: it handles multi-word items, while the
+    // old single-word dictionary pipeline rejected them before they were saved.
+    model: settings.groqModel,
   });
 
   // Leaving the screen cancels the request instead of letting it finish in the
   // background and update a screen the learner can no longer see.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  useEffect(() => {
+    if (!db) return;
+    let cancelled = false;
+    void getStudyGate(db, track).then((gate) => {
+      if (!cancelled) setDueCount(gate.dueCount);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, track, dataVersion]);
 
   // A visible second counter: a long call should look busy, not frozen.
   useEffect(() => {
@@ -98,6 +111,7 @@ export function AiStudioScreen() {
 
   const generate = useCallback(async () => {
     if (!db || loading) return;
+    if (dueCount > 0) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -109,7 +123,9 @@ export function AiStudioScreen() {
     setWarnings([]);
     setProgress(`Đang gửi yêu cầu tới ${providerName}…`);
     try {
-      const existing = await listWords(db, { track, limit: 300 });
+      // The whole bank, not a 300-row page: the model must not propose a word
+      // that is already somewhere deep in the learner's collection.
+      const existing = (await getAllWords(db)).filter((word) => word.track === track);
       const result = await generateVocabulary(
         {
           track,
@@ -160,12 +176,12 @@ export function AiStudioScreen() {
         setProgress(null);
       }
     }
-  }, [db, track, level, topic, focus, count, settings.aiProvider, providerModel, providerName, loading]);
+  }, [db, track, level, topic, focus, count, settings.aiProvider, providerModel, providerName, loading, dueCount]);
 
   const selectedCount = drafts.filter((draft) => draft.include).length;
 
   const saveSelected = async () => {
-    if (!db || saving) return;
+    if (!db || saving || dueCount > 0) return;
     setSaving(true);
     let added = 0;
     let skipped = 0;
@@ -195,6 +211,11 @@ export function AiStudioScreen() {
         });
         added += 1;
       } catch (caught) {
+        if (caught instanceof ReviewsDueError) {
+          setDueCount(caught.dueCount);
+          errors.push(caught.message);
+          break;
+        }
         if (caught instanceof DuplicateWordError) {
           skipped += 1;
         } else {
@@ -222,7 +243,7 @@ export function AiStudioScreen() {
   };
 
   const saveListEntries = async () => {
-    if (!db || listSaving) return;
+    if (!db || listSaving || dueCount > 0) return;
     setListSaving(true);
     let added = 0;
     let skipped = 0;
@@ -242,6 +263,11 @@ export function AiStudioScreen() {
         await createWord(db, input);
         added += 1;
       } catch (caught) {
+        if (caught instanceof ReviewsDueError) {
+          setDueCount(caught.dueCount);
+          errors.push(caught.message);
+          break;
+        }
         if (caught instanceof DuplicateWordError) skipped += 1;
         else {
           errors.push(
@@ -255,7 +281,7 @@ export function AiStudioScreen() {
     setListSaving(false);
     wordList.clear();
     Alert.alert(
-      'Đã thêm từ từ từ điển',
+      'Đã thêm từ do Groq giải nghĩa',
       [
         `${added} từ đã được thêm vào bộ ${track === 'ielts' ? 'IELTS' : 'General'}.`,
         skipped > 0 ? `${skipped} từ đã tồn tại nên bỏ qua.` : '',
@@ -284,22 +310,32 @@ export function AiStudioScreen() {
     setEditForm(null);
   };
 
-  const foundCount = wordList.entries.filter((entry) => entry.status === 'found').length;
-  const notFoundCount = wordList.entries.filter((entry) => entry.status === 'notFound').length;
+  const readyCount = wordList.entries.filter((entry) => entry.status === 'ready').length;
   const failedCount = wordList.entries.filter((entry) => entry.status === 'failed').length;
+  const readyWithLevel = wordList.entries.filter(
+    (entry) => entry.status === 'ready' && entry.level !== null,
+  ).length;
 
   return (
     <Screen>
       <ScreenHeader
         title="Tạo bộ từ"
-        subtitle="AI chọn từ, hoặc tra từ điển cho danh sách của bạn"
+        subtitle="Groq chọn từ hoặc giải nghĩa danh sách của bạn"
         onBack={pop}
       />
+
+      {dueCount > 0 ? (
+        <Banner
+          tone="warning"
+          title={`Đang khoá thêm từ · còn ${dueCount} từ cần ôn`}
+          body="Bạn phải hoàn thành các từ đến hạn trước khi tạo hoặc nhập từ mới. Mở tab Hôm nay để ôn ngay."
+        />
+      ) : null}
 
       <Banner
         tone="info"
         title="Bạn kiểm soát mọi thứ trước khi lưu"
-        body="AI và từ điển chỉ điền dữ liệu. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ."
+        body="Groq chỉ điền dữ liệu. Ứng dụng chưa lưu gì cho tới khi bạn chọn từ và bấm thêm. Hãy đọc lại nghĩa và ví dụ, đặc biệt với cụm từ."
       />
 
       <Card>
@@ -398,7 +434,7 @@ export function AiStudioScreen() {
               label={loading ? `${providerName} đang tạo…` : '✨ Tạo bộ từ'}
               onPress={() => void generate()}
               loading={loading}
-              disabled={loading}
+              disabled={loading || dueCount > 0}
               style={{ marginTop: spacing.md }}
             />
             {loading && progress ? (
@@ -428,7 +464,7 @@ export function AiStudioScreen() {
             <Input
               value={wordList.text}
               onChangeText={wordList.setText}
-              placeholder="criminal, civil, justice, evidence"
+              placeholder="criminal, take into account, in terms of, carry out an investigation"
               multiline
               autoCapitalize="none"
               style={{ marginTop: spacing.xs, minHeight: 96, textAlignVertical: 'top' }}
@@ -443,10 +479,10 @@ export function AiStudioScreen() {
             </AppText>
 
             <PrimaryButton
-              label={wordList.running ? 'Đang tra từ điển…' : 'Tra cứu và tạo bộ từ'}
+              label={wordList.running ? 'Groq đang viết nghĩa…' : 'Groq giải nghĩa danh sách'}
               onPress={wordList.lookUp}
               loading={wordList.running}
-              disabled={wordList.running || wordList.parsed.terms.length === 0}
+              disabled={wordList.running || wordList.parsed.terms.length === 0 || dueCount > 0}
               style={{ marginTop: spacing.md }}
             />
             {wordList.running ? (
@@ -551,46 +587,23 @@ export function AiStudioScreen() {
         <>
           <SectionHeader title={`${wordList.selected.size}/${wordList.entries.length} từ sẽ thêm`} />
           <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.sm }}>
-            Cấp độ do app tự xác định cho từng từ:{' '}
-            {wordList.entries.filter((entry) => entry.level !== null).length}/
-            {wordList.entries.filter((entry) => entry.status === 'found').length} từ tra được.
+            Cấp độ do Groq đề xuất cho từng mục: {readyWithLevel}/{readyCount} mục đã xong.
+            {wordList.unknownLevels > 0
+              ? ` ${wordList.unknownLevels} mục chưa rõ cấp độ sẽ dùng ${LEVEL_SHORT[settings.level]}.`
+              : ''}
           </AppText>
-          {wordList.levelsBusy ? (
-            <AppText variant="caption" color={colors.textMuted}>
-              Đang xác định cấp độ cho từng từ…
+          {wordList.note ? (
+            <AppText variant="caption" color={colors.textMuted} style={{ marginBottom: spacing.sm }}>
+              {wordList.note}
             </AppText>
-          ) : null}
-          {wordList.explainBusy ? (
-            <AppText variant="caption" color={colors.textMuted}>
-              AI đang viết nghĩa tiếng Việt đơn giản cho danh sách…
-            </AppText>
-          ) : null}
-          {wordList.explainNote ? (
-            <AppText variant="caption" color={colors.textMuted}>
-              {wordList.explainNote}
-            </AppText>
-          ) : null}
-          {wordList.explainError ? (
-            <Banner
-              tone="warning"
-              title="Nghĩa AI chưa dùng được"
-              body={`${wordList.explainError} Bạn vẫn có thể lưu bằng nghĩa từ điển.`}
-            />
-          ) : null}
-          {wordList.levelError ? (
-            <Banner
-              tone="warning"
-              title="Cấp độ chưa xác định được"
-              body={`${wordList.levelError} Từ chưa rõ cấp độ sẽ dùng cấp độ trong Cài đặt (${LEVEL_SHORT[settings.level]}).`}
-            />
           ) : null}
           <Banner
-            tone={failedCount > 0 || notFoundCount > 0 ? 'warning' : 'info'}
-            title={`${foundCount} tra được · ${notFoundCount} không có trong từ điển · ${failedCount} lỗi`}
+            tone={failedCount > 0 ? 'warning' : 'info'}
+            title={`${readyCount} mục sẵn sàng · ${failedCount} mục lỗi`}
             body={
               failedCount > 0
-                ? 'Bấm "Thử lại từ lỗi" — các từ đã tra được sẽ không bị gọi lại.'
-                : 'Từ thiếu dữ liệu được đánh dấu bên dưới. Không có trường nào được bịa thêm.'
+                ? 'Bấm "Thử lại" — chỉ các mục lỗi được gửi lại, các mục đã xong giữ nguyên.'
+                : 'Mọi mục đều do Groq viết; không có trường nào được bịa thêm. Bạn vẫn có thể bỏ chọn trước khi lưu.'
             }
           />
           {wordList.entries.map((entry) => (
@@ -614,7 +627,7 @@ export function AiStudioScreen() {
             label={`Thêm ${wordList.selected.size} từ đã chọn`}
             onPress={() => void saveListEntries()}
             loading={listSaving}
-            disabled={listSaving || wordList.selected.size === 0}
+            disabled={listSaving || wordList.selected.size === 0 || dueCount > 0}
             style={{ marginTop: spacing.sm }}
           />
           <AppText
@@ -622,9 +635,8 @@ export function AiStudioScreen() {
             color={colors.textFaint}
             style={{ marginTop: spacing.sm, textAlign: 'center' }}
           >
-            Nghĩa tiếng Việt ưu tiên bản đơn giản do AI viết; IPA, audio và dữ liệu kiểm chứng
-            vẫn lấy từ từ điển. Từ nào AI không giải nghĩa được sẽ dùng nghĩa từ điển và ghi rõ
-            nguồn, cấp độ cùng các trường còn thiếu.
+            Groq giải nghĩa cả cụm từ như một đơn vị. Mục nào Groq không trả lời được sẽ hiện
+            "lỗi" và không bao giờ bị coi là đã lưu.
           </AppText>
         </>
       ) : null}
@@ -699,7 +711,7 @@ export function AiStudioScreen() {
             label={`Thêm ${selectedCount} từ đã chọn`}
             onPress={() => void saveSelected()}
             loading={saving}
-            disabled={saving || selectedCount === 0}
+            disabled={saving || selectedCount === 0 || dueCount > 0}
           />
           <AppText
             variant="caption"
@@ -784,31 +796,32 @@ export function AiStudioScreen() {
         hay ôn tập.
       </AppText>
 
-      <Pressable
-        accessibilityRole="link"
-        onPress={() => void Linking.openURL('https://dict.minhqnd.com')}
-        style={{ marginTop: spacing.md }}
-      >
-        <AppText variant="micro" color={colors.textFaint} style={{ textAlign: 'center' }}>
-          Nghĩa tiếng Việt & IPA: dict.minhqnd.com (@minhqnd, CC BY-SA 4.0). Định nghĩa và ví dụ
-          tiếng Anh: Wiktionary qua api.dictionaryapi.dev (CC BY-SA 3.0). Chạm để xem nguồn.
-        </AppText>
-      </Pressable>
+
     </Screen>
   );
 }
+
+const FIELD_LABELS: Record<string, string> = {
+  ipa: 'phiên âm',
+  audio: 'audio',
+  partOfSpeech: 'từ loại',
+  meaningVi: 'nghĩa tiếng Việt',
+  definitionEn: 'định nghĩa',
+  exampleEn: 'ví dụ',
+  synonyms: 'đồng nghĩa',
+};
 
 function ListEntryCard({
   entry,
   included,
   onToggle,
 }: {
-  entry: DictEntry;
+  entry: ListEntry;
   included: boolean;
   onToggle: () => void;
 }) {
   const { colors } = useTheme();
-  const selectable = entry.status === 'found' && Boolean(entry.meaningVi);
+  const selectable = entry.status === 'ready' && Boolean(entry.meaningVi);
 
   return (
     <Card style={{ marginBottom: spacing.md, opacity: selectable ? 1 : 0.75 }}>
@@ -847,16 +860,9 @@ function ListEntryCard({
         ) : null}
       </View>
 
-      {entry.status === 'notFound' ? (
-        <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
-          {entry.term.includes(' ')
-            ? `Hai từ điển này chỉ tra từ đơn nên chưa có "${entry.term}". Thêm tay ở tab Từ vựng nếu bạn cần cụm từ này.`
-            : 'Không tìm thấy trong từ điển. Kiểm tra lại chính tả, hoặc thêm tay ở tab Từ vựng.'}
-        </AppText>
-      ) : null}
       {entry.status === 'failed' ? (
         <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
-          {describeDictError(entry.error)}
+          {entry.error ?? 'Groq chưa xử lý được mục này.'}
         </AppText>
       ) : null}
 
@@ -864,17 +870,8 @@ function ListEntryCard({
         <AppText variant="body" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
           {entry.meaningVi}
         </AppText>
-      ) : entry.status === 'found' ? (
-        <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
-          Từ điển có từ này nhưng không có nghĩa tiếng Việt. Thêm tay để giữ đúng nghĩa bạn muốn.
-        </AppText>
       ) : null}
 
-      {entry.otherMeaningsVi.length > 0 ? (
-        <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
-          Nghĩa khác: {entry.otherMeaningsVi.join(' · ')}
-        </AppText>
-      ) : null}
       {entry.definitionEn ? (
         <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
           {entry.definitionEn}
@@ -893,18 +890,12 @@ function ListEntryCard({
             : 'chưa rõ cấp độ'}
         </AppText>
         <AppText variant="micro" color={colors.textFaint}>
-          {(entry.partOfSpeech ?? 'chưa rõ từ loại').toUpperCase()} ·{' '}
-          {entry.sources.length > 0 ? entry.sources.join(' + ') : 'chưa có nguồn'}
+          {(entry.partOfSpeech ?? 'chưa rõ từ loại').toUpperCase()} · Groq
         </AppText>
-        {entry.aiFilled.length > 0 ? (
-          <AppText variant="micro" color={colors.warning}>
-            AI bổ sung: {entry.aiFilled.map((field) => DICT_FIELD_LABELS[field]).join(', ')}
-          </AppText>
-        ) : null}
       </View>
       {entry.missing.length > 0 ? (
         <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
-          Thiếu: {entry.missing.map((field) => DICT_FIELD_LABELS[field]).join(', ')}
+          Thiếu: {entry.missing.map((field) => FIELD_LABELS[field] ?? field).join(', ')}
         </AppText>
       ) : null}
     </Card>

@@ -104,6 +104,36 @@ export function tickRush(state: RushState, dtMs: number): RushState {
   };
 }
 
+/**
+ * Keep the full minute playable.
+ *
+ * A learner with only a handful of words used to answer every question in a
+ * few seconds and the run ended long before the clock — which made the mode
+ * look broken. When the current batch runs out and time is left, a fresh
+ * shuffled batch is appended; the clock stays the only thing that ends a run.
+ */
+export function continueRush(
+  state: RushState,
+  words: RushWord[],
+  rng: () => number = Math.random,
+): RushState {
+  if (state.timeLeftMs <= 0) return state;
+  const exhausted = state.index >= state.questions.length;
+  const endedEarly = state.status === 'over';
+  if (!exhausted && !endedEarly) return state;
+
+  const extra = buildRushQuestions(words, 24, rng);
+  if (extra.length === 0) return state;
+  return {
+    ...state,
+    // Keep the answered questions and continue after them, so the counters and
+    // the scored history stay consistent.
+    questions: [...state.questions, ...extra],
+    index: endedEarly ? state.questions.length : state.index,
+    status: 'playing',
+  };
+}
+
 export function answerRush(state: RushState, choice: number): RushState {
   if (state.status !== 'playing') return state;
   const question = state.questions[state.index];

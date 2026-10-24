@@ -18,6 +18,7 @@ const steps = [
   // Cần chạy lại sau khi thêm dependency (expo-speech-recognition).
   { name: 'install', args: ['install', '--no-audit', '--no-fund'] },
   { name: 'typecheck', args: ['run', 'typecheck'] },
+  { name: 'migrations', args: ['run', 'check:migrations'] },
   { name: 'test', args: ['test', '--', '--ci'] },
   { name: 'checkpoint:validate', args: ['run', 'checkpoint:validate'] },
 ];

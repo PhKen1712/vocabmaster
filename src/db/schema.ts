@@ -10,7 +10,7 @@ import type {
   WordSource,
 } from '../types';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 /**
  * Forward-only migrations. Every entry runs exactly once, inside a transaction.
@@ -139,6 +139,68 @@ export const MIGRATIONS: { version: number; statements: string[] }[] = [
       `INSERT OR IGNORE INTO coin_ledger (id, kind, word_id, amount, balance_after, reason, created_at)
         SELECT 'legacy:' || id, 'reward', id, 0, 0, 'legacy', created_at
         FROM words WHERE reps > 0;`,
+    ],
+  },
+  {
+    version: 4,
+    statements: [
+      // Rewards are now keyed by the learned term, not by the row id, so
+      // deleting a word and adding it again can never pay twice. Existing
+      // rewards are backfilled from their word before the unique index is
+      // created; duplicate historical payouts (from older versions) are kept
+      // for audit but excluded from the one-reward-per-term index.
+      `ALTER TABLE coin_ledger ADD COLUMN term_key TEXT;`,
+      `ALTER TABLE coin_ledger ADD COLUMN source_id TEXT;`,
+      `UPDATE coin_ledger SET term_key = (
+         SELECT normalized_term || '|' || track FROM words WHERE words.id = coin_ledger.word_id
+       ) WHERE term_key IS NULL AND word_id IS NOT NULL;`,
+      `UPDATE coin_ledger SET kind = 'legacy_reward'
+       WHERE kind = 'reward' AND term_key IS NOT NULL AND id NOT IN (
+         SELECT MIN(id) FROM coin_ledger
+         WHERE kind = 'reward' AND term_key IS NOT NULL
+         GROUP BY term_key
+       );`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_reward_term
+        ON coin_ledger (term_key) WHERE kind = 'reward' AND term_key IS NOT NULL;`,
+      // One row per graded answer event. A repeated tap or a retried write can
+      // never move the wallet twice for the same answer.
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_source
+        ON coin_ledger (source_id) WHERE source_id IS NOT NULL;`,
+      // Study history survives deleting a word. It answers one question that
+      // the words table cannot: "has this exact term ever been studied before?"
+      // so deleting and re-adding a word cannot make it look new again.
+      `CREATE TABLE IF NOT EXISTS word_study_history (
+        term_key TEXT PRIMARY KEY NOT NULL,
+        term TEXT NOT NULL,
+        track TEXT NOT NULL,
+        first_studied_at TEXT NOT NULL,
+        first_correct_at TEXT,
+        rewarded_at TEXT
+      );`,
+      `INSERT OR IGNORE INTO word_study_history
+         (term_key, term, track, first_studied_at, first_correct_at)
+       SELECT normalized_term || '|' || track, term, track,
+              COALESCE(last_reviewed_at, created_at),
+              CASE WHEN reps > 0 THEN last_reviewed_at ELSE NULL END
+       FROM words WHERE reps > 0;`,
+      `INSERT OR IGNORE INTO word_study_history
+         (term_key, term, track, first_studied_at, rewarded_at)
+       SELECT term_key,
+              substr(term_key, 1, instr(term_key, '|') - 1),
+              substr(term_key, instr(term_key, '|') + 1),
+              created_at, created_at
+       FROM coin_ledger WHERE kind = 'reward' AND term_key IS NOT NULL;`,
+      // Groq explanations are cached on device so the same pasted list never
+      // costs a second request. Failed and partial answers are not cached.
+      `CREATE TABLE IF NOT EXISTS ai_cache (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL,
+        fetched_at INTEGER NOT NULL
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_ai_cache_fetched ON ai_cache (fetched_at);`,
+      // The external dictionary cache is dead data. It is not study history, so
+      // dropping it cannot lose a learner's words, coins or schedule.
+      `DROP TABLE IF EXISTS dictionary_cache;`,
     ],
   },
 ];

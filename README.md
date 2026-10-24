@@ -3,8 +3,9 @@
 Ứng dụng học từ vựng tiếng Anh cá nhân trên iPhone, viết bằng React Native + Expo, có
 **widget thật** trên màn hình chính và màn hình khóa, ôn tập theo FSRS, hai hệ thống
 General English / IELTS, phát âm, luyện nói, streak, nhắc nhở, gợi ý từ bằng **Groq (mặc định)
-hoặc Gemini**, **tra từ điển miễn phí** (nghĩa Việt + IPA + ví dụ) cho danh sách từ bạn tự nhập,
-**nhạc nền tự tạo**, **ba trò chơi học từ**, **xu ảo** và **khôi phục chuỗi ngày học**.
+hoặc Gemini**, **nhập danh sách từ và cụm từ** rồi để Groq viết nghĩa/phiên âm/ví dụ (không còn
+phụ thuộc API từ điển), **bài học từ mới có giới thiệu trước khi kiểm tra**, **nhạc nền tự tạo**,
+**ba trò chơi học từ**, **xu ảo** và **khôi phục chuỗi ngày học**.
 
 **Dev: Phạm Bảo Lâm**
 
@@ -99,45 +100,65 @@ khi level tăng. Chi tiết phân bổ, tiêu chí chọn từ, nguồn dữ li�
 Từ mới được thêm bằng `INSERT OR IGNORE` theo khoá `(normalized_term, track)`, nên khi cập nhật app:
 từ đã có **không bị sửa**, nghĩa bạn đã chỉnh **không bị ghi đè**, tiến độ FSRS **không mất**.
 
-## Tạo bộ từ: hai cách
+## Tạo bộ từ: hai cách, một quy trình
 
 Màn hình **Tạo bộ từ** có hai chế độ, cùng nằm trên tab Từ vựng:
 
 1. **AI chọn từ** — chọn track/level/chủ đề/số từ, Gemini hoặc Groq (theo Cài đặt) đề xuất, bạn
    sửa và chọn từng từ.
-2. **Nhập danh sách từ** — dán `criminal, civil, justice, evidence` (cách nhau bằng phẩy, chấm phẩy
-   hoặc xuống dòng). App chuẩn hoá danh sách, **tra từ điển** để lấy IPA/audio, và nếu đã cấu hình key
-   thì gửi **một** request AI viết nghĩa tiếng Việt đời thường cho tối đa 20 từ đầu. Không có key vẫn
-   dùng được bằng nghĩa từ điển.
+2. **Nhập danh sách từ** — dán danh sách của bạn, mỗi mục cách nhau bằng phẩy, chấm phẩy hoặc
+   xuống dòng. Groq viết nghĩa, IPA, ví dụ và cấp độ cho từng mục — **cả từ đơn lẫn cụm từ**.
 
-Chế độ 2 dùng hai nguồn miễn phí, không cần key:
+Không còn API từ điển nào trong ứng dụng. Trước đây bước tra từ điển từ chối mọi cụm như
+`take into account`, nên Groq tạo xong vẫn không lưu được; giờ Groq là nguồn duy nhất, và mọi
+điều kiện "từ điển phải xác nhận" đã bị xoá khỏi luồng lưu.
 
-| Nguồn | Dữ liệu | Giấy phép |
-|---|---|---|
-| [dict.minhqnd.com](https://dict.minhqnd.com) | Nghĩa tiếng Việt, IPA, audio TTS, từ loại | CC BY-SA 4.0 — có ghi công trong app |
-| [api.dictionaryapi.dev](https://dictionaryapi.dev) | Định nghĩa tiếng Anh, câu ví dụ, đồng/trái nghĩa, mp3 | CC BY-SA 3.0 (Wiktionary) |
+### Nhập danh sách
 
-Điều đáng biết:
+```
+criminal, civil, take into account, in terms of, carry out an investigation
+```
 
-- Mỗi từ được tra **song song** nhưng giới hạn 3 request cùng lúc; tiến trình hiện `12/30 từ`, có nút **Huỷ**.
-- Kết quả được **cache trên máy 30 ngày**: tra lại cùng từ không tốn request và vẫn dùng được offline.
-- Trường thiếu được **đánh dấu**, không bịa: thẻ từ ghi "Thiếu: phiên âm IPA, từ đồng nghĩa…",
-  lưu vào `missing_fields` và hiện lại ở màn hình chi tiết.
-- Nghĩa tiếng Việt ưu tiên bản **AI viết ngắn, đời thường** thay vì gloss hàn lâm của từ điển
-  (ví dụ `make a decision` → "đưa ra quyết định", không phải "thi hành phán quyết"); nghĩa từ điển cũ
-  vẫn được giữ ở mục "nghĩa khác", IPA/audio/từ loại vẫn lấy từ từ điển và thẻ từ ghi rõ nguồn AI.
-  Danh sách dài hơn 20 từ: các từ sau dùng nghĩa từ điển, từ nào từ điển không có nghĩa mới để AI bổ
-  sung tối đa 5 từ như trước.
-- **Cấp độ được tra tự động cho từng từ**, không lấy theo mức bạn chọn: từ có trong kho từ kèm app
-  lấy ngay cấp độ đã kiểm tra; các từ còn lại được AI xếp CEFR trong **một** request cho cả danh
-  sách (không phải một request mỗi từ). Thẻ từ ghi rõ `A2` / `B1`… kèm nguồn ("cấp độ có sẵn"
-  hoặc "AI ước lượng"); từ chưa xác định được ghi "chưa rõ cấp độ" và chỉ khi đó mới dùng cấp độ
-  trong Cài đặt — thông báo trên màn hình nói rõ điều này.
-- Chỉ tra được **từ đơn**; cụm như `civil law` bị cả hai từ điển từ chối và app nói rõ lý do.
-- Retry chỉ áp dụng cho mạng/timeout/429/5xx (tối đa 2 lần, deadline 8 giây). Từ sai chính tả
-  không bị thử lại.
+- Dấu phẩy / chấm phẩy / xuống dòng là dấu phân cách; **khoảng trắng bên trong cụm được giữ nguyên**.
+  `take into account` là **một** mục, không bị tách thành ba.
+- Cắt khoảng trắng thừa, bỏ mục rỗng, bỏ trùng lặp không phân biệt hoa/thường, giữ thứ tự bạn nhập.
+- Màn hình xem trước hiện số mục hợp lệ và những mục bị bỏ kèm lý do (quá dài, không phải chữ Latin).
+  Không có mục nào biến mất âm thầm.
+- Danh sách tối đa 50 mục; phần vượt quá được báo rõ thay vì cắt lặng lẽ.
 
-Chi tiết endpoint, JSON thật, quy tắc ghi công và giới hạn: **[docs/DICTIONARY.md](docs/DICTIONARY.md)**.
+### Groq xử lý và lưu
+
+- Một request cho cả danh sách (chia lô khi dài), trả đúng schema: `term`, `partOfSpeech`, `ipa`,
+  `meaningVi`, `definitionEn`, `exampleEn`, `exampleVi`, `synonyms`, `collocations`, `level`,
+  `category`.
+- Cụm từ được giải nghĩa **theo toàn cụm** và có ví dụ đúng ngữ cảnh; không ghép nghĩa của từng từ.
+- Thiếu IPA thì để trống và ghi "Thiếu: phiên âm IPA", không bịa.
+- Cấp độ lấy từ kho từ kèm app khi có; phần còn lại do Groq xếp CEFR trong cùng request.
+- Trùng với ngân hàng từ vựng (kể cả khác hoa/thường hoặc khoảng trắng) bị loại trước khi lưu; kết quả
+  ghi rõ số mục đã thêm, số mục trùng và số mục lỗi.
+- Timeout 20 giây/lần, tự thử lại có backoff cho lỗi mạng/429/5xx, **không** thử lại khi key sai hay
+  request không hợp lệ. Bấm nhiều lần không tạo nhiều request (single-flight); kết quả được cache theo
+  nội dung để dán lại không tốn token.
+- Danh sách 10 mục mà 8 mục xong, 2 mục lỗi thì báo đúng "8 thành công, 2 lỗi" và cho **Thử lại**
+  riêng phần lỗi, không bắt nhập lại.
+
+Cả hai chế độ đều đi qua cùng lớp kiểm tra trùng lặp, chuẩn hoá và lưu (`src/db/words.ts`), nên dữ liệu
+không bị chia thành hai hệ thống.
+
+## Học từ mới có hướng dẫn
+
+Không đưa một từ chưa từng gặp vào câu hỏi trắc nghiệm ngay. Mỗi từ mới đi qua:
+
+1. **Giới thiệu** — từ, nghĩa tiếng Việt, IPA, từ loại, nút nghe.
+2. **Lật thẻ** — định nghĩa tiếng Anh, câu ví dụ + bản dịch, collocations, từ đồng nghĩa, ghi chú.
+   Có nút nghe riêng cho câu ví dụ; lật thẻ không cộng xu.
+3. **Kiểm tra nhẹ** — một câu hỏi dựa trên đúng thông tin vừa giới thiệu (nhận diện nghĩa với từ dễ,
+   gõ lại từ với cấp cao hơn).
+4. **Tự đánh giá** — Chưa nhớ / Khó / Tốt / Rất dễ, quyết định lịch ôn FSRS. Chỉ bước này mới ghi
+   nhận lượt học; mở màn hình hay bấm "đã hiểu" không được tính là đã thuộc.
+
+Nếu trả lời sai, từ được xếp "Chưa nhớ" và quay lại sớm trong Ôn tập. Không có xu cho việc lật thẻ,
+nghe hay tự chọn "Rất dễ".
 
 ## Build iOS và cài lên iPhone
 
@@ -182,16 +203,27 @@ Widget không gọi mạng và không gọi Gemini.
   nói. Lựa chọn lưu trong SQLite nên mở lại app vẫn giữ nguyên.
 - **Ba trò chơi** dùng chính bộ từ của bạn (ưu tiên từ hay sai, đổi thứ tự mỗi lượt):
   - **Bắn thiên thạch**: đọc nghĩa tiếng Việt trên thiên thạch và gõ đúng từ tiếng Anh để bắn nổ;
-    gõ sai không được điểm, thiên thạch chạm đáy mất một khiên, có combo và tạm dừng.
-  - **60 giây**: chọn nghĩa đúng nhanh nhất trong 60 giây.
+    gõ sai không được điểm, thiên thạch chạm đáy mất một khiên, có combo và tạm dừng. Mật độ đã
+    giảm (một từ mỗi ~3,2 giây, tối đa 4 từ cùng lúc, có làn riêng để không chồng nhau). Từ trên
+    thiên thạch **bị đục một vài ký tự** (`cr_minal`) để phải nhớ chính tả; gõ đúng chữ nào thì chữ
+    đó hiện ra, chữ đầu của mỗi từ luôn nhìn thấy được.
+  - **60 giây**: chọn nghĩa đúng nhanh nhất. Đồng hồ là thứ duy nhất kết thúc lượt: khi hết bộ câu
+    hỏi mà vẫn còn giờ, app tự xáo thêm câu mới, nên chơi được trọn 60 giây kể cả khi bạn chỉ có vài từ.
   - **Cặp đôi từ vựng**: lật thẻ ghép từ với nghĩa.
 
   Cả ba game đều có nút **tạm dừng / tiếp tục / thoát**, và tự tạm dừng khi bạn chuyển app sang nền
   để không mất lượt chơi trong lúc nghe điện thoại.
 - **Xu ảo** (không phải tiền thật, không quy đổi): từ mới trả 100 xu (Starter) → 1.000 xu (C1/C2)
   khi bạn trả lời đúng **lần đầu**; mỗi 10 ngày học liên tục tăng hệ số 0,1; ôn sai bị trừ đúng giá
-  trị gốc của từ và số dư không bao giờ âm. Toàn bộ giao dịch nằm trong một ledger SQLite, mỗi từ chỉ
-  được thưởng một lần (ràng buộc bằng unique index), và không cộng/trừ xu khi luyện nói.
+  trị gốc của từ và số dư không bao giờ âm.
+  - Mỗi **từ/cụm từ** chỉ nhận thưởng một lần trong toàn bộ lịch sử, kể cả khi xoá rồi thêm lại, gặp
+    lại trong Học ngay/Ôn tập/game, hay reset xu. Danh tính thưởng lưu theo `term_key`
+    (`normalizedTerm|track`) trong bảng `word_study_history` và ledger, không dựa vào `isLearned`.
+  - Gặp lại từ đã thưởng mà trả lời **sai** vẫn bị trừ xu; trả lời đúng thì nhận 0 xu.
+  - Mỗi lượt trả lời có `event_id`; gửi lại/ bấm đúp không tạo thêm giao dịch. Ledger ghi lý do, số dư
+    trước/sau, từ liên quan và chế độ học; Cài đặt → Kinh tế có lịch sử giao dịch.
+  - Reset xu chỉ tạo một giao dịch reset, **không** xoá từ, lịch sử học, lịch thưởng, streak hay FSRS.
+  - Không cộng/trừ xu khi luyện nói, khi câu hỏi lỗi tải, khi audio/micro lỗi hoặc khi bạn bấm bỏ qua.
 - **Khôi phục chuỗi**: nếu bỏ lỡ đúng một ngày, app hiện thẻ "Bạn đã mất chuỗi N ngày"; học **gấp đôi**
   số từ mới trong ngày (chỉ từ mới, không tính ôn) để nối lại. Chuỗi chỉ được cứu một lần, và sau khi
   cứu hệ số thưởng xu trở về 1,0.
@@ -221,20 +253,25 @@ VocabMaster/
 ├── eas.json                # profile build
 ├── widgets/                # widget SwiftUI (DailyWord, ReviewGlance)
 ├── src/
-│   ├── ai/                 # AI client (Gemini + Groq), prompt, validate, levels
-│   ├── components/         # UI primitives + patterns
+│   ├── ai/                 # AI client (Gemini + Groq), prompt, schema, cache, retry
+│   ├── audio/              # audio session: media ↔ playback cho TTS
+│   ├── coins/              # ledger, giá xu, hệ số streak
+│   ├── components/         # UI primitives, patterns, motion, chuyển màn hình
 │   ├── data/seed.ts        # 40 từ khởi tạo (General + IELTS)
-│   ├── db/                 # schema, migration, repository, backup
+│   ├── db/                 # schema v4, migration, repository, backup
+│   ├── games/              # engine thuần: asteroid, rush, memory
 │   ├── lib/                # text, date, id
 │   ├── navigation/         # stack + tab
 │   ├── notifications/      # nhắc nhở hằng tuần
 │   ├── quiz/               # sinh câu hỏi + chấm điểm
-│   ├── screens/            # 11 màn hình
+│   ├── screens/            # màn hình (gồm LearnScreen nhiều giai đoạn)
 │   ├── speech/             # TTS, nhận diện, phản hồi
 │   ├── srs/                # FSRS
 │   ├── state/              # AppProvider
 │   ├── streak/             # streak thuần
+│   ├── study/              # cổng chặn khi còn từ đến hạn
 │   ├── theme/              # design tokens
+│   ├── wordlist/           # phân tách danh sách từ/cụm từ
 │   └── widgets/            # snapshot + sync
 ├── docs/                   # khả thi, kiến trúc, build, test
 └── scripts/                # setup, validate checkpoint
@@ -245,9 +282,11 @@ VocabMaster/
 - Widget cần Apple Developer Program trả phí (App Groups) và một lần build native.
 - Không chấm điểm phát âm theo âm vị; chỉ so khớp từ bằng nhận diện giọng nói.
 - Widget không cập nhật tức thì; iOS điều tiết tần suất.
-- Gemini có thể trả dữ liệu sai; mọi từ phải qua bước xem/sửa/lưu.
+- AI (Gemini hoặc Groq) có thể trả dữ liệu sai; mọi từ phải qua bước xem/sửa/lưu.
+- Không còn API từ điển; chất lượng IPA/ví dụ phụ thuộc vào model AI đang chọn.
 - Không hỗ trợ Android (cấu hình `platforms: ["ios"]`).
 - Chưa có đồng bộ nhiều thiết bị (dữ liệu cục bộ, backup thủ công).
+- Chưa chạy các tính năng mới trên iPhone: máy Windows không build iOS; phải build lại qua GitHub Actions/EAS rồi cài.
 
 ## Xử lý lỗi thường gặp
 
@@ -258,8 +297,8 @@ VocabMaster/
 | App trắng màn hình sau khi cài | Xem log Metro; thường do native module chưa build lại |
 | Widget không xuất hiện | Mở app một lần; kiểm tra target extension trong `ios/`; build lại |
 | Widget không đổi số liệu | Mở app lại; iOS trễ refresh; kiểm tra App Group trong Signing |
-| Không phát âm thanh | Tắt chế độ im lặng; tăng âm lượng; cài voice trong Cài đặt iOS |
-| Micro không nhận / "chưa nhận diện được giọng nói" | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói; bật Siri/Đọc chính tả nếu dùng nhận diện ngoại tuyến; hoặc tắt "Nhận diện trên thiết bị" để dùng qua mạng |
+| Không nghe thấy từ dù đang ở chế độ im lặng | Đã sửa: khi phát từ vựng app nâng audio session lên playback (không phụ thuộc công tắc chuông) rồi trả về media. Nếu vẫn im: kiểm tra âm lượng **media**, chọn giọng trong Cài đặt → Giọng đọc, hoặc cài voice tiếng Anh trong Cài đặt iOS |
+| Micro không nhận / "chưa nhận diện được giọng nói" | Cài đặt iOS → VocabMaster → Micro + Nhận diện giọng nói; bật Siri/Đọc chính tả nếu dùng nhận diện ngoại tuyến; hoặc tắt "Nhận diện trên thiết bị" để dùng qua mạng. Sau ~9 giây không có kết quả cuối, app tự dừng và chấm phần đã nghe được thay vì treo "Đang nghe…" |
 | 429 (Gemini hoặc Groq) | Chờ vài phút; giảm số từ; kiểm tra hạn mức model. Nếu là hạn mức theo ngày, app báo riêng và không tự thử lại |
 | 403 / 401 | Key sai, hoặc key Groq dán vào ô Gemini (hoặc ngược lại) |
 | 503 / "đang bận" | App đã tự thử lại 3 lần (Gemini còn tự đổi model khi model quá tải); chờ khoảng 1 phút rồi bấm **Thử lại** |
@@ -272,8 +311,10 @@ VocabMaster/
 ## Kiểm thử
 
 ```bash
-npm test              # 16 bộ unit test, 186 test
-npm run typecheck     # TypeScript strict
+npm test                  # 24 bộ unit test, 241 test
+npm run typecheck         # TypeScript strict
+npm run check:migrations  # migration 1→4 trên SQLite thật (node:sqlite)
+npm run verify            # typecheck + test + migration + checkpoint
 node scripts/validate-checkpoint.mjs
 ```
 

@@ -23,6 +23,7 @@ import {
 } from '../games/asteroid';
 import { useGamePause } from '../games/useGamePause';
 import { useGameWords } from '../games/useGameWords';
+import { normalizeTerm } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
@@ -228,7 +229,7 @@ export function AsteroidGameScreen() {
               const typed = game.typed.trim();
               const isCandidate =
                 typed.length > 0 &&
-                asteroid.term.toLowerCase().startsWith(typed.toLowerCase());
+                normalizeTerm(asteroid.term).startsWith(normalizeTerm(typed));
               return (
                 <View
                   key={asteroid.id}
@@ -244,19 +245,7 @@ export function AsteroidGameScreen() {
                     },
                   ]}
                 >
-                  <AppText
-                    variant="bodyStrong"
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                  >
-                    {isCandidate ? (
-                      <AppText variant="bodyStrong" color={colors.accent}>
-                        {asteroid.term.slice(0, typed.length)}
-                      </AppText>
-                    ) : null}
-                    {isCandidate ? asteroid.term.slice(typed.length) : asteroid.term}
-                  </AppText>
+                  <MaskedTerm asteroid={asteroid} typed={game.typed} />
                   <AppText variant="caption" color={colors.textMuted} numberOfLines={1}>
                     {asteroid.meaning}
                   </AppText>
@@ -300,7 +289,7 @@ export function AsteroidGameScreen() {
             onChangeText={handleChange}
             editable={game.status === 'playing' && !paused}
             placeholder={
-              game.status === 'playing' ? 'Gõ từ tiếng Anh…' : 'Bấm Bắt đầu để chơi'
+              game.status === 'playing' ? 'Gõ đủ từ tiếng Anh…' : 'Bấm Bắt đầu để chơi'
             }
             placeholderTextColor={colors.textFaint}
             autoCapitalize="none"
@@ -321,7 +310,7 @@ export function AsteroidGameScreen() {
             ]}
           />
           <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
-            Đọc nghĩa tiếng Việt rồi gõ từ tiếng Anh. Đúng cả từ mới nổ; gõ sai sẽ mất chuỗi.
+            Thiên thạch che vài chữ. Đọc nghĩa tiếng Việt rồi gõ đủ từ — chữ đã gõ đúng sẽ hiện ra.
           </AppText>
         </View>
 
@@ -331,7 +320,7 @@ export function AsteroidGameScreen() {
             title={pool.length > 0 ? 'Thiên thạch từ vựng' : 'Cần từ để chơi'}
             subtitle={
               pool.length > 0
-                ? 'Thiên thạch mang từ tiếng Anh và nghĩa tiếng Việt. Gõ đúng từ trước khi nó chạm đáy.'
+                ? 'Mỗi thiên thạch che vài chữ cái và hiện nghĩa tiếng Việt. Nhớ lại và gõ đủ từ trước khi nó chạm đáy.'
                 : 'Bộ từ của bạn đang trống. Thêm vài từ rồi quay lại — game dùng chính từ bạn đang học.'
             }
             note={
@@ -377,6 +366,31 @@ export function AsteroidGameScreen() {
         ) : null}
       </View>
     </GameFrame>
+  );
+}
+
+function MaskedTerm({ asteroid, typed }: { asteroid: Asteroid; typed: string }) {
+  const { colors } = useTheme();
+  const typedNorm = normalizeTerm(typed);
+  const chars = [...asteroid.term];
+  const hidden = new Set(asteroid.blanked);
+
+  return (
+    <AppText variant="bodyStrong" numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+      {chars.map((char, index) => {
+        const typedHere = index < typedNorm.length && typedNorm[index] === char.toLowerCase();
+        const isHidden = hidden.has(index) && !typedHere;
+        return (
+          <AppText
+            key={`${asteroid.id}:${index}`}
+            variant="bodyStrong"
+            color={typedHere ? colors.accent : colors.text}
+          >
+            {isHidden ? '_' : char}
+          </AppText>
+        );
+      })}
+    </AppText>
   );
 }
 

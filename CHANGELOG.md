@@ -4,6 +4,78 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-25 — Phiên 12: Groq thay từ điển, xu một lần, khoá ôn tập, học từ mới, game và âm thanh
+
+### Bối cảnh
+
+- Người dùng báo **nhập danh sách từ vẫn không thêm được cụm từ**: Groq đã trả kết quả nhưng bước tra
+  từ điển chỉ nhận từ đơn nên chặn lưu; từ điển còn giới hạn số lần gọi.
+- Người dùng báo **kiểm tra nói vẫn chưa hoạt động** và **chế độ 60 giây không hoạt động** sau bản trước.
+- Yêu cầu bổ sung: mỗi từ chỉ thưởng xu một lần nhưng gặp lại trả lời sai vẫn bị trừ; thiên thạch thưa
+  hơn và đục ký tự; âm thanh phải nghe được ở chế độ im lặng; bắt buộc ôn tập trước khi học từ mới;
+  học từ mới phải được giới thiệu trước khi kiểm tra.
+
+### Nguyên nhân tìm được trong code
+
+- `src/dict/*` và `src/db/dictCache.ts` là nguồn bắt buộc cho chế độ dán danh sách; `lookupWord`
+  từ chối mọi headword có khoảng trắng, nên `take into account` không bao giờ tới được bước lưu.
+  Đây là xung đột thiết kế, không phải lỗi mạng.
+- `RushGameScreen` chỉ tạo 4–24 câu; khi trả lời hết bộ, `answerRush` đặt `status: 'over'` dù đồng hồ
+  còn gần cả phút, nên chế độ "60 giây" kết thúc sau vài câu.
+- `useSpeechCheck` chỉ tạo kết quả khi iOS gửi `isFinal`; nếu task kết thúc không có kết quả cuối (người
+  dùng bấm dừng, cuộc gọi chen ngang, mất focus), màn hình treo ở "Đang nghe…" và không chấm được.
+  Ngoài ra âm thanh mẫu còn đang phát qua expo-speech có thể chiếm audio session, làm micro lỗi
+  `audio-capture`.
+- TTS chạy trong audio session `playsInSilentMode: false` dùng cho nhạc, nên công tắc chuông tắt tiếng từ.
+
+### Đã thay đổi
+
+- **Bỏ hẳn từ điển**: xoá `src/dict/*`, `src/db/dictCache.ts`, `src/screens/useWordListLookup.ts`,
+  `src/ai/levels.ts`, `docs/DICTIONARY.md`; migration giữ nguyên `dict_source`/`missing_fields` để dữ
+  liệu cũ vẫn đọc được nhưng không còn nhánh nào gọi API từ điển hay yêu cầu từ điển xác nhận.
+- **Nhập danh sách bằng Groq** (`src/wordlist/parse.ts`, `src/screens/useWordListImport.ts`,
+  `src/ai/cache.ts`): giữ nguyên cụm từ, bỏ trùng không phân biệt hoa/thường, chia lô, cache theo nội
+  dung, chống request trùng, báo thành công/thất bại từng phần và **Thử lại** chỉ phần lỗi.
+- **Xu một lần** (`src/coins/ledger.ts`, `src/db/reviews.ts`, schema v4): `word_study_history` +
+  `term_key` bền vững, `source_id` chống xử lý trùng, thưởng/phạt nằm trong transaction của lượt trả lời,
+  số dư không âm, reset chỉ ghi một giao dịch reset. Sai khi gặp lại từ đã thưởng vẫn bị trừ.
+- **Khoá học từ mới** (`src/study/gate.ts`): `createWord` gọi `assertNewLearningAllowed`, nên AI, nhập
+  danh sách, form thủ công và mọi màn hình đều bị chặn ở tầng dữ liệu khi còn từ đến hạn; Study/AI/
+  Nhập danh sách hiện số từ và đưa thẳng sang Ôn tập.
+- **Học từ mới nhiều giai đoạn** (`src/screens/LearnScreen.tsx`): giới thiệu từ + nghĩa + IPA + nghe →
+  lật thẻ (định nghĩa, ví dụ + dịch, collocations, đồng nghĩa) → một câu kiểm tra → tự đánh giá
+  (Chưa nhớ/Khó/Tốt/Rất dễ). Chỉ bước tự đánh giá ghi `recordReview`; lật thẻ/nghe không tạo xu.
+- **Thiên thạch** (`src/games/asteroid.ts`, `AsteroidGameScreen`): giảm còn một từ mỗi 3,2 giây, tối đa
+  4 từ, chọn làn tránh chồng; từ bị đục ký tự theo độ dài/cấp độ, không đục chữ đầu hay khoảng trắng,
+  gõ đúng chữ nào hiện chữ đó.
+- **60 giây** (`src/games/rush.ts`): `continueRush` nối thêm bộ câu mới khi hết bộ cũ mà vẫn còn giờ;
+  đồng hồ là thứ duy nhất kết thúc lượt bình thường.
+- **Âm thanh** (`src/audio/session.ts`, `src/speech/tts.ts`): nâng audio session lên playback khi đọc từ
+  (nghe được cả khi bật im lặng), giảm nhạc nền, trả về media sau khi đọc.
+- **Nhận diện giọng nói** (`src/speech/useSpeechCheck.ts`): dừng TTS trước khi mở micro; nếu iOS kết
+  thúc mà không có `isFinal` thì chấm bằng transcript tạm cuối cùng; watchdog 9 giây dừng task và báo
+  rõ "không nghe thấy giọng nói" thay vì treo.
+- **Animation**: `src/components/motion.tsx` + `ScreenTransition.tsx`, tôn trọng Reduce Motion.
+- Docs: README, NEXT_SESSION, CHECKPOINT.md/JSON, xoá tài liệu từ điển.
+
+### Kiểm thử thật
+
+- `npx tsc --noEmit` → **exit 0, 0 lỗi**.
+- `npx jest --runInBand` → **24/24 suite, 241/241 test pass**; thêm test cho `continueRush` (chơi trọn
+  phút, không nối sau khi hết giờ), parser cụm từ, gate ôn tập, ledger một-lần và thiên thạch đục chữ.
+- `node scripts/check-migrations.mjs` → **OK** (schema 1→4 trên `node:sqlite`).
+- `node scripts/validate-checkpoint.mjs` → **hợp lệ**.
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- **Chưa build/cài bản mới trên iPhone.** Sửa kiểm tra nói và 60 giây mới chỉ qua typecheck + unit test
+  + đọc code; hành vi audio/speech thật của iOS không chạy được trên Windows.
+- Chưa có log lỗi thật từ máy người dùng cho micro; bản sửa xử lý các nguyên nhân đã biết (quyền,
+  thiếu gói ngoại tuyến, task kết thúc không kết quả, TTS chiếm session) và hiện lỗi cụ thể.
+- Groq live vẫn chỉ có báo cáo trước đó của người dùng; chưa gọi lại bằng key trong phiên này.
+
+---
+
 ## 2026-10-24 — Phiên 11d: micro / nhận diện giọng nói báo “chưa dùng được”
 
 ### Bối cảnh

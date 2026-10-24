@@ -6,22 +6,26 @@
  * - trim every item and collapse internal whitespace (`civil    law` → `civil law`);
  * - drop empty items from `,,` or a trailing comma;
  * - remove duplicates case-insensitively, keeping the first spelling and order;
- * - keep multi-word items intact.
+ * - keep multi-word items intact: `take into account` is ONE item, never three.
  */
 
 export const MAX_LIST_WORDS = 50;
-const MAX_TERM_LENGTH = 60;
+const MAX_TERM_LENGTH = 80;
 
 export interface ParsedWordList {
   /** Clean terms in the order the learner typed them. */
   terms: string[];
   /** Items that were dropped, with the reason, so nothing disappears silently. */
   dropped: { value: string; reason: 'duplicate' | 'too_long' | 'not_english' }[];
-  /** True when the input contains more items than the app will look up. */
+  /** True when the input contains more items than the app will process. */
   truncated: boolean;
 }
 
-/** Letters, spaces, apostrophes, hyphens and dots: what a headword can contain. */
+/**
+ * Letters, spaces, apostrophes, hyphens and dots: what a headword or a phrase
+ * can contain. Phrases are deliberately allowed here; the AI, not a
+ * single-word dictionary, decides what they mean.
+ */
 const HEADWORD = /^[a-z][a-z'’.\- ]*[a-z.]$/i;
 
 export function cleanTerm(value: string): string {

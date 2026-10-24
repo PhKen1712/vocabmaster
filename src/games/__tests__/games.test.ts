@@ -8,7 +8,7 @@ import {
   tickAsteroid,
   typeAsteroid,
 } from '../asteroid';
-import { answerRush, createRush, startRush, tickRush } from '../rush';
+import { answerRush, continueRush, createRush, startRush, tickRush } from '../rush';
 import {
   createMemory,
   flipMemory,
@@ -210,7 +210,7 @@ describe('rush quiz', () => {
     expect(after.status).toBe('playing');
   });
 
-  it('ends when the last question is answered', () => {
+  it('ends when the last question is answered and no refill is offered', () => {
     let state = startRush(createRush(WORDS, seeded(4)));
     let guard = 0;
     while (state.status === 'playing' && guard < 100) {
@@ -221,6 +221,33 @@ describe('rush quiz', () => {
     expect(state.status).toBe('over');
     expect(state.correct).toBe(state.questions.length);
     expect(state.score).toBeGreaterThan(0);
+  });
+
+  it('refills the batch so a small collection still plays the whole minute', () => {
+    // Four words produce four questions; without a refill the mode ended after
+    // a few seconds and looked broken.
+    let state = startRush(createRush(WORDS.slice(0, 4), seeded(5)));
+    const before = state.questions.length;
+    for (let i = 0; i < before; i += 1) {
+      state = answerRush(state, state.questions[state.index]!.answerIndex);
+    }
+    expect(state.status).toBe('over');
+    expect(state.timeLeftMs).toBeGreaterThan(0);
+
+    const continued = continueRush(state, WORDS.slice(0, 4), seeded(6));
+    expect(continued.status).toBe('playing');
+    expect(continued.questions.length).toBe(before * 2);
+    expect(continued.index).toBe(before);
+    expect(continued.score).toBe(state.score);
+    expect(continued.correct).toBe(before);
+    expect(continued.timeLeftMs).toBe(state.timeLeftMs);
+  });
+
+  it('does not refill after the clock reaches zero', () => {
+    const started = startRush(createRush(WORDS, seeded(7), 1_000));
+    const ended = tickRush(started, 1_000);
+    const continued = continueRush(ended, WORDS, seeded(8));
+    expect(continued).toBe(ended);
   });
 });
 

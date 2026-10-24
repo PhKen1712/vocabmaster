@@ -39,6 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run typecheck
+          npm run check:migrations
           npm test -- --ci
 
       - name: Strip widget extension (free Apple ID has no App Groups)

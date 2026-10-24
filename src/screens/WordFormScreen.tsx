@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, StyleSheet, Switch, View } from 'react-native
 import { AppText, Banner, Card, PrimaryButton, Screen } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, TrackSwitcher } from '../components/patterns';
 import { DuplicateWordError, createWord, getWord, updateWord } from '../db/words';
+import { getStudyGate, ReviewsDueError } from '../study/gate';
 import { generateVocabulary } from '../ai';
 import { describeAiError } from '../ai/errors';
 import { providerLabel } from '../ai/provider';
@@ -66,6 +67,22 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
   const [aiLoading, setAiLoading] = useState(false);
   const [aiFilled, setAiFilled] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dueCount, setDueCount] = useState(0);
+
+  // Editing an existing word stays available; only adding a new one is gated.
+  useEffect(() => {
+    if (!db || id) {
+      setDueCount(0);
+      return;
+    }
+    let cancelled = false;
+    void getStudyGate(db, form.track).then((gate) => {
+      if (!cancelled) setDueCount(gate.dueCount);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, id, form.track]);
 
   useEffect(() => {
     if (!id || !db) return;
@@ -212,7 +229,19 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
       await notifyDataChanged();
       pop();
     } catch (caught) {
-      if (caught instanceof DuplicateWordError) {
+      if (caught instanceof ReviewsDueError) {
+        setDueCount(caught.dueCount);
+        Alert.alert('Cần ôn tập trước', caught.message, [
+          { text: 'Ở lại', style: 'cancel' },
+          {
+            text: 'Đi ôn tập',
+            onPress: () => {
+              pop();
+              push({ name: 'session', config: { mode: 'review', track: form.track } });
+            },
+          },
+        ]);
+      } else if (caught instanceof DuplicateWordError) {
         Alert.alert('Từ đã tồn tại', caught.message, [
           { text: 'Ở lại', style: 'cancel' },
           {
@@ -247,6 +276,13 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
       />
 
       {error ? <Banner tone="danger" title="Chưa lưu được" body={error} /> : null}
+      {!id && dueCount > 0 ? (
+        <Banner
+          tone="warning"
+          title={`Đang khoá thêm từ · còn ${dueCount} từ cần ôn`}
+          body="Hoàn thành ôn tập trước khi thêm từ mới. Nếu đây là từ đã có, mở từ đó để sửa."
+        />
+      ) : null}
       {aiFilled ? (
         <Banner
           tone="warning"
@@ -437,10 +473,16 @@ export function WordFormScreen({ id, draft }: { id?: string; draft?: WordInput }
       </Card>
 
       <PrimaryButton
-        label={id ? 'Lưu thay đổi' : 'Thêm vào bộ từ'}
+        label={
+          !id && dueCount > 0
+            ? `Đang khoá · còn ${dueCount} từ cần ôn`
+            : id
+              ? 'Lưu thay đổi'
+              : 'Thêm vào bộ từ'
+        }
         onPress={() => void save()}
         loading={saving}
-        disabled={saving}
+        disabled={saving || (!id && dueCount > 0)}
         style={{ marginTop: spacing.lg }}
       />
     </Screen>

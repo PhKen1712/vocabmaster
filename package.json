@@ -12,6 +12,7 @@
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
     "checkpoint:validate": "node scripts/validate-checkpoint.mjs",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "verify": "node scripts/verify.mjs",
     "free:strip": "node scripts/prepare-free-build.mjs",
     "free:restore": "node scripts/prepare-free-build.mjs --restore"

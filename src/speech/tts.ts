@@ -1,5 +1,6 @@
 import * as Speech from 'expo-speech';
 
+import { activateSpeechAudio, restoreMediaAudio } from '../audio/session';
 import { duckMusic, releaseMusicDuck } from '../music/duck';
 import type { TtsVoice } from '../types';
 import { pickVoice, type VoiceLike } from './voices';
@@ -56,6 +57,9 @@ export interface SpeakOptions {
   onError?: (message: string) => void;
 }
 
+/** Incremented on every call so a stale finish callback cannot reset audio. */
+let speechToken = 0;
+
 export async function speak(text: string, options: SpeakOptions = {}): Promise<void> {
   const content = text.trim();
   if (!content) return;
@@ -63,17 +67,23 @@ export async function speak(text: string, options: SpeakOptions = {}): Promise<v
   const gender = options.voice ?? preferences.voice;
   const voices = await getEnglishVoices();
   const voice = pickVoice(voices, accent, gender);
+  const token = ++speechToken;
 
   const finish = () => {
     releaseMusicDuck();
+    if (token === speechToken) void restoreMediaAudio();
     options.onDone?.();
   };
   const fail = (message: string) => {
     releaseMusicDuck();
+    if (token === speechToken) void restoreMediaAudio();
     options.onError?.(message);
   };
 
   try {
+    // Upgrade the session to playback before the first syllable. Without this
+    // the silent switch mutes TTS and the learner has to enable the ringer.
+    await activateSpeechAudio();
     duckMusic();
     await Speech.stop();
     Speech.speak(content, {
@@ -81,8 +91,14 @@ export async function speak(text: string, options: SpeakOptions = {}): Promise<v
       voice: voice?.identifier,
       rate: options.rate ?? 0.92,
       pitch: 1,
+      volume: 1,
+      // Let the system manage speech in its own session; this keeps a
+      // vocabulary word audible even while the app plays quiet background
+      // music, and restores cleanly after a phone call or Siri.
+      useApplicationAudioSession: false,
       onDone: finish,
-      onError: () => fail('Không phát được âm thanh. Kiểm tra chế độ im lặng của iPhone.'),
+      onStopped: () => releaseMusicDuck(),
+      onError: () => fail('Không phát được âm thanh trên thiết bị này.'),
     });
   } catch {
     fail('Không phát được âm thanh trên thiết bị này.');
@@ -90,10 +106,12 @@ export async function speak(text: string, options: SpeakOptions = {}): Promise<v
 }
 
 export async function stopSpeaking(): Promise<void> {
+  speechToken += 1;
   try {
     await Speech.stop();
   } finally {
     releaseMusicDuck();
+    void restoreMediaAudio();
   }
 }
 

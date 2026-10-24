@@ -31,6 +31,7 @@ export type Route =
   | { name: 'wordForm'; id?: string; draft?: WordInput }
   | { name: 'ai' }
   | { name: 'session'; config: SessionConfig }
+  | { name: 'learn'; track: Track; level?: Level }
   | { name: 'placement' };
 
 export const TAB_ROUTES: TabName[] = ['today', 'study', 'arcade', 'words', 'stats', 'settings'];

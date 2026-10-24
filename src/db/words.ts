@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { nowIso, newId } from '../lib/ids';
 import { normalizeTerm } from '../lib/text';
+import { assertNewLearningAllowed } from '../study/gate';
 import {
   WORD_COLUMNS,
   rowToWord,
@@ -153,6 +154,10 @@ export async function createWord(db: SQLiteDatabase, input: WordInput): Promise<
   if (!input.meaningVi.trim()) throw new Error('Nghĩa tiếng Việt không được để trống.');
 
   const track: Track = input.track ?? 'general';
+  // Shared business rule: every path that creates a word (manual form, pasted
+  // list, AI batch, future import) must pass through here and respect pending
+  // reviews. Hiding a button is not enough.
+  await assertNewLearningAllowed(db, track);
   const existing = await findWordByTerm(db, term, track);
   if (existing) throw new DuplicateWordError(existing);
 

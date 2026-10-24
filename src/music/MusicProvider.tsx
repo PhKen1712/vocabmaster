@@ -8,8 +8,9 @@ import React, {
   useState,
 } from 'react';
 import { AppState } from 'react-native';
-import { createAudioPlayer, setAudioModeAsync, type AudioPlayer } from 'expo-audio';
+import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 
+import { restoreMediaAudio } from '../audio/session';
 import { useApp } from '../state/AppProvider';
 import { setMusicDuckHandler } from './duck';
 import { musicTrack, type MusicTrack } from './tracks';
@@ -26,7 +27,9 @@ import { musicTrack, type MusicTrack } from './tracks';
  *   music over a phone call) and resumes on return only if it was enabled.
  *
  * Audio mode: the silent switch still mutes the music, and the app mixes with
- * other audio instead of stopping someone's podcast.
+ * other audio instead of stopping someone's podcast. Vocabulary TTS temporarily
+ * upgrades the session to playback (see audio/session.ts) so a spoken word is
+ * never silenced by the ringer switch.
  */
 
 export interface MusicControl {
@@ -100,15 +103,7 @@ export function MusicProvider({ children }: { children: React.ReactNode }) {
       );
     }
 
-    void setAudioModeAsync({
-      playsInSilentMode: false,
-      interruptionMode: 'mixWithOthers',
-      shouldPlayInBackground: false,
-      allowsRecording: false,
-    }).catch(() => {
-      // A failed session config must not stop playback on devices where the
-      // defaults already work.
-    });
+    void restoreMediaAudio();
 
     return () => {
       try {

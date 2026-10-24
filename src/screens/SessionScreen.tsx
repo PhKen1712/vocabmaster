@@ -11,14 +11,17 @@ import {
 import * as Haptics from 'expo-haptics';
 
 import { AppText, Banner, Card, PrimaryButton, ProgressBar, Screen } from '../components/ui';
+import { FadeSlideIn } from '../components/motion';
 import { ScreenHeader } from '../components/patterns';
-import { getDueWords, getNewWords, getWeakWords, listWords } from '../db/words';
+import { getDueWords, getWeakWords, listWords } from '../db/words';
 import { recordReview } from '../db/reviews';
 import { formatDuration } from '../lib/date';
+import { newId } from '../lib/ids';
 import { displayTerm } from '../lib/text';
 import { useNavigation, type SessionConfig } from '../navigation/NavigationProvider';
 import { generateQuestions } from '../quiz/generator';
 import { gradeAnswer, type GradeResult } from '../quiz/grading';
+import { getStudyGate } from '../study/gate';
 import { describeInterval, schedule, type ScheduleResult } from '../srs/fsrs';
 import { speak } from '../speech/tts';
 import { useSpeechCheck } from '../speech/useSpeechCheck';
@@ -61,11 +64,18 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
   const [retried, setRetried] = useState(false);
   const [revealed, setRevealed] = useState(false);
   const [speechError, setSpeechError] = useState<string | null>(null);
-  const [coinNote, setCoinNote] = useState<{ amount: number; balance: number } | null>(null);
+  const [coinNote, setCoinNote] = useState<{
+    amount: number;
+    balance: number;
+    reason: string | null;
+  } | null>(null);
   const [sessionCoins, setSessionCoins] = useState(0);
 
   const startedAt = useRef(Date.now());
   const questionStartedAt = useRef(Date.now());
+  /** One stable id per answer, so a double tap cannot pay or charge twice. */
+  const eventIdRef = useRef<string | null>(null);
+  const savingRef = useRef(false);
   const speech = useSpeechCheck();
 
   const question = questions[index] ?? null;
@@ -75,31 +85,56 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     if (!db) return;
     setLoading(true);
     try {
-      const pool = await listWords(db, { track: config.track, limit: 400 });
-      let candidates: Word[] = [];
-      const level = config.level ?? settings.level;
+      const gate = await getStudyGate(db, config.track);
+      if (config.mode === 'new') {
+        // New words are introduced on the dedicated learning screen before any
+        // question is asked; a quiz session must never guess at them.
+        setQuestions([]);
+        setEmptyReason(
+          'Từ mới được giới thiệu trong màn hình Học từ mới trước khi kiểm tra. Quay lại và chọn "Học từ mới".',
+        );
+        setLoading(false);
+        return;
+      }
+      if (
+        gate.dueCount > 0 &&
+        (config.mode === 'weak' || config.mode === 'topic' || (config.kinds?.length ?? 0) > 0)
+      ) {
+        setQuestions([]);
+        setEmptyReason(
+          `Bạn còn ${gate.dueCount} từ cần ôn. Hoàn thành ôn tập trước khi luyện các chế độ khác.`,
+        );
+        setLoading(false);
+        return;
+      }
 
-      if (config.mode === 'review') {
+      const pool = await listWords(db, { track: config.track, limit: 400 });
+      const learnedPool = pool.filter((word) => word.reps > 0);
+      let candidates: Word[] = [];
+
+      if (config.mode === 'review' || config.mode === 'mixed') {
+        // Mixed is deliberately review-only: pending reviews come first, and
+        // when nothing is due it does not smuggle in un-introduced new words.
         candidates = await getDueWords(db, config.track, 30);
-      } else if (config.mode === 'new') {
-        candidates = await getNewWords(db, config.track, level, Math.min(30, settings.dailyGoal));
       } else if (config.mode === 'weak') {
         const weak = await getWeakWords(db, config.track, 12);
         candidates = weak.map((row) => row.word);
       } else if (config.mode === 'topic') {
         candidates = config.topic
-          ? await listWords(db, { track: config.track, topic: config.topic, limit: 25 })
+          ? (await listWords(db, { track: config.track, topic: config.topic, limit: 40 })).filter(
+              (word) => word.reps > 0,
+            )
           : [];
-      } else {
-        const due = await getDueWords(db, config.track, 20);
-        const fresh = await getNewWords(db, config.track, level, Math.max(3, settings.dailyGoal));
-        candidates = [...due, ...fresh];
       }
 
-      const built = generateQuestions(candidates, pool.length > 0 ? pool : candidates, {
-        limit: Math.min(20, candidates.length),
-        kinds: config.kinds,
-      });
+      const built = generateQuestions(
+        candidates,
+        learnedPool.length >= 2 ? learnedPool : pool.length > 0 ? pool : candidates,
+        {
+          limit: Math.min(20, candidates.length),
+          kinds: config.kinds,
+        },
+      );
       setQuestions(built);
       setIndex(0);
       setPhase('question');
@@ -112,18 +147,19 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
       setStats({ answered: 0, correct: 0 });
       setCoinNote(null);
       setSessionCoins(0);
+      eventIdRef.current = null;
       startedAt.current = Date.now();
       questionStartedAt.current = Date.now();
 
       if (built.length === 0) {
         setEmptyReason(
-          config.mode === 'review'
-            ? 'Không có từ nào đến hạn ôn. Hãy học từ mới hoặc quay lại sau.'
-            : config.mode === 'new'
-              ? 'Bạn đã học hết từ mới ở cấp độ này. Giảm cấp độ hoặc thêm từ mới.'
-              : config.mode === 'weak'
-                ? 'Chưa có dữ liệu về từ hay sai. Hãy làm vài buổi học trước.'
-                : 'Chưa có từ phù hợp để tạo buổi học.',
+          config.mode === 'review' || config.mode === 'mixed'
+            ? gate.dueCount > 0
+              ? 'Chưa tạo được câu hỏi từ các từ đang đến hạn.'
+              : 'Không có từ nào đến hạn ôn. Hãy học từ mới hoặc quay lại sau.'
+            : config.mode === 'weak'
+              ? 'Chưa có dữ liệu về từ hay sai. Hãy làm vài buổi học trước.'
+              : 'Chưa có từ phù hợp để tạo buổi học.',
         );
       } else {
         setEmptyReason(null);
@@ -216,11 +252,13 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
   };
 
   const saveRating = async (rating: ReviewRating) => {
-    if (!db || !question || !grade || saving) return;
+    if (!db || !question || !grade || savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const preview = previews.find((item) => item.rating === rating);
       if (!preview) throw new Error('Không tính được lịch ôn.');
+      if (!eventIdRef.current) eventIdRef.current = newId();
       const outcome = await recordReview(db, {
         word: question.word,
         rating,
@@ -229,9 +267,16 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         durationMs: Date.now() - questionStartedAt.current,
         schedule: preview.result,
         dailyGoal: settings.dailyGoal,
+        eventId: eventIdRef.current,
       });
-      if (outcome.coinChange !== 0) {
-        setCoinNote({ amount: outcome.coinChange, balance: outcome.coinBalance });
+      if (outcome.duplicate) {
+        // Already saved by an earlier tap; advance without moving coins twice.
+      } else {
+        setCoinNote({
+          amount: outcome.coinChange,
+          balance: outcome.coinBalance,
+          reason: outcome.coinReason,
+        });
         setSessionCoins((value) => value + outcome.coinChange);
       }
       await notifyDataChanged();
@@ -247,6 +292,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         setRevealed(false);
         setSpeechError(null);
         speech.reset();
+        eventIdRef.current = null;
         questionStartedAt.current = Date.now();
       }
     } catch (error) {
@@ -255,6 +301,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         error instanceof Error ? error.message : 'Thử lại sau.',
       );
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
@@ -273,6 +320,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     setRevealed(false);
     setSpeechError(null);
     speech.reset();
+    eventIdRef.current = null;
     questionStartedAt.current = Date.now();
   };
 
@@ -287,6 +335,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     setRevealed(false);
     setRetried(true);
     setWrongQuestions([]);
+    eventIdRef.current = null;
     questionStartedAt.current = Date.now();
   };
 
@@ -389,17 +438,24 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
       {coinNote ? (
         <View style={{ marginTop: spacing.md }}>
           <Banner
-            tone={coinNote.amount > 0 ? 'success' : 'warning'}
+            tone={coinNote.amount > 0 ? 'success' : coinNote.amount < 0 ? 'warning' : 'info'}
             title={
               coinNote.amount > 0
                 ? `+${coinNote.amount.toLocaleString('vi-VN')} xu`
-                : `${coinNote.amount.toLocaleString('vi-VN')} xu`
+                : coinNote.amount < 0
+                  ? `${coinNote.amount.toLocaleString('vi-VN')} xu`
+                  : 'Không thay đổi xu'
             }
-            body={`Số dư hiện tại: ${coinNote.balance.toLocaleString('vi-VN')} xu`}
+            body={
+              coinNote.reason
+                ? `${coinNote.reason} Số dư: ${coinNote.balance.toLocaleString('vi-VN')} xu.`
+                : `Số dư hiện tại: ${coinNote.balance.toLocaleString('vi-VN')} xu`
+            }
           />
         </View>
       ) : null}
 
+      <FadeSlideIn key={question.id} distance={12}>
       <Card style={{ marginTop: spacing.lg, marginBottom: spacing.lg }}>
         <View style={styles.kindRow}>
           <AppText variant="micro" color={colors.primary}>
@@ -441,6 +497,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
           />
         ) : null}
       </Card>
+      </FadeSlideIn>
 
       {question.options ? (
         <View style={{ gap: spacing.sm }}>

@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
-import { DICT_FIELD_LABELS } from '../dict/types';
 import { ScreenHeader } from '../components/patterns';
 import { deleteWord, getWord, setFavorite } from '../db/words';
 import { getWordHistory } from '../db/reviews';
@@ -208,16 +207,10 @@ export function WordDetailScreen({ id }: { id: string }) {
                 : word.source === 'import'
                   ? 'Nhập từ file'
                   : word.source === 'dictionary'
-                    ? `Tra từ điển${word.dictSource ? ` (${word.dictSource})` : ''}`
+                    ? 'Dữ liệu tra từ điển cũ'
                     : 'Tự thêm'
           }
         />
-        {word.missingFields && word.missingFields.length > 0 ? (
-          <DetailRow
-            label="Còn thiếu"
-            value={word.missingFields.map((field) => DICT_FIELD_LABELS[field]).join(', ')}
-          />
-        ) : null}
         <DetailRow label="Ngày thêm" value={new Date(word.createdAt).toLocaleDateString('vi-VN')} />
       </Card>
 

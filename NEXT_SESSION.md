@@ -2,19 +2,22 @@
 
 ## 1. Dự án đang ở đâu
 
-- **Đã xanh (chạy thật ngày 2026-10-24):** `npx tsc --noEmit` exit 0 (0 lỗi),
-  `npx jest --runInBand` **242/242 test pass trong 22 suite**,
-  `node scripts/verify.mjs` **ALL PASS** (gồm `checkpoint:validate`).
-- **Mới nhất (2026-10-24):** **Groq là AI mặc định**; **nhạc nền** 5 bản tự tạo với thư viện chọn bài,
-  mute, âm lượng và ducking khi phát âm (`src/music/*`); **ba game** — bắn thiên thạch, 60 giây, ghép
-  cặp (`src/games/*`, `src/screens/*GameScreen.tsx`, tab Chơi); **sáu dạng luyện kỹ năng** trên tab
-  Học (`config.kinds`); **xu ảo** với ledger schema v3, hệ số theo chuỗi và nút reset có xác nhận
-  (`src/coins/*`); **khôi phục chuỗi** một ngày bằng gấp đôi từ mới (`src/streak/streak.ts`,
-  `src/db/streakRestore.ts`); **chọn giọng nam/nữ** (`src/speech/voices.ts`) và **phòng luyện phát âm**
-  (`PronunciationScreen`); chấm **synonym** cho câu gõ từ.
-  Đọc `CHANGELOG.md` mục 2026-10-24 trước khi sửa.
-- **Nền cũ (2026-10-23):** Groq là provider thứ hai, key/model riêng; cấp độ CEFR tự tra khi dán
-  danh sách; schema v2 (dictionary cache). Đọc thêm `docs/DICTIONARY.md` và `docs/WORD_BANK.md`.
+- **Đã xanh (chạy thật ngày 2026-10-25):** `npx tsc --noEmit` exit 0 (0 lỗi),
+  `npx jest --runInBand` **241/241 test pass trong 24 suite**,
+  `node scripts/check-migrations.mjs` **OK** (schema 4 trên SQLite thật).
+- **Mới nhất (2026-10-25, chưa commit tại thời điểm viết):** **bỏ hoàn toàn API từ điển**, Groq xử lý
+  cả từ đơn và cụm từ; **nhập danh sách** chia lô + cache + báo kết quả từng phần;
+  **mỗi từ chỉ thưởng xu một lần** theo `term_key` bền vững, sai khi gặp lại vẫn bị trừ; ledger có
+  `source_id` chống xử lý trùng; **khoá học từ mới khi còn từ đến hạn** ở tầng dữ liệu (`src/study/gate.ts`,
+  `createWord` chặn); **học từ mới nhiều giai đoạn** (giới thiệu → lật thẻ → kiểm tra → tự đánh giá,
+  `src/screens/LearnScreen.tsx`); **bắn thiên thạch** giảm mật độ + đục ký tự (`src/games/asteroid.ts`);
+  **60 giây** tự xáo thêm câu để chơi trọn phút; **audio session** nâng lên playback khi đọc từ để
+  không phụ thuộc công tắc chuông (`src/audio/session.ts`); **nhận diện giọng nói** có watchdog 9 giây
+  và chấm phần đã nghe thay vì treo. Đọc `CHANGELOG.md` mục 2026-10-25 trước khi sửa.
+- **Nền cũ (2026-10-24):** nhạc nền 5 bản, ba game, sáu dạng luyện kỹ năng, xu ảo, khôi phục chuỗi,
+  chọn giọng nam/nữ, phòng luyện phát âm; schema v3. Đọc thêm `docs/WORD_BANK.md`.
+- **Đã xoá:** `src/dict/*`, `src/db/dictCache.ts`, `src/screens/useWordListLookup.ts`,
+  `src/ai/levels.ts`, `docs/DICTIONARY.md`. Không thêm lại API từ điển.
 - **Đã xác nhận bởi người dùng (2026-10-23):** **Groq chạy mượt và kết quả tốt** trên iPhone
   (báo trong chat; không có build number/log/số liệu latency hay hạn mức).
 - **Chưa chạy:** toàn bộ tính năng 2026-10-24 trên iPhone (nhạc, game, micro, giọng nam/nữ, xu,
@@ -37,7 +40,7 @@
 5. `docs/FEASIBILITY.md` — vì sao widget cần tài khoản trả giá.
 6. `docs/ARCHITECTURE.md`, `docs/TEST_PLAN.md`.
 7. `docs/WORD_BANK.md` — phân bổ 2.500 + 2.500, tiêu chí chọn từ, nguồn miễn phí và giấy phép.
-8. `docs/DICTIONARY.md` — endpoint đã kiểm chứng, JSON thật, quy tắc ghi công, giới hạn và bảng test.
+8. `docs/WORD_BANK.md` — kho từ kèm app và tiêu chí chọn từ (không còn tài liệu từ điển vì API đã bị xoá).
 
 ## 3. Lệnh kiểm tra (chạy đầu tiên mỗi phiên)
 
@@ -69,11 +72,16 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
      thử cả khi từ chối quyền micro.
 2. **Kiểm lại hai chế độ tạo từ trên build mới** (nếu chưa kiểm ở bản trước):
    - **Tạo bộ từ → AI chọn từ** (Cài đặt → "Kiểm tra key + model" trước).
-   - **Tạo bộ từ → Nhập danh sách từ**: dán `criminal, civil, justice, evidence` **và một từ lạ
-     ngoài kho (ví dụ `quixotic`)**, xem tiến trình, nghĩa Việt, IPA, **cấp độ riêng của từng thẻ**
-     ("có sẵn" / "AI ước lượng" / "chưa rõ cấp độ"), dòng "Thiếu: …"; thử tắt Wi-Fi cho một từ chưa
-     tra để thấy lỗi mạng, rồi bật lại bấm "Thử lại từ lỗi" (các từ đã tra phải còn nguyên).
+   - **Tạo bộ từ → Nhập danh sách từ**: dán `criminal, civil, take into account, in terms of`
+     (cụm phải được giữ nguyên, không tách thành từ đơn), xem kết quả từng phần, thử bấm tạo hai lần
+     liên tiếp (không được nhân đôi), rồi thử tắt Wi-Fi để thấy nút **Thử lại** chỉ cho phần lỗi.
    Ghi kết quả thật vào `CHECKPOINT.json → test_results.device_tests`.
+2b. **Kiểm khoá ôn tập**: tạo một từ đến hạn (đổi ngày máy hoặc chờ), mở Học/ Tạo bộ từ/ Nhập danh sách
+   — tất cả phải bị chặn và chỉ nút Ôn tập hoạt động; ôn xong phải mở khoá ngay.
+2c. **Kiểm học từ mới**: từ chưa học phải hiện thẻ giới thiệu trước, lật thẻ có ví dụ + nghe, sau đó
+   mới có câu kiểm tra; lật thẻ nhiều lần không cộng xu; từ đã thưởng gặp lại trả lời đúng = 0 xu,
+   trả lời sai vẫn bị trừ.
+2d. **Kiểm 60 giây** với bộ từ nhỏ (4 từ): phải chơi đủ 60 giây nhờ xáo thêm câu, không kết thúc sau 4 câu.
 3. **Quyết định Apple Developer Program.** Không có nó thì widget chỉ render placeholder
    vì không có App Group để chia sẻ dữ liệu.
 4. **`eas init` + development build.** EAS chạy prebuild trên macOS; sau build kiểm tra:
