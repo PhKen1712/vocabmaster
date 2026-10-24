@@ -182,6 +182,12 @@ export interface QuizQuestion {
   prompt: string;
   /** Secondary line (e.g. the Vietnamese meaning when asking for English). */
   helper: string | null;
+  /**
+   * Bilingual clue for description → word questions. General English shows
+   * both; the answer is blanked out of both strings.
+   */
+  descriptionEn?: string | null;
+  descriptionVi?: string | null;
   example: string | null;
   options: QuizOption[] | null;
   /** Normalized accepted answer (for typing/speaking) or option id. */

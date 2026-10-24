@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { getWeakWords, listWords } from '../db/words';
 import { displayTerm } from '../lib/text';
+import { bilingualDescription } from '../quiz/description';
 import { useApp } from '../state/AppProvider';
 import type { Track, Word } from '../types';
 
@@ -16,7 +17,12 @@ import type { Track, Word } from '../types';
  */
 export function useGameWords(track: Track): {
   words: Word[];
-  pool: { term: string; meaningVi: string; level: Word['level'] }[];
+  pool: {
+    term: string;
+    meaningVi: string;
+    descriptionEn: string | null;
+    level: Word['level'];
+  }[];
   loading: boolean;
 } {
   const { db, dataVersion } = useApp();
@@ -71,7 +77,12 @@ export function useGameWords(track: Track): {
 
   const pool = useMemo(() => {
     const seen = new Set<string>();
-    const result: { term: string; meaningVi: string; level: Word['level'] }[] = [];
+    const result: {
+      term: string;
+      meaningVi: string;
+      descriptionEn: string | null;
+      level: Word['level'];
+    }[] = [];
     for (const word of words) {
       const term = displayTerm(word.term).trim();
       const meaningVi = word.meaningVi.trim();
@@ -79,7 +90,12 @@ export function useGameWords(track: Track): {
       const key = term.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
-      result.push({ term, meaningVi, level: word.level });
+      result.push({
+        term,
+        meaningVi,
+        descriptionEn: bilingualDescription(word).en,
+        level: word.level,
+      });
     }
     return result;
   }, [words]);

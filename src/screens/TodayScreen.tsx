@@ -259,11 +259,11 @@ export function TodayScreen() {
             ĐANG CÓ TỪ CẦN ÔN
           </AppText>
           <AppText variant="bodyStrong" style={{ marginTop: 2 }}>
-            {data?.due} từ đến hạn — học từ mới tạm khoá
+            {data?.due} từ đến hạn — chỉ phiên học từ mới tạm khoá
           </AppText>
           <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
-            Hoàn thành hết các từ đến hạn để mở lại Học từ mới, nhập danh sách và AI tạo bộ từ.
-            Đây là quy tắc của ứng dụng, không chỉ là ẩn nút.
+            Bạn vẫn thêm từ, nhập danh sách và dùng AI bình thường; từ mới chỉ chưa được học. Hoàn
+            thành ôn tập để mở lại phiên học từ mới.
           </AppText>
         </Card>
       ) : null}
@@ -362,7 +362,7 @@ export function TodayScreen() {
         title="Cần chú ý"
         actionLabel={data?.weak.length ? 'Luyện ngay' : undefined}
         onAction={
-          data?.weak.length && (data?.due ?? 0) === 0
+          data?.weak.length
             ? () => push({ name: 'session', config: { mode: 'weak', track: settings.track } })
             : undefined
         }
@@ -397,25 +397,18 @@ export function TodayScreen() {
       )}
 
       <SectionHeader title="Thêm từ mới" />
-      {(data?.due ?? 0) > 0 ? (
-        <AppText variant="caption" color={colors.warning} style={{ marginBottom: spacing.sm }}>
-          Đang khoá thêm từ cho tới khi ôn xong {data?.due} từ đến hạn.
-        </AppText>
-      ) : null}
       <View style={styles.actionRow}>
         <PrimaryButton
           label="+  Thêm thủ công"
           variant="ghost"
           style={{ flex: 1 }}
           onPress={() => push({ name: 'wordForm' })}
-          disabled={(data?.due ?? 0) > 0}
         />
         <PrimaryButton
           label={`✨ ${providerLabel(settings.aiProvider)} gợi ý`}
           variant="ghost"
           style={{ flex: 1 }}
           onPress={() => push({ name: 'ai' })}
-          disabled={(data?.due ?? 0) > 0}
         />
       </View>
     </Screen>

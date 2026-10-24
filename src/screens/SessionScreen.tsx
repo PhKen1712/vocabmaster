@@ -13,15 +13,17 @@ import * as Haptics from 'expo-haptics';
 import { AppText, Banner, Card, PrimaryButton, ProgressBar, Screen } from '../components/ui';
 import { FadeSlideIn } from '../components/motion';
 import { ScreenHeader } from '../components/patterns';
+import { WordDescription } from '../components/WordDescription';
 import { getDueWords, getWeakWords, listWords } from '../db/words';
 import { recordReview } from '../db/reviews';
 import { formatDuration } from '../lib/date';
 import { newId } from '../lib/ids';
 import { displayTerm } from '../lib/text';
 import { useNavigation, type SessionConfig } from '../navigation/NavigationProvider';
+import { isDescriptionKind } from '../quiz/description';
+import { getStudyGate } from '../study/gate';
 import { generateQuestions } from '../quiz/generator';
 import { gradeAnswer, type GradeResult } from '../quiz/grading';
-import { getStudyGate } from '../study/gate';
 import { describeInterval, schedule, type ScheduleResult } from '../srs/fsrs';
 import { speak } from '../speech/tts';
 import { useSpeechCheck } from '../speech/useSpeechCheck';
@@ -85,6 +87,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     if (!db) return;
     setLoading(true);
     try {
+      // Only used to explain an empty review session; it never blocks practice.
       const gate = await getStudyGate(db, config.track);
       if (config.mode === 'new') {
         // New words are introduced on the dedicated learning screen before any
@@ -96,17 +99,9 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         setLoading(false);
         return;
       }
-      if (
-        gate.dueCount > 0 &&
-        (config.mode === 'weak' || config.mode === 'topic' || (config.kinds?.length ?? 0) > 0)
-      ) {
-        setQuestions([]);
-        setEmptyReason(
-          `Bạn còn ${gate.dueCount} từ cần ôn. Hoàn thành ôn tập trước khi luyện các chế độ khác.`,
-        );
-        setLoading(false);
-        return;
-      }
+      // Practice on words the learner has already met is allowed while reviews
+      // are due; only a session that introduces a new word is blocked, and that
+      // happens in LearnScreen before it opens.
 
       const pool = await listWords(db, { track: config.track, limit: 400 });
       const learnedPool = pool.filter((word) => word.reps > 0);
@@ -425,6 +420,16 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
 
   const progress = (index + (phase === 'feedback' ? 1 : 0)) / questions.length;
   const isSpeakingQuestion = question.kind === 'speaking';
+  // General English describes the word in both languages before asking for it.
+  // Listening, speaking and IELTS keep their own prompt design.
+  const showBilingual = question.word.track === 'general' && isDescriptionKind(question.kind);
+  const descriptionIsPrompt =
+    showBilingual &&
+    (question.kind === 'typing' || question.kind === 'vi_to_en' || question.kind === 'context');
+  const descriptionTitle =
+    question.kind === 'typing' ? 'Điền từ tiếng Anh còn thiếu' : 'Chọn từ tiếng Anh đúng';
+  const hideHelper =
+    showBilingual && (question.kind === 'cloze' || question.kind === 'context');
 
   return (
     <Screen>
@@ -476,14 +481,24 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         </View>
 
         <AppText variant="title" style={{ marginTop: spacing.sm }}>
-          {question.kind === 'recall' && !revealed ? question.word.term : question.prompt}
+          {question.kind === 'recall' && !revealed
+            ? question.word.term
+            : descriptionIsPrompt
+              ? descriptionTitle
+              : question.prompt}
         </AppText>
         {question.kind === 'recall' && !revealed ? (
           <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
             Tự nhớ nghĩa của từ, sau đó mở đáp án để tự đánh giá.
           </AppText>
         ) : null}
-        {question.helper ? (
+        {showBilingual ? (
+          <WordDescription
+            en={question.descriptionEn ?? null}
+            vi={question.descriptionVi ?? null}
+          />
+        ) : null}
+        {question.helper && !hideHelper ? (
           <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
             {question.helper}
           </AppText>

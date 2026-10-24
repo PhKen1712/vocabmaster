@@ -145,6 +145,33 @@ criminal, civil, take into account, in terms of, carry out an investigation
 Cả hai chế độ đều đi qua cùng lớp kiểm tra trùng lặp, chuẩn hoá và lưu (`src/db/words.ts`), nên dữ liệu
 không bị chia thành hai hệ thống.
 
+**Thêm từ không bao giờ bị khoá vì còn từ đến hạn.** Bạn có thể thêm từ đơn, cụm từ, dán danh sách
+hoặc dùng AI bất cứ lúc nào; từ vừa thêm nằm trong ngân hàng với trạng thái `new`, **không** có
+`due_at` và không được tính là đã học. Chỉ khi bắt đầu **phiên học từ mới** (màn hình Học từ mới)
+ứng dụng mới yêu cầu hoàn thành các từ đến hạn trước. Quy tắc này nằm ở `createWord` (không gọi cổng
+ôn tập) và `src/study/gate.ts` (chỉ `startNewLearning` bị chặn), có test riêng.
+
+## Mô tả song ngữ khi điền từ (General English)
+
+Khi một bài tập đưa **mô tả** rồi yêu cầu điền từ, General English luôn hiện cả hai ngôn ngữ:
+
+```
+ENGLISH DESCRIPTION
+An object you use to protect yourself from rain.
+
+MÔ TẢ TIẾNG VIỆT
+Một vật dụng dùng để che mưa, thường gấp lại và mang theo.
+```
+
+- Tiếng Anh lấy từ `definition_en`; nếu thiếu thì dùng câu ví dụ với chính từ mục tiêu được thay bằng
+  `_____`. Tiếng Việt lấy từ `meaning_vi`. Không gọi mạng cho từng câu hỏi.
+- Từ mục tiêu bị thay bằng chỗ trống trong **cả hai** mô tả, nên không lộ đáp án. Cụm từ được xử lý
+  như một đơn vị, không tách từng chữ.
+- Áp dụng cho dạng nhập từ, chọn từ theo nghĩa, điền vào câu, mô tả nghĩa và thiên thạch. Bài nghe,
+  luyện nói và câu hỏi một chiều giữ mục tiêu riêng, không ép hiển thị bản dịch.
+- Nếu từ chưa có mô tả tiếng Anh, app **chỉ hiện phần tiếng Việt** và không bịa câu tiếng Anh;
+  phần tiếng Việt luôn có vì `meaning_vi` là trường bắt buộc khi lưu từ.
+
 ## Học từ mới có hướng dẫn
 
 Không đưa một từ chưa từng gặp vào câu hỏi trắc nghiệm ngay. Mỗi từ mới đi qua:
@@ -269,7 +296,7 @@ VocabMaster/
 │   ├── srs/                # FSRS
 │   ├── state/              # AppProvider
 │   ├── streak/             # streak thuần
-│   ├── study/              # cổng chặn khi còn từ đến hạn
+│   ├── study/              # cổng chặn phiên học từ mới khi còn từ đến hạn
 │   ├── theme/              # design tokens
 │   ├── wordlist/           # phân tách danh sách từ/cụm từ
 │   └── widgets/            # snapshot + sync
@@ -311,7 +338,7 @@ VocabMaster/
 ## Kiểm thử
 
 ```bash
-npm test                  # 24 bộ unit test, 241 test
+npm test                  # 26 bộ unit test, 257 test
 npm run typecheck         # TypeScript strict
 npm run check:migrations  # migration 1→4 trên SQLite thật (node:sqlite)
 npm run verify            # typecheck + test + migration + checkpoint

@@ -4,6 +4,65 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-25 — Phiên 13: bỏ khoá thêm từ, mô tả song ngữ Anh–Việt
+
+### Bối cảnh
+
+- Yêu cầu trước đó bắt buộc ôn tập trước khi **thêm từ** đã bị người dùng bác: thêm một từ vào ngân
+  hàng chỉ là thu thập để học sau, không phải bắt đầu học. Việc khoá nút thêm từ, nút lưu, Groq và
+  nhập danh sách khiến người dùng không chuẩn bị được từ mới trong lúc còn từ đến hạn.
+- Bài tập General English kiểu “đọc mô tả rồi điền từ” chỉ có mô tả tiếng Anh, trong khi người học mất
+  gốc không hiểu gợi ý nên phải đoán mò.
+
+### Đã thay đổi
+
+- **Bỏ khoá thêm từ ở tầng dữ liệu** (`src/db/words.ts`): `createWord` không còn gọi
+  `assertNewLearningAllowed`. Từ mới luôn lưu được với `learning_state = 'new'`, `due_at = NULL`,
+  `reps = 0`, nên **không tự động vào lịch ôn** và **không bị tính là đã học**.
+- **Chỉ chặn phiên học từ mới** (`src/study/gate.ts`, `LearnScreen`): `getStudyGate` vẫn đếm từ đến
+  hạn; `LearnScreen` hiện lý do và không mở phiên. Thêm `requiresReviewsComplete(action)` làm chính
+  sách duy nhất: `addVocabulary`, `generateContent`, `startReview`, `practiceKnown` → `false`;
+  `startNewLearning` → `true`.
+- **Bỏ chặn ở toàn bộ luồng thêm từ**: `WordFormScreen` (nút lưu, banner khoá), `AiStudioScreen`
+  (tạo bộ từ, nhập danh sách, nút lưu), `TodayScreen` (hai nút thêm từ), `StudyScreen` (thẻ Groq)
+  không còn đọc `dueCount`/`ReviewsDueError` để khoá. Banner ở Hôm nay/Nhập môn ghi rõ: vẫn thêm từ
+  bình thường, chỉ phiên học từ mới bị khoá.
+- **Luyện tập từ đã học không bị khoá**: `StudyScreen` cho mở luyện từ hay sai, kiểm tra chủ đề và
+  các dạng luyện kỹ năng khi còn từ đến hạn; `SessionScreen` bỏ nhánh chặn `weak`/`topic`/`kinds`.
+- **Mô tả song ngữ** (`src/quiz/description.ts`, `src/components/WordDescription.tsx`):
+  - `bilingualDescription(word)` lấy tiếng Anh từ `definition_en` (hoặc câu ví dụ), tiếng Việt từ
+    `meaning_vi`; không gọi mạng cho từng câu hỏi.
+  - Cả hai bản đều bị thay từ mục tiêu bằng `_____` (khớp nguyên từ, kể cả từ 2 chữ cái), nên không
+    lộ đáp án; câu chỉ còn toàn chỗ trống bị coi là thiếu mô tả.
+  - Cụm từ như `take into account` được xử lý nguyên khối, không tách từ.
+  - `QuizQuestion` có thêm `descriptionEn`/`descriptionVi`; `generator` gắn vào câu hỏi và dùng bản đã
+    làm sạch cho `prompt` của `typing`/`vi_to_en`/`context`.
+  - `SessionScreen` và `LearnScreen` hiển thị khối **ENGLISH DESCRIPTION** + **MÔ TẢ TIẾNG VIỆT** cho
+    General English ở `typing`, `vi_to_en`, `cloze`, `context`; bài nghe, nói, `en_to_vi` và IELTS
+    giữ nguyên thiết kế.
+  - Thiên thạch hiển thị thêm mô tả tiếng Anh đã làm sạch dưới nghĩa tiếng Việt.
+  - Thiếu `definition_en`/`example_en` thì **chỉ hiện phần tiếng Việt**, không bịa câu tiếng Anh;
+    phần tiếng Việt vẫn có vì `meaning_vi` là bắt buộc.
+- **Test mới**: `src/db/__tests__/words.test.ts` (thêm từ khi còn 7 từ đến hạn, từ mới không vào lịch,
+  trùng từ không ghi đè lịch sử), `src/quiz/__tests__/description.test.ts` (song ngữ, không lộ đáp
+  án, cụm từ, từ ngắn, thiếu mô tả, phạm vi áp dụng), cập nhật `gate.test.ts` và `quiz.test.ts`.
+- Docs: README (quy tắc thêm từ + mô tả song ngữ), CHECKPOINT, NEXT_SESSION.
+
+### Kiểm thử thật
+
+- `npm run typecheck` → **exit 0, 0 lỗi** (tsc 6.0.3).
+- `npx jest --runInBand` → **26/26 suite, 257/257 test pass**.
+- `node scripts/check-migrations.mjs` → **PASS** (cài mới 1→4, nâng cấp từ v3, chống thưởng trùng,
+  bảng cache) trên `node:sqlite`; phiên này **không đổi schema**.
+
+### Chưa kiểm chứng (phải nói rõ)
+
+- Chưa build/cài lên iPhone; giao diện hai khối mô tả mới chỉ được kiểm tra bằng typecheck + unit test.
+- Từ cũ thiếu `definition_en` và `example_en` sẽ chỉ hiện mô tả tiếng Việt; app không tự gọi AI để bịa
+  tiếng Anh. Có thể bổ sung định nghĩa trong màn hình sửa từ.
+
+---
+
 ## 2026-10-25 — Phiên 12: Groq thay từ điển, xu một lần, khoá ôn tập, học từ mới, game và âm thanh
 
 ### Bối cảnh
@@ -39,9 +98,9 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 - **Xu một lần** (`src/coins/ledger.ts`, `src/db/reviews.ts`, schema v4): `word_study_history` +
   `term_key` bền vững, `source_id` chống xử lý trùng, thưởng/phạt nằm trong transaction của lượt trả lời,
   số dư không âm, reset chỉ ghi một giao dịch reset. Sai khi gặp lại từ đã thưởng vẫn bị trừ.
-- **Khoá học từ mới** (`src/study/gate.ts`): `createWord` gọi `assertNewLearningAllowed`, nên AI, nhập
-  danh sách, form thủ công và mọi màn hình đều bị chặn ở tầng dữ liệu khi còn từ đến hạn; Study/AI/
-  Nhập danh sách hiện số từ và đưa thẳng sang Ôn tập.
+- **Khoá học từ mới** (`src/study/gate.ts`) — *cách làm này đã được thay ở Phiên 13*: phiên 12 chặn
+  cả `createWord`, nên AI, nhập danh sách và form thủ công đều không thêm được từ khi còn từ đến hạn.
+  Phiên 13 bỏ chặn ở `createWord`; chỉ còn phiên học từ mới bị chặn.
 - **Học từ mới nhiều giai đoạn** (`src/screens/LearnScreen.tsx`): giới thiệu từ + nghĩa + IPA + nghe →
   lật thẻ (định nghĩa, ví dụ + dịch, collocations, đồng nghĩa) → một câu kiểm tra → tự đánh giá
   (Chưa nhớ/Khó/Tốt/Rất dễ). Chỉ bước tự đánh giá ghi `recordReview`; lật thẻ/nghe không tạo xu.

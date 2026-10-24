@@ -2,7 +2,7 @@
 
 - **checkpoint_version:** 1
 - **last_updated:** 2026-10-25
-- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **khoá học từ mới khi còn từ đến hạn ở tầng dữ liệu** + **bài học từ mới nhiều giai đoạn** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** — **typecheck 0 lỗi, 241/241 unit test xanh trong 24 suite, schema v4 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25 **chưa chạy trên thiết bị**
+- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** — **typecheck 0 lỗi, 257/257 unit test xanh trong 26 suite, schema v4 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
@@ -160,13 +160,17 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
   collocations, đồng nghĩa) → một câu kiểm tra → tự đánh giá; chỉ bước cuối ghi `recordReview`.
 - **Âm thanh (2026-10-25)**: `src/audio/session.ts` nâng audio session lên playback trước khi TTS để
   từ vựng nghe được ở chế độ im lặng, rồi trả về media; TTS dừng trước khi mở micro.
+- **Thêm từ không bị khoá (2026-10-25)**: `createWord` không gọi cổng ôn tập; chỉ `startNewLearning`
+  trong `src/study/gate.ts` bị chặn khi `due > 0`, có test cho cả hai chiều.
+- **Mô tả song ngữ (2026-10-25)**: `src/quiz/description.ts` tách mô tả Anh–Việt, thay đáp án bằng
+  chỗ trống ở cả hai bên, giữ cụm từ nguyên khối; `DescriptionBlock` hiển thị hai khối riêng.
 - Key AI trong Keychain, **mỗi nhà cung cấp một ô riêng**, không log, không backup, có xoá key.
 - Widget: 2 kind (home 3 size, lock screen 3 family), snapshot + timeline, sync sau mỗi thay đổi
   và khi app foreground, lỗi được nuốt an toàn.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 24 bộ unit test (FSRS, quiz, placement, streak ×2, text, settings, AI ×6, word packs, coins ×2, game engine ×2, study gate, word-list parser, music, speech ×3).
+- 26 bộ unit test (FSRS, quiz ×2, description ×2, placement, streak ×2, text, settings, AI ×6, word packs, coins ×2, game engine ×2, study gate, words DB, word-list parser, music, speech ×3).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -288,7 +292,7 @@ hạn môi trường, không phải lỗi code:**
 | Bước | Lệnh | Kết quả |
 |---|---|---|
 | Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** (2026-10-25) |
-| Unit test | `npx jest --runInBand` | **24/24 suite, 241/241 test pass** (2026-10-25) |
+| Unit test | `npx jest --runInBand` | **26/26 suite, 257/257 test pass** (2026-10-25) |
 | Migration | `node scripts/check-migrations.mjs` | **OK** — schema 1→4 trên SQLite thật, gồm backfill và unique index |
 | Dùng Groq thật | Người dùng báo trong chat (2026-10-23) | **Mượt, kết quả tốt** — không có build number/screenshot/log, chưa đo latency hay hạn mức |
 | Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
@@ -390,7 +394,7 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 | Chưa xác minh | Cách xác minh |
 |---|---|
 | Code compile | `npm run typecheck` |
-| Unit test pass | `npm test` (24 file, 241 test) |
+| Unit test pass | `npm test` (26 file, 257 test) |
 | Kho từ nạp đúng, không ghi đè từ đã sửa | Cài bản mới lên máy có dữ liệu cũ, đếm từ + kiểm tra từ đã sửa nghĩa |
 | Gemini retry/backoff/validate | `npm test -- src/ai` — mock fetch, không gọi API thật |
 | Prebuild tạo widget target | `npx expo prebuild --platform ios --clean`, xem `ios/` |

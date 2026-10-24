@@ -8,7 +8,6 @@ import { providerLabel } from '../ai/provider';
 import { describeAiError, type AiErrorView } from '../ai/errors';
 import type { AiSuggestion } from '../ai/types';
 import { DuplicateWordError, createWord, getAllWords } from '../db/words';
-import { getStudyGate, ReviewsDueError } from '../study/gate';
 import { entryToWordInput, type ListEntry } from '../wordlist/types';
 import { formatList, splitList } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
@@ -25,7 +24,7 @@ interface Draft extends AiSuggestion {
 type CreationMode = 'ai' | 'list';
 
 export function AiStudioScreen() {
-  const { db, settings, notifyDataChanged, updateSettings, dataVersion } = useApp();
+  const { db, settings, notifyDataChanged, updateSettings } = useApp();
   const { pop, goToTab } = useNavigation();
   const { colors } = useTheme();
 
@@ -48,7 +47,6 @@ export function AiStudioScreen() {
   const [editing, setEditing] = useState<number | null>(null);
   const [editForm, setEditForm] = useState<Draft | null>(null);
   const [listSaving, setListSaving] = useState(false);
-  const [dueCount, setDueCount] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
 
   const providerName = providerLabel(settings.aiProvider);
@@ -78,17 +76,6 @@ export function AiStudioScreen() {
   // background and update a screen the learner can no longer see.
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  useEffect(() => {
-    if (!db) return;
-    let cancelled = false;
-    void getStudyGate(db, track).then((gate) => {
-      if (!cancelled) setDueCount(gate.dueCount);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [db, track, dataVersion]);
-
   // A visible second counter: a long call should look busy, not frozen.
   useEffect(() => {
     if (!loading) {
@@ -111,7 +98,6 @@ export function AiStudioScreen() {
 
   const generate = useCallback(async () => {
     if (!db || loading) return;
-    if (dueCount > 0) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -176,12 +162,12 @@ export function AiStudioScreen() {
         setProgress(null);
       }
     }
-  }, [db, track, level, topic, focus, count, settings.aiProvider, providerModel, providerName, loading, dueCount]);
+  }, [db, track, level, topic, focus, count, settings.aiProvider, providerModel, providerName, loading]);
 
   const selectedCount = drafts.filter((draft) => draft.include).length;
 
   const saveSelected = async () => {
-    if (!db || saving || dueCount > 0) return;
+    if (!db || saving) return;
     setSaving(true);
     let added = 0;
     let skipped = 0;
@@ -211,11 +197,6 @@ export function AiStudioScreen() {
         });
         added += 1;
       } catch (caught) {
-        if (caught instanceof ReviewsDueError) {
-          setDueCount(caught.dueCount);
-          errors.push(caught.message);
-          break;
-        }
         if (caught instanceof DuplicateWordError) {
           skipped += 1;
         } else {
@@ -243,7 +224,7 @@ export function AiStudioScreen() {
   };
 
   const saveListEntries = async () => {
-    if (!db || listSaving || dueCount > 0) return;
+    if (!db || listSaving) return;
     setListSaving(true);
     let added = 0;
     let skipped = 0;
@@ -263,11 +244,6 @@ export function AiStudioScreen() {
         await createWord(db, input);
         added += 1;
       } catch (caught) {
-        if (caught instanceof ReviewsDueError) {
-          setDueCount(caught.dueCount);
-          errors.push(caught.message);
-          break;
-        }
         if (caught instanceof DuplicateWordError) skipped += 1;
         else {
           errors.push(
@@ -323,14 +299,6 @@ export function AiStudioScreen() {
         subtitle="Groq chọn từ hoặc giải nghĩa danh sách của bạn"
         onBack={pop}
       />
-
-      {dueCount > 0 ? (
-        <Banner
-          tone="warning"
-          title={`Đang khoá thêm từ · còn ${dueCount} từ cần ôn`}
-          body="Bạn phải hoàn thành các từ đến hạn trước khi tạo hoặc nhập từ mới. Mở tab Hôm nay để ôn ngay."
-        />
-      ) : null}
 
       <Banner
         tone="info"
@@ -434,7 +402,7 @@ export function AiStudioScreen() {
               label={loading ? `${providerName} đang tạo…` : '✨ Tạo bộ từ'}
               onPress={() => void generate()}
               loading={loading}
-              disabled={loading || dueCount > 0}
+              disabled={loading}
               style={{ marginTop: spacing.md }}
             />
             {loading && progress ? (
@@ -482,7 +450,7 @@ export function AiStudioScreen() {
               label={wordList.running ? 'Groq đang viết nghĩa…' : 'Groq giải nghĩa danh sách'}
               onPress={wordList.lookUp}
               loading={wordList.running}
-              disabled={wordList.running || wordList.parsed.terms.length === 0 || dueCount > 0}
+              disabled={wordList.running || wordList.parsed.terms.length === 0}
               style={{ marginTop: spacing.md }}
             />
             {wordList.running ? (
@@ -627,7 +595,7 @@ export function AiStudioScreen() {
             label={`Thêm ${wordList.selected.size} từ đã chọn`}
             onPress={() => void saveListEntries()}
             loading={listSaving}
-            disabled={listSaving || wordList.selected.size === 0 || dueCount > 0}
+            disabled={listSaving || wordList.selected.size === 0}
             style={{ marginTop: spacing.sm }}
           />
           <AppText
@@ -711,7 +679,7 @@ export function AiStudioScreen() {
             label={`Thêm ${selectedCount} từ đã chọn`}
             onPress={() => void saveSelected()}
             loading={saving}
-            disabled={saving || selectedCount === 0 || dueCount > 0}
+            disabled={saving || selectedCount === 0}
           />
           <AppText
             variant="caption"

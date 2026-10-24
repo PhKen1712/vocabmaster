@@ -3,14 +3,16 @@
 ## 1. Dự án đang ở đâu
 
 - **Đã xanh (chạy thật ngày 2026-10-25):** `npx tsc --noEmit` exit 0 (0 lỗi),
-  `npx jest --runInBand` **241/241 test pass trong 24 suite**,
+  `npx jest --runInBand` **257/257 test pass trong 26 suite**,
   `node scripts/check-migrations.mjs` **OK** (schema 4 trên SQLite thật).
 - **Mới nhất (2026-10-25, chưa commit tại thời điểm viết):** **bỏ hoàn toàn API từ điển**, Groq xử lý
   cả từ đơn và cụm từ; **nhập danh sách** chia lô + cache + báo kết quả từng phần;
   **mỗi từ chỉ thưởng xu một lần** theo `term_key` bền vững, sai khi gặp lại vẫn bị trừ; ledger có
-  `source_id` chống xử lý trùng; **khoá học từ mới khi còn từ đến hạn** ở tầng dữ liệu (`src/study/gate.ts`,
-  `createWord` chặn); **học từ mới nhiều giai đoạn** (giới thiệu → lật thẻ → kiểm tra → tự đánh giá,
-  `src/screens/LearnScreen.tsx`); **bắn thiên thạch** giảm mật độ + đục ký tự (`src/games/asteroid.ts`);
+  `source_id` chống xử lý trùng; **chỉ chặn phiên học từ mới khi còn từ đến hạn** (`src/study/gate.ts`,
+  `startNewLearning`) — **thêm từ, dán danh sách, gọi Groq, sửa/xoá từ không bao giờ bị khoá**;
+  **học từ mới nhiều giai đoạn** (giới thiệu → lật thẻ → kiểm tra → tự đánh giá,
+  `src/screens/LearnScreen.tsx`); **mô tả song ngữ Anh–Việt** cho General English
+  (`src/quiz/description.ts`, `src/components/WordDescription.tsx`); **bắn thiên thạch** giảm mật độ + đục ký tự (`src/games/asteroid.ts`);
   **60 giây** tự xáo thêm câu để chơi trọn phút; **audio session** nâng lên playback khi đọc từ để
   không phụ thuộc công tắc chuông (`src/audio/session.ts`); **nhận diện giọng nói** có watchdog 9 giây
   và chấm phần đã nghe thay vì treo. Đọc `CHANGELOG.md` mục 2026-10-25 trước khi sửa.

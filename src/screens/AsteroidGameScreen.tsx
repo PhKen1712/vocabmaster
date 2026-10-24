@@ -249,6 +249,11 @@ export function AsteroidGameScreen() {
                   <AppText variant="caption" color={colors.textMuted} numberOfLines={1}>
                     {asteroid.meaning}
                   </AppText>
+                  {asteroid.descriptionEn ? (
+                    <AppText variant="micro" color={colors.textFaint} numberOfLines={2}>
+                      {asteroid.descriptionEn}
+                    </AppText>
+                  ) : null}
                 </View>
               );
             })}
@@ -310,7 +315,7 @@ export function AsteroidGameScreen() {
             ]}
           />
           <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
-            Thiên thạch che vài chữ. Đọc nghĩa tiếng Việt rồi gõ đủ từ — chữ đã gõ đúng sẽ hiện ra.
+            Thiên thạch che vài chữ. Đọc mô tả tiếng Anh và nghĩa tiếng Việt rồi gõ đủ từ — chữ đã gõ đúng sẽ hiện ra.
           </AppText>
         </View>
 
@@ -320,7 +325,7 @@ export function AsteroidGameScreen() {
             title={pool.length > 0 ? 'Thiên thạch từ vựng' : 'Cần từ để chơi'}
             subtitle={
               pool.length > 0
-                ? 'Mỗi thiên thạch che vài chữ cái và hiện nghĩa tiếng Việt. Nhớ lại và gõ đủ từ trước khi nó chạm đáy.'
+                ? 'Mỗi thiên thạch che vài chữ cái, hiện mô tả tiếng Anh và nghĩa tiếng Việt. Nhớ lại và gõ đủ từ trước khi nó chạm đáy.'
                 : 'Bộ từ của bạn đang trống. Thêm vài từ rồi quay lại — game dùng chính từ bạn đang học.'
             }
             note={

@@ -4,21 +4,37 @@ import { nowIso } from '../lib/ids';
 import type { Track } from '../types';
 
 /**
- * One rule, enforced at the data layer: while any word is due for review, the
- * learner cannot add new words or start a mode that introduces them.
+ * One rule: while any word is due for review, the learner may not *start
+ * learning* a new word. Adding, editing or generating vocabulary is a separate
+ * activity and must always be allowed — collecting a word for later is not the
+ * same as studying it.
  *
- * The UI uses the same numbers to explain the block, but hiding a button is
- * never the only protection: `createWord` calls `assertNewLearningAllowed`
- * itself, so a new screen, a future deep link or an AI batch cannot bypass it.
+ * Only new-learning sessions are gated. Adding a word keeps
+ * `learningState: 'new'` and `dueAt: null`, so it cannot enter the review queue
+ * just because it was saved.
  */
+
+/** Business actions that could be limited by pending reviews. */
+export type StudyAction =
+  | 'addVocabulary'
+  | 'generateContent'
+  | 'startNewLearning'
+  | 'startReview'
+  | 'practiceKnown';
+
+/**
+ * The single policy used by screens and tests. Adding/editing/generating words
+ * is never blocked; only a session that introduces new words is.
+ */
+export function requiresReviewsComplete(action: StudyAction): boolean {
+  return action === 'startNewLearning';
+}
 
 export class ReviewsDueError extends Error {
   readonly dueCount: number;
 
   constructor(dueCount: number) {
-    super(
-      `Bạn còn ${dueCount} từ cần ôn. Hoàn thành ôn tập trước khi học hoặc thêm từ mới.`,
-    );
+    super(`Bạn còn ${dueCount} từ cần ôn. Hoàn thành ôn tập trước khi bắt đầu học từ mới.`);
     this.name = 'ReviewsDueError';
     this.dueCount = dueCount;
   }

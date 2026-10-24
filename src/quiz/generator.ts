@@ -1,5 +1,6 @@
 import { displayTerm, normalizeAnswer, normalizeTerm, uniqueStrings } from '../lib/text';
 import type { QuizKind, QuizOption, QuizQuestion, Word } from '../types';
+import { bilingualDescription } from './description';
 
 export type Rng = () => number;
 
@@ -119,11 +120,14 @@ function buildQuestion(
   kind: QuizKind,
   rng: Rng,
 ): QuizQuestion | null {
+  const description = bilingualDescription(word);
   const base = {
     id: `${word.id}:${kind}`,
     wordId: word.id,
     kind,
     word,
+    descriptionEn: description.en,
+    descriptionVi: description.vi,
   };
   const meaningOptions = () =>
     optionSet(word, pickDistractors(word, pool, (candidate) => candidate.meaningVi, 3, rng), (candidate) => candidate.meaningVi, rng);
@@ -151,7 +155,9 @@ function buildQuestion(
       if (!options) return null;
       return {
         ...base,
-        prompt: word.meaningVi,
+        // Sanitised: a stored meaning that mentions the English term must not
+        // hand the learner the answer on an IELTS prompt either.
+        prompt: description.vi || word.meaningVi,
         helper: word.topic ? `Chủ đề: ${word.topic}` : null,
         example: null,
         options,
@@ -223,12 +229,15 @@ function buildQuestion(
       };
     }
     case 'context': {
-      if (!word.definitionEn) return null;
+      // The definition is the entire clue. If it is missing, or it was only the
+      // target word itself, there is no safe prompt — skip instead of showing
+      // the raw definition and leaking the answer.
+      if (!description.en) return null;
       const options = termOptions();
       if (!options) return null;
       return {
         ...base,
-        prompt: word.definitionEn,
+        prompt: description.en,
         helper: `Định nghĩa tiếng Anh · ${word.topic ?? 'General'}`,
         example: null,
         options,
@@ -240,7 +249,7 @@ function buildQuestion(
     case 'typing': {
       return {
         ...base,
-        prompt: word.meaningVi,
+        prompt: description.vi || word.meaningVi,
         helper: [word.partOfSpeech, word.topic].filter(Boolean).join(' · ') || null,
         example: null,
         options: null,

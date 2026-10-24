@@ -4,7 +4,7 @@
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
   "last_updated": "2026-10-25",
-  "current_phase": "Giai đoạn 1–6 + bỏ hẳn API từ điển, Groq xử lý cả cụm từ + mỗi từ chỉ thưởng xu một lần + khoá học từ mới khi còn từ đến hạn + bài học từ mới nhiều giai đoạn + thiên thạch đục ký tự và giảm mật độ + 60 giây chơi trọn phút + audio session playback + watchdog nhận diện giọng nói. Typecheck 0 lỗi, 241/241 test trong 24 suite, schema v4 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25 CHƯA chạy trên iPhone.",
+  "current_phase": "Giai đoạn 1–6 + bỏ hẳn API từ điển, Groq xử lý cả cụm từ + mỗi từ chỉ thưởng xu một lần + chỉ chặn phiên học từ mới khi còn từ đến hạn (thêm từ không bị khoá) + mô tả song ngữ Anh–Việt cho General English + bài học từ mới nhiều giai đoạn + thiên thạch đục ký tự và giảm mật độ + 60 giây chơi trọn phút + audio session playback + watchdog nhận diện giọng nói. Typecheck 0 lỗi, 257/257 test trong 26 suite, schema v4 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25 CHƯA chạy trên iPhone.",
   "current_branch": "main",
   "current_commit": "main · xem git log (2026-10-25)",
   "tech_stack": [
@@ -207,9 +207,9 @@
       "evidence": "src/screens/LearnScreen.tsx introduces term, meaning, IPA and audio, then a flip card with definition, example + translation, collocations and synonyms, then one check question and a self-rating that is the only step calling recordReview. Opening the screen or flipping a card never counts as studied and never pays coins."
     },
     {
-      "name": "Data-layer block on new learning while reviews are due",
+      "name": "Adding vocabulary is never blocked by due reviews; only new-learning sessions are",
       "status": "tested",
-      "evidence": "src/study/gate.ts counts due words from SQLite; createWord calls assertNewLearningAllowed, so AI batches, pasted lists and the manual form are all blocked. Screens use the same gate to explain and redirect. Tests: src/study/__tests__/gate.test.ts."
+      "evidence": "src/db/words.ts createWord no longer consults the review gate: a saved word starts as new with due_at NULL and reps 0, so collecting it is not studying and it does not enter the review queue. src/study/gate.ts exposes requiresReviewsComplete(); only startNewLearning is true. WordForm, AiStudio, Today and Study no longer disable add/save/Groq/paste controls, while LearnScreen still refuses to start a new-word session. Tests: gate.test.ts, db/__tests__/words.test.ts."
     },
     {
       "name": "Asteroid game with blanked letters and calmer spawning",
@@ -225,6 +225,11 @@
       "name": "TTS audible on the silent switch and speech recognition always resolves",
       "status": "implemented",
       "evidence": "src/audio/session.ts temporarily switches the iOS audio session to playback before speaking and restores media mode afterwards; src/speech/tts.ts stops speaking before the mic opens; src/speech/useSpeechCheck.ts stops TTS, falls back once to network recognition for a missing on-device model, uses the last interim transcript when iOS ends without a final result, and has a 9 s watchdog instead of hanging on \"Đang nghe…\"."
+    },
+    {
+      "name": "Bilingual English–Vietnamese descriptions for General English recall",
+      "status": "tested",
+      "evidence": "src/quiz/description.ts derives an English description from definition_en (or example_en) and a Vietnamese one from meaning_vi, replaces the target with a blank in both, treats an all-blank result as missing, and keeps phrases whole. QuizQuestion carries descriptionEn/descriptionVi; SessionScreen and LearnScreen show both blocks for General English typing, vi_to_en, cloze and context; listening, speaking, en_to_vi and IELTS are unchanged. Missing English is reported rather than invented. Tests: description.test.ts, quiz.test.ts."
     }
   ],
   "in_progress_features": [
@@ -540,7 +545,7 @@
   "test_results": {
     "last_run": "2026-10-25",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 24/24 suites, 241/241 tests; node scripts/check-migrations.mjs OK for schema 1->4 on node:sqlite. No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine.",
+    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 26/26 suites, 257/257 tests (2026-10-25). node scripts/check-migrations.mjs passed for schema 1->4 (fresh install, v3 upgrade, reward identity, cache table) and this session did not change the schema. No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine.",
     "typecheck": {
       "command": "npx tsc --noEmit (TypeScript 6.0.3)",
       "exit_code": 0,
@@ -549,9 +554,9 @@
     "unit_tests": {
       "command": "npx jest --runInBand",
       "exit_code": 0,
-      "suites_passed": 24,
+      "suites_passed": 26,
       "suites_failed": 0,
-      "tests_passed": 241,
+      "tests_passed": 257,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -570,20 +575,22 @@
       "Widget / notifications / live Gemini / Groq on device remain unverified in this session"
     ],
     "suites_written": [
+      "src/ai/__tests__/errors.test.ts",
       "src/ai/__tests__/gemini.test.ts",
       "src/ai/__tests__/groq.test.ts",
-      "src/ai/__tests__/errors.test.ts",
+      "src/ai/__tests__/prompt.test.ts",
       "src/ai/__tests__/retry.test.ts",
       "src/ai/__tests__/schema.test.ts",
-      "src/ai/__tests__/prompt.test.ts",
       "src/coins/__tests__/coins.test.ts",
       "src/coins/__tests__/ledger.test.ts",
       "src/data/__tests__/packs.test.ts",
       "src/db/__tests__/settings.test.ts",
-      "src/games/__tests__/games.test.ts",
+      "src/db/__tests__/words.test.ts",
       "src/games/__tests__/asteroid-blank.test.ts",
+      "src/games/__tests__/games.test.ts",
       "src/lib/__tests__/text.test.ts",
       "src/music/__tests__/catalog.test.ts",
+      "src/quiz/__tests__/description.test.ts",
       "src/quiz/__tests__/placement.test.ts",
       "src/quiz/__tests__/quiz.test.ts",
       "src/speech/__tests__/pronunciation.test.ts",
@@ -643,7 +650,7 @@
       "reason": "The dictionary pipeline was deleted on 2026-10-25. Pasted lists, including multi-word phrases, are now handled by Groq and no external dictionary endpoint is called anywhere in the app."
     },
     "migration_checks": {
-      "command": "node scripts/check-migrations.mjs (node:sqlite)",
+      "command": "node scripts/check-migrations.mjs (node:sqlite, rerun 2026-10-25)",
       "result": "OK",
       "details": [
         "schema 1->4 applies on a fresh database",
@@ -893,7 +900,7 @@
   ],
   "next_steps": [
     "Build the 2026-10-25 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md.",
-    "Device-test the review gate from every entry point (Study, AI Studio, pasted list, manual form) and confirm it unlocks immediately after the last due card.",
+    "Device-test that a new-learning session is blocked while reviews are due, while adding a word, pasting a list, Groq and saving still work, and that the block clears after the last due card.",
     "Confirm on device that a learned word pays once, a repeated mistake still deducts, and double taps create one ledger row.",
     "Expand the bundled packs in 200-300 word batches and add CMUdict IPA."
   ],

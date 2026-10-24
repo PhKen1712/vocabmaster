@@ -4,6 +4,7 @@ import {
   assertNewLearningAllowed,
   countDueWords,
   getStudyGate,
+  requiresReviewsComplete,
   ReviewsDueError,
 } from '../gate';
 
@@ -23,13 +24,24 @@ describe('review gate', () => {
     });
   });
 
-  it('blocks a new word and reports how many reviews are waiting', async () => {
+  it('blocks a new-learning session and reports how many reviews are waiting', async () => {
     const db = fakeDb(3);
     await expect(assertNewLearningAllowed(db, 'general')).rejects.toMatchObject({
       name: 'ReviewsDueError',
       dueCount: 3,
     });
     expect(new ReviewsDueError(3).message).toContain('3 từ cần ôn');
+    expect(new ReviewsDueError(3).message).not.toContain('thêm từ');
+  });
+
+  it('never limits adding or generating vocabulary, only starting to learn it', () => {
+    // Adding a word to the bank is collecting, not studying: it must always be
+    // allowed, even with reviews pending.
+    expect(requiresReviewsComplete('addVocabulary')).toBe(false);
+    expect(requiresReviewsComplete('generateContent')).toBe(false);
+    expect(requiresReviewsComplete('startReview')).toBe(false);
+    expect(requiresReviewsComplete('practiceKnown')).toBe(false);
+    expect(requiresReviewsComplete('startNewLearning')).toBe(true);
   });
 
   it('opens the gate only when no word is due', async () => {

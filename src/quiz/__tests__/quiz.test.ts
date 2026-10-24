@@ -93,6 +93,39 @@ describe('quiz generator', () => {
     expect(question).toBeDefined();
   });
 
+  it('attaches bilingual, answer-free descriptions to General English typing questions', () => {
+    const umbrella = makeWord({
+      id: '11',
+      term: 'umbrella',
+      meaningVi: 'vật dụng che mưa',
+      definitionEn: 'An object you use to protect yourself from rain.',
+    });
+    const [question] = generateQuestions([umbrella], [...words, umbrella], {
+      kinds: ['typing'],
+      rng,
+    });
+    expect(question?.descriptionEn).toBe('An object you use to protect yourself from rain.');
+    expect(question?.descriptionVi).toBe('vật dụng che mưa');
+    expect(question?.descriptionEn?.toLowerCase()).not.toContain('umbrella');
+    expect(question?.descriptionVi?.toLowerCase()).not.toContain('umbrella');
+  });
+
+  it('never uses a definition that is only the answer as a context clue', () => {
+    const circular = makeWord({
+      id: '12',
+      term: 'umbrella',
+      meaningVi: 'cái ô',
+      definitionEn: 'umbrella',
+    });
+    const [question] = generateQuestions([circular], [...words, circular], {
+      kinds: ['context'],
+      rng,
+    });
+    expect(question?.kind).not.toBe('context');
+    expect(question?.descriptionEn).toBeNull();
+    expect(question?.prompt.toLowerCase()).not.toContain('umbrella');
+  });
+
   it('never returns more questions than requested', () => {
     const questions = generateQuestions(words, words, { limit: 2, rng });
     expect(questions).toHaveLength(2);

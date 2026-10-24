@@ -19,6 +19,8 @@ import type { Level } from '../types';
 export interface AsteroidWord {
   term: string;
   meaningVi: string;
+  /** English clue, answer already blanked; shown for General English. */
+  descriptionEn?: string | null;
   /** Drives how many letters are hidden; optional for older callers. */
   level?: Level;
 }
@@ -27,6 +29,8 @@ export interface Asteroid {
   id: number;
   term: string;
   meaning: string;
+  /** English description, with the target replaced by blanks. */
+  descriptionEn: string | null;
   /** The term with some letters replaced by `_`, shown on the asteroid. */
   maskedTerm: string;
   /** Character indexes that are hidden until the learner types past them. */
@@ -186,6 +190,7 @@ export function spawnAsteroid(
     id: state.nextId,
     term: word.term,
     meaning: word.meaningVi,
+    descriptionEn: word.descriptionEn ?? null,
     maskedTerm: masked,
     blanked,
     x: pickLane(state.asteroids, rng),

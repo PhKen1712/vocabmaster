@@ -14,10 +14,12 @@ import * as Haptics from 'expo-haptics';
 import { AppText, Banner, Card, PrimaryButton, ProgressBar, Screen } from '../components/ui';
 import { ScreenHeader } from '../components/patterns';
 import { FadeSlideIn, useReduceMotion } from '../components/motion';
+import { WordDescription } from '../components/WordDescription';
 import { getNewWords, listWords } from '../db/words';
 import { recordReview } from '../db/reviews';
 import { newId } from '../lib/ids';
 import { useNavigation } from '../navigation/NavigationProvider';
+import { isDescriptionKind } from '../quiz/description';
 import { generateQuestions } from '../quiz/generator';
 import { gradeAnswer, type GradeResult } from '../quiz/grading';
 import { describeInterval, schedule, type ScheduleResult } from '../srs/fsrs';
@@ -357,6 +359,12 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
   }
 
   const progress = (index + (stage === 'intro' ? 0.35 : stage === 'check' ? 0.7 : 0.95)) / words.length;
+  const checkBilingual = Boolean(
+    question && word.track === 'general' && isDescriptionKind(question.kind),
+  );
+  const checkDescriptionIsPrompt = Boolean(
+    question && checkBilingual && (question.kind === 'typing' || question.kind === 'vi_to_en'),
+  );
 
   return (
     <Screen>
@@ -502,9 +510,15 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
               KIỂM TRA NHANH
             </AppText>
             <AppText variant="title" style={{ marginTop: spacing.sm }}>
-              {question.prompt}
+              {checkDescriptionIsPrompt ? 'Điền từ tiếng Anh còn thiếu' : question.prompt}
             </AppText>
-            {question.helper ? (
+            {checkBilingual ? (
+              <WordDescription
+                en={question.kind === 'context' ? null : question.descriptionEn ?? null}
+                vi={question.descriptionVi ?? null}
+              />
+            ) : null}
+            {question.helper && !checkBilingual ? (
               <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
                 {question.helper}
               </AppText>
