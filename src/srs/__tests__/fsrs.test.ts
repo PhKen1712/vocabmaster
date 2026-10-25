@@ -140,6 +140,26 @@ describe('FSRS scheduler', () => {
     expect(good.intervalDays).toBeGreaterThanOrEqual(1);
   });
 
+  it('uses the learner-configured minutes for the next due date', () => {
+    const intervals = { again: 5, hard: 30, good: 12 * 60, easy: 24 * 60 };
+    const good = schedule(newCard, 3, NOW, 0.9, undefined, intervals);
+    expect(good.intervalDays).toBeCloseTo(0.5, 6);
+    expect(new Date(good.dueAt).getTime()).toBe(NOW.getTime() + 12 * 60 * 60_000);
+
+    const card: CardState = {
+      stability: good.stability,
+      difficulty: good.difficulty,
+      reps: good.reps,
+      lapses: good.lapses,
+      lastReviewedAt: good.lastReviewedAt,
+      dueAt: good.dueAt,
+      learningState: good.learningState,
+    };
+    const again = schedule(card, 1, NOW, 0.9, undefined, intervals);
+    expect(new Date(again.dueAt).getTime()).toBe(NOW.getTime() + 5 * 60_000);
+    expect(again.learningState).toBe('relearning');
+  });
+
   it('is deterministic for a fixed clock', () => {
     const a = schedule(newCard, 3, NOW);
     const b = schedule(newCard, 3, NOW);

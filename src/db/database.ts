@@ -52,7 +52,10 @@ export async function migrate(db: SQLite.SQLiteDatabase): Promise<number> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version;');
   let currentVersion = row?.user_version ?? 0;
 
-  for (const migration of MIGRATIONS) {
+  // Applied in numeric order, never in array order: a later migration may
+  // depend on a column or index created by an earlier version.
+  const pending = [...MIGRATIONS].sort((a, b) => a.version - b.version);
+  for (const migration of pending) {
     if (migration.version <= currentVersion) continue;
     try {
       await db.withTransactionAsync(async () => {
@@ -155,6 +158,8 @@ export async function resetDatabase(db: SQLite.SQLiteDatabase): Promise<void> {
     await db.execAsync('DELETE FROM daily_activity;');
     await db.execAsync('DELETE FROM coin_ledger;');
     await db.execAsync('DELETE FROM streak_restores;');
+    await db.execAsync('DELETE FROM album_words;');
+    await db.execAsync('DELETE FROM word_study_history;');
     await db.execAsync('DELETE FROM words;');
     await db.execAsync('DELETE FROM app_settings;');
   });

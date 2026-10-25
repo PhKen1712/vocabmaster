@@ -22,6 +22,7 @@ interface Row {
   balance_after: number;
   reason: string | null;
   created_at: string;
+  cycle_id?: string;
 }
 
 function normalize(sql: string): string {
@@ -49,10 +50,12 @@ class FakeDb {
       return (this.rows.find((row) => row.source_id === params[0]) as T) ?? null;
     }
     if (statement.includes("kind = 'reward' AND (term_key = ? OR word_id = ?)")) {
+      const cycle = params[2] === undefined ? 'initial' : String(params[2]);
       const found = this.rows.find(
         (row) =>
           row.kind === 'reward' &&
-          (row.term_key === params[0] || row.word_id === params[1]),
+          (row.term_key === params[0] || row.word_id === params[1]) &&
+          (row.cycle_id ?? 'initial') === cycle,
       );
       return (found as T) ?? null;
     }
@@ -96,6 +99,7 @@ class FakeDb {
         balance_after: Number(params[5]),
         reason: String(params[6]),
         created_at: String(params[7]),
+        cycle_id: params[8] === undefined ? 'initial' : String(params[8]),
       };
     } else if (statement.includes("VALUES (?, 'penalty'")) {
       row = {
@@ -126,9 +130,12 @@ class FakeDb {
     }
 
     if (row.kind === 'reward') {
+      const sameCycle =
+        (existing: Row) => (existing.cycle_id ?? 'initial') === (row.cycle_id ?? 'initial');
       const duplicate = this.rows.some(
         (existing) =>
           existing.kind === 'reward' &&
+          sameCycle(existing) &&
           ((existing.term_key && existing.term_key === row.term_key) ||
             (existing.word_id && existing.word_id === row.word_id) ||
             (existing.source_id && existing.source_id === row.source_id)),
@@ -181,6 +188,28 @@ describe('stable reward identity', () => {
       true,
     );
     expect(await getCoinBalance(sqlite)).toBe(500);
+  });
+
+  it('pays once in a new study cycle and blocks the second answer of that cycle', async () => {
+    const fake = new FakeDb();
+    const sqlite = db(fake);
+    const word = { id: 'w1', term: 'criminal', track: 'general' as const, level: 3 as const };
+    expect(
+      (await rewardWordInTransaction(sqlite, word, 0, 'cycle-1-answer', undefined, 'cycle-1'))
+        .amount,
+    ).toBe(500);
+    const resetCycle = await getWordStudyState(sqlite, word, 'cycle-2');
+    expect(resetCycle.rewarded).toBe(false);
+    expect(isFirstRewardEligible(resetCycle)).toBe(true);
+    expect(
+      (await rewardWordInTransaction(sqlite, word, 0, 'cycle-2-answer', undefined, 'cycle-2'))
+        .amount,
+    ).toBe(500);
+    expect(
+      (await rewardWordInTransaction(sqlite, word, 0, 'cycle-2-second', undefined, 'cycle-2'))
+        .alreadyRewarded,
+    ).toBe(true);
+    expect(await getCoinBalance(sqlite)).toBe(1_000);
   });
 
   it('allows the same spelling in the other track', async () => {

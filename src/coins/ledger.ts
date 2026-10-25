@@ -22,6 +22,7 @@ interface LedgerRow {
   balance_after: number;
   reason: string | null;
   created_at: string;
+  cycle_id?: string | null;
 }
 
 /** Stable identity of a learned item, independent of its current row id. */
@@ -124,18 +125,20 @@ export interface WordStudyState {
 }
 
 /**
- * The single rule for paying a word: no reward row yet, and the term has never
- * been answered correctly before. A wrong first attempt does not use up the
- * reward; a correct one does, forever.
+ * The single rule for paying a word: no reward row in the current learning
+ * cycle. A wrong first attempt does not use up the reward; a correct one does,
+ * and a deliberate study reset starts a new cycle where the word can pay once
+ * again. Deleting and re-adding inside one cycle never pays twice.
  */
 export function isFirstRewardEligible(state: WordStudyState): boolean {
-  return !state.rewarded && state.firstCorrectAt === null;
+  return !state.rewarded;
 }
 
 /** Read the permanent per-term history without changing it. */
 export async function getWordStudyState(
   db: SQLiteDatabase,
   word: { id: string; term: string; track: Track },
+  cycleId = 'initial',
 ): Promise<WordStudyState> {
   const termKey = wordTermKey(word);
   const row = await db.getFirstAsync<{ first_correct_at: string | null }>(
@@ -143,8 +146,10 @@ export async function getWordStudyState(
     [termKey],
   );
   const reward = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
-    [termKey, word.id],
+    `SELECT id FROM coin_ledger
+     WHERE kind = 'reward' AND (term_key = ? OR word_id = ?)
+       AND COALESCE(cycle_id, 'initial') = ? LIMIT 1;`,
+    [termKey, word.id, cycleId],
   );
   return {
     studied: Boolean(row),
@@ -198,10 +203,13 @@ export async function ensureWordStudied(
 export async function hasRewardForTerm(
   db: SQLiteDatabase,
   word: { id: string; term: string; track: Track },
+  cycleId = 'initial',
 ): Promise<boolean> {
   const row = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
-    [wordTermKey(word), word.id],
+    `SELECT id FROM coin_ledger
+     WHERE kind = 'reward' AND (term_key = ? OR word_id = ?)
+       AND COALESCE(cycle_id, 'initial') = ? LIMIT 1;`,
+    [wordTermKey(word), word.id, cycleId],
   );
   return Boolean(row);
 }
@@ -246,11 +254,14 @@ export async function rewardWordInTransaction(
   validStreakDays: number,
   sourceId: string,
   now = new Date(),
+  cycleId = 'initial',
 ): Promise<RewardOutcome> {
   const termKey = wordTermKey(word);
   const existing = await db.getFirstAsync<{ id: string }>(
-    "SELECT id FROM coin_ledger WHERE kind = 'reward' AND (term_key = ? OR word_id = ?) LIMIT 1;",
-    [termKey, word.id],
+    `SELECT id FROM coin_ledger
+     WHERE kind = 'reward' AND (term_key = ? OR word_id = ?)
+       AND COALESCE(cycle_id, 'initial') = ? LIMIT 1;`,
+    [termKey, word.id, cycleId],
   );
   if (existing) return { amount: 0, alreadyRewarded: true };
 
@@ -263,8 +274,8 @@ export async function rewardWordInTransaction(
   const balance = await readBalance(db);
   const result = await db.runAsync(
     `INSERT OR IGNORE INTO coin_ledger
-      (id, kind, word_id, term_key, source_id, amount, balance_after, reason, created_at)
-     VALUES (?, 'reward', ?, ?, ?, ?, ?, ?, ?);`,
+      (id, kind, word_id, term_key, source_id, amount, balance_after, reason, created_at, cycle_id)
+     VALUES (?, 'reward', ?, ?, ?, ?, ?, ?, ?, ?);`,
     [
       newId(),
       word.id,
@@ -274,6 +285,7 @@ export async function rewardWordInTransaction(
       balance + base,
       'Học từ mới lần đầu',
       now.toISOString(),
+      cycleId,
     ],
   );
   if (result.changes > 0) {

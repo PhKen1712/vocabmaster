@@ -24,6 +24,7 @@ export type Route =
   | { name: 'music' }
   | { name: 'game'; game: ArcadeGame }
   | { name: 'words' }
+  | { name: 'album' }
   | { name: 'stats' }
   | { name: 'settings' }
   | { name: 'word'; id: string }

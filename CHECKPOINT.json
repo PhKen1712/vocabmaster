@@ -3,10 +3,10 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-25",
-  "current_phase": "Giai đoạn 1–6 + bỏ hẳn API từ điển, Groq xử lý cả cụm từ + mỗi từ chỉ thưởng xu một lần + chỉ chặn phiên học từ mới khi còn từ đến hạn (thêm từ không bị khoá) + mô tả song ngữ Anh–Việt cho General English + bài học từ mới nhiều giai đoạn + thiên thạch đục ký tự và giảm mật độ + 60 giây chơi trọn phút + audio session playback + watchdog nhận diện giọng nói. Typecheck 0 lỗi, 257/257 test trong 26 suite, schema v4 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25 CHƯA chạy trên iPhone.",
+  "last_updated": "2026-10-26",
+  "current_phase": "Giai đoạn 1–6 + Groq là nguồn nội dung duy nhất cho cả từ đơn và cụm từ + mỗi từ thưởng xu một lần theo term_key/chu kỳ + chỉ chặn phiên học từ mới khi còn từ đến hạn (thêm từ không bị khoá) + bài học từ mới nhiều giai đoạn + mô tả song ngữ + thiên thạch đục ký tự + 60 giây chơi trọn phút + audio session playback + watchdog nhận diện giọng nói + (2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ có chu kỳ xu mới, Groq xếp level từng mục, ưu tiên từ + Từ tôi hay quên, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề. Typecheck 0 lỗi, 284/284 test trong 30 suite, schema v5 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25/26 CHƯA chạy trên iPhone.",
   "current_branch": "main",
-  "current_commit": "main · xem git log (2026-10-25)",
+  "current_commit": "main · xem git log (2026-10-26)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -328,6 +328,12 @@
       "severity": "medium",
       "description": "The 2026-10-25 fixes for the pronunciation check and 60-second mode are covered by typecheck/unit tests and code review only; the user has not installed a build containing them, and iOS audio/speech behaviour cannot be run on Windows.",
       "workaround": "Build with the macOS GitHub Actions workflow, install the new IPA, and follow the device checklist in NEXT_SESSION.md items 2b-2d."
+    },
+    {
+      "id": "device-2026-10-26",
+      "severity": "medium",
+      "description": "The 2026-10-26 features are covered by typecheck, migration checks and unit tests only: custom review intervals, reset + cycle coin rewards, per-item Groq levels, priority/forgettable words, SFX, Album bulk UI, and album notifications. No IPA containing them has been built or installed.",
+      "workaround": "Build with .github/workflows/ios-unsigned.yml, install, then follow NEXT_SESSION.md section 4 items 2e-2i. In particular check that notifications are cancelled when disabled, that the body includes meaning/context, and that a tap opens the word detail."
     }
   ],
   "resolved_bugs": [
@@ -543,9 +549,9 @@
     }
   ],
   "test_results": {
-    "last_run": "2026-10-25",
+    "last_run": "2026-10-26",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 26/26 suites, 257/257 tests (2026-10-25). node scripts/check-migrations.mjs passed for schema 1->4 (fresh install, v3 upgrade, reward identity, cache table) and this session did not change the schema. No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine.",
+    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 30/30 suites, 284/284 tests (2026-10-26). node scripts/check-migrations.mjs passed for schema 1->5 (fresh install, v3/v4 upgrades, reward cycles, album, topic merge). No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine, so notifications, SFX, album UI and the new schedule were not exercised on a device.",
     "typecheck": {
       "command": "npx tsc --noEmit (TypeScript 6.0.3)",
       "exit_code": 0,
@@ -554,9 +560,9 @@
     "unit_tests": {
       "command": "npx jest --runInBand",
       "exit_code": 0,
-      "suites_passed": 26,
+      "suites_passed": 30,
       "suites_failed": 0,
-      "tests_passed": 257,
+      "tests_passed": 284,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -570,9 +576,9 @@
       "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
     },
     "commands_pending": [
-      "Build the 2026-10-25 tree with the macOS workflow, install the IPA, and run the device checklist in NEXT_SESSION.md",
-      "Device verification: LearnScreen intro/flip/check/rate, review gate, 60-second refill, asteroid blanks, silent-switch audio and the pronunciation watchdog",
-      "Widget / notifications / live Gemini / Groq on device remain unverified in this session"
+      "Build the 2026-10-26 tree with the macOS workflow, install the IPA, and run the device checklist in NEXT_SESSION.md",
+      "Device verification: custom review intervals, reset progress + re-earning coins, per-item Groq levels, forgettable words, SFX, bulk album selection, album notifications (schedule/cancel/random pick/body/tap)",
+      "Widget / live Gemini / live Groq on device remain unverified in this session"
     ],
     "suites_written": [
       "src/ai/__tests__/errors.test.ts",
@@ -584,12 +590,14 @@
       "src/coins/__tests__/coins.test.ts",
       "src/coins/__tests__/ledger.test.ts",
       "src/data/__tests__/packs.test.ts",
+      "src/db/__tests__/reset.test.ts",
       "src/db/__tests__/settings.test.ts",
       "src/db/__tests__/words.test.ts",
       "src/games/__tests__/asteroid-blank.test.ts",
       "src/games/__tests__/games.test.ts",
       "src/lib/__tests__/text.test.ts",
       "src/music/__tests__/catalog.test.ts",
+      "src/notifications/__tests__/selection.test.ts",
       "src/quiz/__tests__/description.test.ts",
       "src/quiz/__tests__/placement.test.ts",
       "src/quiz/__tests__/quiz.test.ts",
@@ -600,11 +608,13 @@
       "src/streak/__tests__/restore.test.ts",
       "src/streak/__tests__/streak.test.ts",
       "src/study/__tests__/gate.test.ts",
+      "src/sound/__tests__/sfx.test.ts",
+      "src/study/__tests__/priority.test.ts",
       "src/wordlist/__tests__/parse.test.ts"
     ],
     "device_tests": {
       "status": "user_reported_fail_then_code_changed_unverified",
-      "reason": "The user reported the pronunciation check and 60-second mode still not working after the previous build; both were changed again on 2026-10-25 but no new IPA has been built or installed, so neither fix is confirmed on a device."
+      "reason": "The pronunciation check and 60-second mode were changed on 2026-10-25 but no new IPA has been built or installed. The 2026-10-26 features (custom intervals, reset, per-item levels, SFX, Album, random notifications) are also unverified on a device; iOS notification timing/limits need a real build."
     },
     "build_tests": {
       "status": "not_run",
@@ -650,13 +660,14 @@
       "reason": "The dictionary pipeline was deleted on 2026-10-25. Pasted lists, including multi-word phrases, are now handled by Groq and no external dictionary endpoint is called anywhere in the app."
     },
     "migration_checks": {
-      "command": "node scripts/check-migrations.mjs (node:sqlite, rerun 2026-10-25)",
+      "command": "node scripts/check-migrations.mjs (node:sqlite, rerun 2026-10-26)",
       "result": "OK",
       "details": [
-        "schema 1->4 applies on a fresh database",
-        "v3 coin rows are backfilled with term_key and source_id without changing balances",
-        "word_study_history and ai_cache are created",
-        "duplicate reward for the same term and duplicate source_id are rejected"
+        "schema 1->5 applies on a fresh database",
+        "v3/v4 upgrades keep coins, reviews and word rows intact",
+        "v5 backfills correct/wrong counters and creates album_words",
+        "reward uniqueness is per (term_key, cycle_id); duplicate source_id is rejected",
+        "case/space topic duplicates are merged without losing word links"
       ]
     }
   },
@@ -691,7 +702,15 @@
     },
     {
       "path": "src/db/reviews.ts",
-      "role": "Atomic review recording"
+      "role": "Atomic review recording, cycle-aware coin reward/penalty"
+    },
+    {
+      "path": "src/db/reset.ts",
+      "role": "Reset SRS/review history while preserving words, album, coins and streak"
+    },
+    {
+      "path": "src/db/album.ts",
+      "role": "Album membership relation, filtering, sorting, notification candidates"
     },
     {
       "path": "src/db/activity.ts",
@@ -894,13 +913,35 @@
       "role": "60-second engine with continueRush so the clock is the only ending"
     },
     {
+      "path": "src/study/priority.ts",
+      "role": "Pure priority score and forgettable-word predicate"
+    },
+    {
+      "path": "src/sound/sfx.ts",
+      "role": "Throttled expo-audio interaction effects, independent from TTS"
+    },
+    {
+      "path": "src/notifications/album.ts",
+      "role": "Bounded local notification queue picked randomly from the Album"
+    },
+    {
+      "path": "src/notifications/selection.ts",
+      "role": "Weighted random picker with no immediate repeat"
+    },
+    {
+      "path": "src/screens/AlbumScreen.tsx",
+      "role": "Album UI: search, filters, sort, bulk remove, notification settings"
+    },
+    {
       "path": "scripts/check-migrations.mjs",
-      "role": "Real node:sqlite check of migrations 1-4, partial indexes and backfills"
+      "role": "Real node:sqlite check of migrations 1-5, partial indexes, backfills and topic merge"
     }
   ],
   "next_steps": [
-    "Build the 2026-10-25 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md.",
-    "Device-test that a new-learning session is blocked while reviews are due, while adding a word, pasting a list, Groq and saving still work, and that the block clears after the last due card.",
+    "Build the 2026-10-26 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md.",
+    "Device-test the four custom intervals end to end, including that existing due_at values are not rewritten when settings change.",
+    "Device-test reset: all words return to new, album/level/topic survive, and re-learning can earn once per new cycle without duplicate ledger rows.",
+    "Device-test album notifications: random picks, no immediate repeat, cancel-on-disable, body with meaning/example, tap opens word detail, and honest iOS delays.",
     "Confirm on device that a learned word pays once, a repeated mistake still deducts, and double taps create one ledger row.",
     "Expand the bundled packs in 200-300 word batches and add CMUdict IPA."
   ],

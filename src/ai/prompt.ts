@@ -36,7 +36,7 @@ export function buildPrompt(request: AiRequest): string {
   return [
     `Create ${request.count} English vocabulary items.`,
     `Track: ${request.track === 'ielts' ? 'IELTS Vocabulary' : 'General English'}.`,
-    `Difficulty: ${CEFR_NOTES[request.level]}. Do not make every word harder than this level.`,
+    `Target difficulty for choosing words: ${CEFR_NOTES[request.level]}.`,
     `Topic: ${topic}.`,
     focus ? `Special focus: ${focus}.` : '',
     TRACK_NOTES[request.track],
@@ -46,7 +46,8 @@ export function buildPrompt(request: AiRequest): string {
     '- Add collocations and word family where they are natural; do not invent grammar patterns.',
     '- Vietnamese meanings must be accurate and natural, not machine-literal.',
     '- Example sentences must contain the target term exactly as written.',
-    '- Level must be an integer 0-6 and must match the requested difficulty. Never label a basic word as C1.',
+    '- Level is judged per item from its actual CEFR difficulty (meaning, usage and frequency), not copied from the requested level. The requested level only guides which words you choose; a B1 word stays B1 even when the learner asked for B2.',
+    '- Level must be an integer 0-6. Never label a basic word as C1 or an advanced word as A2.',
     '- Do not repeat any of these existing terms: ' + (avoid.length ? avoid.join(', ') : '(none yet)') + '.',
     weak.length
       ? '- The learner often forgets these words; include at most two of them if they fit the topic: ' +
@@ -70,7 +71,13 @@ export function buildPrompt(request: AiRequest): string {
 function buildExplainPrompt(terms: string[], request: AiRequest): string {
   return [
     `Explain exactly ${terms.length} English item(s) for a Vietnamese learner.`,
-    `Track: ${request.track === 'ielts' ? 'IELTS Vocabulary' : 'General English'}. Learner level: ${request.level}.`,
+    `Track: ${request.track === 'ielts' ? 'IELTS Vocabulary' : 'General English'}. The learner selected level ${request.level}, but that is only a starting point: judge every item independently.`,
+    '',
+    'Level rules (required for every item):',
+    '- Assign level 0-6 by the item\'s real CEFR difficulty: 0 pre-A1, 1 A1, 2 A2, 3 B1, 4 B2, 5 C1, 6 C2.',
+    '- Judge the specific sense you chose, not just the spelling. A phrase or idiom is judged as one unit (take into account is B2, not A2 because of the individual words).',
+    '- Do not copy the learner\'s selected level. If they chose B2 but the item is B1, return 3.',
+    '- Never infer level from word length, and never invent a level you cannot justify.',
     '',
     'Items (keep this order and the exact spelling):',
     ...terms.map((term, index) => `${index + 1}. ${term}`),
@@ -84,6 +91,7 @@ function buildExplainPrompt(terms: string[], request: AiRequest): string {
     '- exampleEn must be a natural sentence containing the item exactly; exampleVi is its natural translation.',
     '- partOfSpeech must match the chosen sense; omit ipa unless you are confident.',
     '- Do not add items that were not asked for and do not skip an item. If you cannot explain one, still return it with the best honest meaning.',
+    '- Always include level for every item. This field is required, even when the learner already picked a level.',
     '- Return valid JSON only, no markdown fences, no commentary.',
     '',
     'JSON shape:',
@@ -94,9 +102,10 @@ function buildExplainPrompt(terms: string[], request: AiRequest): string {
 function buildLookupPrompt(term: string, request: AiRequest): string {
   return [
     `Explain exactly one English item: "${term}".`,
-    `Use it for the ${request.track === 'ielts' ? 'IELTS' : 'General English'} track at level ${request.level}.`,
+    `Use it for the ${request.track === 'ielts' ? 'IELTS' : 'General English'} track. The learner selected level ${request.level}, but judge this item independently.`,
     '',
     'Requirements:',
+    '- Assign level 0-6 from the item\'s actual CEFR difficulty for this specific sense. Do not copy the selected level; a B1 item stays B1 when the learner chose B2.',
     '- Return exactly one item in the words array, and its term must be exactly the item above (keep "to" only if the item starts with "to ").',
     '- Provide IPA with slashes only if you are confident; otherwise omit the field.',
     '- meaningVi must be an accurate, natural Vietnamese meaning for this item in context.',

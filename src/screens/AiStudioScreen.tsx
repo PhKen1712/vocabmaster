@@ -557,7 +557,7 @@ export function AiStudioScreen() {
           <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.sm }}>
             Cấp độ do Groq đề xuất cho từng mục: {readyWithLevel}/{readyCount} mục đã xong.
             {wordList.unknownLevels > 0
-              ? ` ${wordList.unknownLevels} mục chưa rõ cấp độ sẽ dùng ${LEVEL_SHORT[settings.level]}.`
+              ? ` ${wordList.unknownLevels} mục AI chưa gắn cấp độ sẽ tạm dùng ${LEVEL_SHORT[settings.level]} — sửa được trong biểu mẫu.`
               : ''}
           </AppText>
           {wordList.note ? (

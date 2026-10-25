@@ -1,8 +1,8 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-25
-- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** — **typecheck 0 lỗi, 257/257 unit test xanh trong 26 suite, schema v4 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25 **chưa chạy trên thiết bị**
+- **last_updated:** 2026-10-26
+- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** + **(2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ theo chu kỳ có chống trùng xu, Groq tự xếp level từng mục, điểm ưu tiên từ + “Từ tôi hay quên”, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề** — **typecheck 0 lỗi, 284/284 unit test xanh trong 30 suite, schema v5 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25/26 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
@@ -153,9 +153,10 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Gợi ý chi tiết cho một từ cụ thể trong biểu mẫu (lookupTerm).
 - **Cấp độ tự tra cho danh sách dán**: kho từ bundle trả lời ngay, phần còn lại do AI xếp CEFR trong
   cùng request; thẻ từ ghi band + nguồn ("có sẵn" / "AI ước lượng"); từ chưa rõ ghi đúng như vậy.
-- **Khoá học từ mới (2026-10-25)**: `countDueWords` / `getStudyGate` / `assertNewLearningAllowed`
-  (`src/study/gate.ts`); `createWord` gọi assert, nên cả AI, nhập danh sách, form thủ công đều bị
-  chặn khi còn từ đến hạn, không chỉ ẩn nút.
+- **Cổng ôn tập (2026-10-25, chỉnh cùng ngày)**: `countDueWords` / `getStudyGate` /
+  `assertNewLearningAllowed` (`src/study/gate.ts`) **chỉ** dùng cho `startNewLearning`. `createWord`
+  không gọi assert, nên AI, nhập danh sách và form thủ công luôn lưu được khi còn từ đến hạn; từ mới
+  có `learning_state='new'`, `due_at=NULL`, không bị tính là đã học.
 - **Học từ mới nhiều giai đoạn (2026-10-25)**: giới thiệu → lật thẻ (định nghĩa, 2 chiều ví dụ,
   collocations, đồng nghĩa) → một câu kiểm tra → tự đánh giá; chỉ bước cuối ghi `recordReview`.
 - **Âm thanh (2026-10-25)**: `src/audio/session.ts` nâng audio session lên playback trước khi TTS để
@@ -170,7 +171,7 @@ schema) ở mức tested qua unit test; không có gì verified_on_device**.
 - Nhắc nhở hằng tuần theo giờ/ngày, xin quyền, huỷ và lên lịch lại.
 - Light/dark/system theme, design tokens dùng chung.
 - Onboarding, cài đặt, sao lưu, reset có xác nhận 2 lớp.
-- 26 bộ unit test (FSRS, quiz ×2, description ×2, placement, streak ×2, text, settings, AI ×6, word packs, coins ×2, game engine ×2, study gate, words DB, word-list parser, music, speech ×3).
+- 30 bộ unit test (FSRS, quiz ×2, description ×2, placement, streak ×2, text, settings, AI ×6, word packs, coins ×2, game engine ×3, study gate + priority, words/reset DB, word-list parser, music, speech ×3, album notification selection, sound-effect gate).
 - Checkpoint + script setup + script validate.
 
 ## 8. Chức năng mới làm một phần
@@ -276,6 +277,11 @@ hạn môi trường, không phải lỗi code:**
    và typecheck.
 4c. ~~Nhập danh sách từ vẫn ưu tiên từ điển~~ — **đã sửa 2026-10-25**: API từ điển bị xoá, Groq là
    nguồn chính cho cả từ đơn và cụm từ. Vẫn chưa có bài riêng cho collocation/sentence building.
+4d. **Chưa chạy trên thiết bị bất kỳ tính năng nào của 2026-10-26**: lịch ôn tùy chỉnh, reset học tập,
+   Groq xếp level, ưu tiên từ, hiệu ứng âm thanh, Album, thông báo album và chuẩn hoá chủ đề mới chỉ
+   được kiểm bằng typecheck + unit test + migration. Đặc biệt cần kiểm thật: thông báo cục bộ iOS
+   (trễ/gộp, giới hạn 64 pending, Focus), WAV sfx qua expo-audio không làm nhỏ TTS/nhạc, và chọn hàng loạt trên
+   màn hình nhỏ. Không đánh dấu `verified_on_device`.
 5. **Gemini**: logic lỗi/retry/validate đã có test tự động, nhưng **chưa có lần gọi Gemini thật nào
    bằng key của người dùng** trong phiên này. Việc 503/429/404 thực tế có được xử lý đúng trên iPhone
    chỉ xác nhận được sau khi cài bản build mới và bấm "Tạo bộ từ". Không đánh dấu `verified`.
@@ -287,13 +293,13 @@ hạn môi trường, không phải lỗi code:**
 - `expo-speech-recognition` — đã cài và biên dịch được.
 - Version alignment SDK 58 — `expo-doctor` 20/20.
 
-## 14. Kết quả kiểm thử gần nhất (2026-10-24, đã chạy thật)
+## 14. Kết quả kiểm thử gần nhất (2026-10-26, đã chạy thật)
 
 | Bước | Lệnh | Kết quả |
 |---|---|---|
-| Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** (2026-10-25) |
-| Unit test | `npx jest --runInBand` | **26/26 suite, 257/257 test pass** (2026-10-25) |
-| Migration | `node scripts/check-migrations.mjs` | **OK** — schema 1→4 trên SQLite thật, gồm backfill và unique index |
+| Typecheck | `npx tsc --noEmit` (tsc 6.0.3) | **exit 0, 0 lỗi** (2026-10-26) |
+| Unit test | `npx jest --runInBand` | **30/30 suite, 284/284 test pass** (2026-10-26) |
+| Migration | `node scripts/check-migrations.mjs` | **OK** — schema 1→5 trên SQLite thật, gồm backfill, bảng `album_words`, `cycle_id` và unique index |
 | Dùng Groq thật | Người dùng báo trong chat (2026-10-23) | **Mượt, kết quả tốt** — không có build number/screenshot/log, chưa đo latency hay hạn mức |
 | Tra từ điển thật | `lookupWords([...6 từ])` với endpoint thật | **906 ms**, 4 từ đúng dữ liệu, 1 từ không tồn tại, 1 cụm từ bị từ chối |
 | Migration thật | `node:sqlite` chạy migration 1 → 3 | bảng `coin_ledger` + `streak_restores` tạo đúng; từ đã học trước đó được đánh dấu 0 xu; **index chặn thưởng trùng và cứu chuỗi trùng** (đã thử insert lần hai, bị từ chối) |
@@ -394,7 +400,7 @@ Phương án 0 USD (Sideloadly) không có App Groups → widget không đọc d
 | Chưa xác minh | Cách xác minh |
 |---|---|
 | Code compile | `npm run typecheck` |
-| Unit test pass | `npm test` (26 file, 257 test) |
+| Unit test pass | `npm test` (30 file, 284 test) |
 | Kho từ nạp đúng, không ghi đè từ đã sửa | Cài bản mới lên máy có dữ liệu cũ, đếm từ + kiểm tra từ đã sửa nghĩa |
 | Gemini retry/backoff/validate | `npm test -- src/ai` — mock fetch, không gọi API thật |
 | Prebuild tạo widget target | `npx expo prebuild --platform ios --clean`, xem `ios/` |
@@ -425,6 +431,27 @@ hoàn thành khi chưa kiểm thử, ưu tiên ổn định trước tính năng
 | Gemini 2.5 flash còn dùng được | Tạo 3 từ trong app; đổi model nếu 404 |
 | Apple ID free chặn App Group | Thử build với Personal Team, ghi lỗi entitlement |
 | Node/npm đã cài | `node --version`, `npm --version` |
+
+---
+
+## 22. Phiên 2026-10-26 — trạng thái từng yêu cầu
+
+| Yêu cầu | Trạng thái | Bằng chứng |
+|---|---|---|
+| 1. Tùy chỉnh lịch ôn 4 mức (5 phút/30 phút/12 giờ/24 giờ), lưu bền, khôi phục mặc định, dùng thật khi tính `nextReviewAt` | **code + test xong**, chưa chạy máy thật | `src/srs/fsrs.ts` (`scheduleForRating`, `DEFAULT_LEARN_STEPS`), `src/db/settings.ts`, `SettingsScreen`; test `fsrs` + `settings` |
+| 2. Reset tiến độ học, giữ từ/level/chủ đề/album/xu/streak, thưởng lại theo chu kỳ, chống trùng | **code + test xong**, chưa chạy máy thật | `src/db/reset.ts`, `src/db/schema.ts` (`coin_ledger.cycle_id`, unique `(term_key, cycle_id)`), `src/coins/ledger.ts`; test `reset` + `ledger` |
+| 3. Groq tự xếp level từng từ/cụm, `actualLevel` dùng khắp nơi, không ghi đè bằng level người dùng chọn | **code + test xong**, chưa gọi Groq thật với danh sách nhiều level | `src/ai/schema.ts`, `src/ai/prompt.ts`, `src/screens/useWordListImport.ts`, `src/wordlist/types.ts`; test `ai/schema` |
+| 4. Sound effects có bật/tắt, âm lượng, throttle, không chồng, không giành TTS | **code + test gate xong**, chưa nghe trên iPhone | `src/sound/sfx.ts`, `src/sound/__tests__/sfx.test.ts`, `assets/sfx/*.wav`, `SettingsScreen` |
+| 5. Ưu tiên từ theo lịch sử + “Từ tôi hay quên” động | **code + test xong** | `src/study/priority.ts`, `src/db/words.ts` (`getWeakWords`), `StudyScreen`; test `priority` |
+| 6. Album + chọn hàng loạt + lọc/sắp xếp | **code xong**, chưa có test DB album riêng, chưa chạy UI máy nhỏ | `src/db/album.ts`, `src/screens/AlbumScreen.tsx`, `WordsScreen` |
+| 7. Thông báo ngẫu nhiên toàn album, túi từ chống lặp, chu kỳ/khung giờ/giới hạn, không tính là học | **code + test xong**, **chưa chạy thông báo thật trên iOS** | `src/notifications/album.ts`, `App.tsx`; test `notifications/selection` |
+| 8. Chuẩn hoá chủ đề, gộp trùng an toàn | **code + test xong** | `src/db/words.ts`, migration v5; test `words` |
+| 10. Mục tiêu học thông minh | **chưa làm** — ngoài phạm vi phiên, ghi ở `NEXT_SESSION.md` | — |
+
+Giới hạn kỹ thuật đã ghi trong app: iOS không bảo đảm thông báo cục bộ đúng từng phút; app chỉ lên
+lịch trước tối đa 48 thông báo (dưới giới hạn 64 pending), huỷ lịch cũ khi đổi cài đặt, tắt là ngừng tạo.
+Chưa có giới hạn số thông báo/ngày, giờ yên tĩnh riêng, chọn ngày trong tuần hay bộ lọc nâng cao cho
+nguồn thông báo; các mục này là tùy chọn trong yêu cầu.
 
 ---
 

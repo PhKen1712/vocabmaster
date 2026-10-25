@@ -69,9 +69,25 @@ function matchKey(term: string): string {
   return normalizeTerm(term).replace(/^to\s+/, '');
 }
 
-function levelOf(suggestion: AiSuggestion | null, term: string, track: Track): Level | null {
-  if (suggestion?.level !== undefined && suggestion.level !== null) return suggestion.level;
-  return packLevel(term, track);
+/**
+ * The level Groq judged wins. Only when it explicitly fell back to the
+ * learner's requested level do we try the bundled pack, and only then use the
+ * requested level as an honest last resort.
+ */
+function levelOf(
+  suggestion: AiSuggestion | null,
+  term: string,
+  track: Track,
+): { level: Level | null; source: ListEntry['levelSource'] } {
+  const judged =
+    suggestion?.level != null && suggestion.levelSource !== 'requested'
+      ? suggestion.level
+      : null;
+  if (judged !== null) return { level: judged, source: 'ai' };
+  const packed = packLevel(term, track);
+  if (packed !== null) return { level: packed, source: 'pack' };
+  if (suggestion?.level != null) return { level: suggestion.level, source: 'settings' };
+  return { level: null, source: null };
 }
 
 function readyEntry(
@@ -80,9 +96,10 @@ function readyEntry(
   track: Track,
   cached: boolean,
 ): ListEntry {
+  const resolved = levelOf(suggestion, term, track);
   return entryFromSuggestion(term, suggestion, {
-    level: levelOf(suggestion, term, track),
-    levelSource: suggestion.level !== undefined ? 'ai' : packLevel(term, track) !== null ? 'pack' : null,
+    level: resolved.level,
+    levelSource: resolved.source,
     cached,
   });
 }

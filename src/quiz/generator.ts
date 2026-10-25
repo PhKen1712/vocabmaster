@@ -299,6 +299,12 @@ export interface GenerateOptions {
   limit?: number;
   kinds?: QuizKind[];
   rng?: Rng;
+  /**
+   * Keep the caller's order instead of shuffling. Review sessions sort by
+   * learning priority first, so the most-forgotten words must not be shuffled
+   * away by the generator.
+   */
+  preserveOrder?: boolean;
 }
 
 /**
@@ -317,7 +323,7 @@ export function generateQuestions(
   );
   const limit = options.limit ?? candidates.length;
   const questions: QuizQuestion[] = [];
-  const ordered = shuffle(candidates, rng);
+  const ordered = options.preserveOrder ? [...candidates] : shuffle(candidates, rng);
 
   for (const word of ordered) {
     if (questions.length >= limit) break;

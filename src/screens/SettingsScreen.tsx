@@ -30,6 +30,9 @@ import {
 import { exportBackupFile, exportCsvFile, importCsvWords, pickTextFile, restoreBackup } from '../db/backup';
 import { getCounts } from '../db/words';
 import { resetDatabase } from '../db/database';
+import { resetStudyProgress } from '../db/reset';
+import { newId } from '../lib/ids';
+import { playSfx } from '../sound/sfx';
 import {
   cancelReminders,
   getNotificationPermission,
@@ -47,8 +50,12 @@ import {
   AI_PROVIDERS,
   DEFAULT_AI_MODEL,
   DEFAULT_GROQ_MODEL,
+  DEFAULT_REVIEW_INTERVALS,
+  MAX_REVIEW_INTERVAL,
+  MIN_REVIEW_INTERVAL,
   type AiProvider,
   type CoinEvent,
+  type ReviewIntervals,
   type ThemeMode,
   type TtsVoice,
 } from '../types';
@@ -352,6 +359,32 @@ export function SettingsScreen() {
     );
   };
 
+  const confirmResetProgress = () => {
+    Alert.alert(
+      'Reset tiến độ học?',
+      'Mọi từ sẽ trở về trạng thái chưa học: xoá lịch ôn, số lần đúng/sai, mức ghi nhớ và tự đánh giá. Từ vựng, nghĩa, chủ đề, Album, tiền xu và chuỗi ngày được giữ nguyên. Không thể hoàn tác.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        {
+          text: 'Reset tiến độ',
+          style: 'destructive',
+          onPress: async () => {
+            if (!db) return;
+            const result = await resetStudyProgress(db);
+            // A new cycle lets the first correct re-learning earn once more,
+            // while the old ledger stays visible for audit.
+            await updateSettings({ studyCycleId: newId() });
+            await notifyDataChanged();
+            Alert.alert(
+              'Đã reset tiến độ',
+              `${result.wordsReset} từ về trạng thái chưa học · ${result.reviewsDeleted} lượt ôn cũ đã xoá. Album và tiền xu không đổi.`,
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const confirmReset = () => {
     Alert.alert(
       'Xoá toàn bộ dữ liệu học?',
@@ -610,6 +643,46 @@ export function SettingsScreen() {
         </View>
       </Card>
 
+      <SectionHeader title="Lịch ôn tập" />
+      <Card>
+        <AppText variant="caption" color={colors.textMuted}>
+          Khi bạn tự đánh giá một từ, lần kiểm tra tiếp theo được hẹn đúng khoảng thời gian dưới
+          đây. FSRS vẫn cập nhật độ bền trí nhớ, nhưng ngày ôn do bạn quyết định.
+        </AppText>
+        <View style={{ marginTop: spacing.md }}>
+          {(
+            [
+              ['again', 'Chưa nhớ'],
+              ['hard', 'Khó'],
+              ['good', 'Dễ'],
+              ['easy', 'Rất dễ'],
+            ] as [keyof ReviewIntervals, string][]
+          ).map(([key, label]) => (
+            <IntervalEditor
+              key={key}
+              label={label}
+              minutes={settings.reviewIntervals[key]}
+              onCommit={(minutes) =>
+                void updateSettings({
+                  reviewIntervals: { ...settings.reviewIntervals, [key]: minutes },
+                })
+              }
+            />
+          ))}
+        </View>
+        <PrimaryButton
+          label="Khôi phục mặc định (5 phút · 30 phút · 12 giờ · 24 giờ)"
+          variant="ghost"
+          onPress={() => void updateSettings({ reviewIntervals: DEFAULT_REVIEW_INTERVALS })}
+          style={{ marginTop: spacing.sm }}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
+          Đơn vị là phút, từ {MIN_REVIEW_INTERVAL} đến {MAX_REVIEW_INTERVAL.toLocaleString('vi-VN')}{' '}
+          (7 ngày). Thay đổi chỉ áp dụng cho lượt đánh giá tiếp theo; lịch đã hẹn trước đó không bị
+          viết lại.
+        </AppText>
+      </Card>
+
       <SectionHeader title="Kinh tế · Xu ảo" />
       <Card>
         <View style={styles.rowBetween}>
@@ -853,6 +926,42 @@ export function SettingsScreen() {
         />
       </Card>
 
+      <SectionHeader title="Hiệu ứng âm thanh" />
+      <Card>
+        <View style={styles.rowBetween}>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodyStrong">Bật hiệu ứng</AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              Tiếng ngắn khi đúng, sai, nhận xu, xong lượt học và bắn trúng thiên thạch.
+            </AppText>
+          </View>
+          <Switch
+            value={settings.sfxEnabled}
+            onValueChange={(value) => void updateSettings({ sfxEnabled: value })}
+            trackColor={{ true: colors.primary, false: colors.border }}
+          />
+        </View>
+        <Stepper
+          label="Âm lượng hiệu ứng"
+          value={Math.round(settings.sfxVolume * 100)}
+          min={0}
+          max={100}
+          step={5}
+          suffix="%"
+          onChange={(value) => void updateSettings({ sfxVolume: value / 100 })}
+        />
+        <PrimaryButton
+          label="Nghe thử"
+          variant="ghost"
+          disabled={!settings.sfxEnabled}
+          onPress={() => playSfx('correct')}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Tắt hiệu ứng không tắt giọng đọc từ vựng. Hiệu ứng được giới hạn tần suất để không chồng
+          lên nhau hay chen vào lúc đang đọc từ.
+        </AppText>
+      </Card>
+
       <SectionHeader title="Nhắc nhở học" />
       <Card>
         <View style={styles.rowBetween}>
@@ -1007,7 +1116,26 @@ export function SettingsScreen() {
 
       <SectionHeader title="Nguy hiểm" />
       <Card>
-        <PrimaryButton label="Xoá toàn bộ dữ liệu học" variant="danger" onPress={confirmReset} />
+        <PrimaryButton
+          label="Reset dữ liệu học tập"
+          variant="danger"
+          onPress={confirmResetProgress}
+        />
+        <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.sm }}>
+          Đưa mọi từ về chưa học để học lại từ đầu. Giữ từ vựng, nghĩa, chủ đề, level, Album,
+          tiền xu và chuỗi ngày. Sau khi reset, lần học lại đầu tiên của mỗi từ có thể nhận xu
+          theo quy tắc hiện hành; lịch sử giao dịch cũ vẫn còn trong sổ xu.
+        </AppText>
+        <PrimaryButton
+          label="Xoá toàn bộ dữ liệu học"
+          variant="danger"
+          onPress={confirmReset}
+          style={{ marginTop: spacing.md }}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+          Khác với reset tiến độ: thao tác này xoá cả từ, Album, xu, chuỗi ngày và cài đặt, rồi
+          khôi phục bộ từ mẫu.
+        </AppText>
       </Card>
 
       <SectionHeader title="Thông tin" />
@@ -1028,6 +1156,71 @@ export function SettingsScreen() {
         </AppText>
       </Card>
     </Screen>
+  );
+}
+
+function describeMinutes(minutes: number): string {
+  if (minutes < 60) return `${minutes} phút`;
+  if (minutes % 1_440 === 0) return `${minutes / 1_440} ngày`;
+  if (minutes % 60 === 0) return `${minutes / 60} giờ`;
+  return `${Math.floor(minutes / 60)} giờ ${minutes % 60} phút`;
+}
+
+/**
+ * Numeric interval editor. The value is committed on blur or submit instead of
+ * on every keystroke, so typing "30" does not briefly save "3" and reschedule
+ * two words on the way.
+ */
+function IntervalEditor({
+  label,
+  minutes,
+  onCommit,
+}: {
+  label: string;
+  minutes: number;
+  onCommit: (minutes: number) => void;
+}) {
+  const { colors } = useTheme();
+  const [text, setText] = useState(String(minutes));
+
+  useEffect(() => {
+    setText(String(minutes));
+  }, [minutes]);
+
+  const commit = () => {
+    const parsed = Number.parseInt(text, 10);
+    if (!Number.isFinite(parsed)) {
+      setText(String(minutes));
+      return;
+    }
+    const next = Math.min(MAX_REVIEW_INTERVAL, Math.max(MIN_REVIEW_INTERVAL, parsed));
+    setText(String(next));
+    if (next !== minutes) onCommit(next);
+  };
+
+  return (
+    <View style={styles.intervalRow}>
+      <View style={{ flex: 1 }}>
+        <AppText variant="bodyStrong">{label}</AppText>
+        <AppText variant="caption" color={colors.textMuted}>
+          Hiện tại: {describeMinutes(minutes)}
+        </AppText>
+      </View>
+      <View style={styles.intervalInput}>
+        <Input
+          value={text}
+          onChangeText={setText}
+          keyboardType="number-pad"
+          maxLength={5}
+          onSubmitEditing={commit}
+          onBlur={commit}
+          style={{ width: 86 }}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginLeft: spacing.xs }}>
+          phút
+        </AppText>
+      </View>
+    </View>
   );
 }
 
@@ -1069,5 +1262,16 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.md,
+  },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  intervalInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: 130,
   },
 });

@@ -1,4 +1,4 @@
-import type { LearningState, ReviewRating } from '../types';
+import type { LearningState, ReviewIntervals, ReviewRating } from '../types';
 import { MS_PER_DAY } from '../lib/date';
 
 /**
@@ -165,6 +165,17 @@ function dueDateFrom(now: Date, intervalDays: number): string {
   return new Date(now.getTime() + ms).toISOString();
 }
 
+function dueDateFromMinutes(now: Date, minutes: number): string {
+  return new Date(now.getTime() + Math.max(1, minutes) * 60_000).toISOString();
+}
+
+const INTERVAL_KEYS: Record<ReviewRating, keyof ReviewIntervals> = {
+  1: 'again',
+  2: 'hard',
+  3: 'good',
+  4: 'easy',
+};
+
 function elapsedDaysBetween(now: Date, lastReviewedAt: string | null): number {
   if (!lastReviewedAt) return 0;
   const last = new Date(lastReviewedAt).getTime();
@@ -179,6 +190,10 @@ function elapsedDaysBetween(now: Date, lastReviewedAt: string | null): number {
  * @param rating   1 Again, 2 Hard, 3 Good, 4 Easy
  * @param now      injected clock (deterministic tests)
  * @param retention desired retention used to turn stability into an interval
+ * @param weights   FSRS parameters
+ * @param intervals optional learner-defined minutes per rating. When present,
+ *                  the next review is due exactly then; FSRS still updates
+ *                  stability/difficulty, so memory strength keeps improving.
  */
 export function schedule(
   card: CardState,
@@ -186,23 +201,27 @@ export function schedule(
   now: Date = new Date(),
   retention = 0.9,
   weights = DEFAULT_WEIGHTS,
+  intervals?: ReviewIntervals | null,
 ): ScheduleResult {
   const isNew = card.reps === 0 || card.stability <= 0;
   const elapsedDays = elapsedDaysBetween(now, card.lastReviewedAt);
+  const customMinutes = intervals ? intervals[INTERVAL_KEYS[rating]] : null;
 
   if (isNew) {
     const stability = initialStability(rating, weights);
     const difficulty = initialDifficulty(rating, weights);
-    // Gentle learning steps for the first exposure.
+    // Gentle learning steps for the first exposure. The learner's configured
+    // steps replace them when customization is enabled.
     const firstInterval = rating === 1 ? 0 : rating === 2 ? 1 : rating === 3 ? 1 : 2;
+    const minutes = customMinutes ?? (firstInterval < 1 ? 10 : firstInterval * 1_440);
     return {
       stability,
       difficulty,
       reps: 1,
       lapses: rating === 1 ? 1 : card.lapses,
       learningState: rating === 1 ? 'learning' : 'review',
-      intervalDays: firstInterval,
-      dueAt: dueDateFrom(now, firstInterval),
+      intervalDays: customMinutes != null ? minutes / 1_440 : firstInterval,
+      dueAt: customMinutes != null ? dueDateFromMinutes(now, minutes) : dueDateFrom(now, firstInterval),
       lastReviewedAt: now.toISOString(),
       elapsedDays: 0,
     };
@@ -235,7 +254,11 @@ export function schedule(
   }
 
   const intervalDays =
-    rating === 1 ? 0 : intervalForRetention(stability, retention);
+    customMinutes != null
+      ? customMinutes / 1_440
+      : rating === 1
+        ? 0
+        : intervalForRetention(stability, retention);
 
   return {
     stability,
@@ -244,7 +267,10 @@ export function schedule(
     lapses,
     learningState,
     intervalDays,
-    dueAt: dueDateFrom(now, intervalDays),
+    dueAt:
+      customMinutes != null
+        ? dueDateFromMinutes(now, customMinutes)
+        : dueDateFrom(now, intervalDays),
     lastReviewedAt: now.toISOString(),
     elapsedDays,
   };
@@ -258,8 +284,16 @@ export function defaultRatingFor(correct: boolean): ReviewRating {
 /** Human-readable interval, used in the session feedback panel. */
 export function describeInterval(intervalDays: number): string {
   if (intervalDays <= 0) return '10 phút';
+  // Custom learning steps are stored as fractional days; show the unit the
+  // learner actually configured instead of rounding 5 minutes to "1 ngày".
+  if (intervalDays < 1) {
+    const minutes = Math.max(1, Math.round(intervalDays * 1_440));
+    if (minutes < 60) return `${minutes} phút`;
+    const hours = Math.round(minutes / 60);
+    return `${hours} giờ`;
+  }
   if (intervalDays === 1) return '1 ngày';
-  if (intervalDays < 30) return `${intervalDays} ngày`;
+  if (intervalDays < 30) return `${Math.round(intervalDays)} ngày`;
   if (intervalDays < 365) {
     const months = Math.round(intervalDays / 30);
     return `${months} tháng`;

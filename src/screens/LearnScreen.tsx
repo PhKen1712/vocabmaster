@@ -24,6 +24,7 @@ import { generateQuestions } from '../quiz/generator';
 import { gradeAnswer, type GradeResult } from '../quiz/grading';
 import { describeInterval, schedule, type ScheduleResult } from '../srs/fsrs';
 import { speak } from '../speech/tts';
+import { playSfx } from '../sound/sfx';
 import { useApp } from '../state/AppProvider';
 import { getStudyGate } from '../study/gate';
 import { useTheme } from '../theme/ThemeProvider';
@@ -49,7 +50,7 @@ const RATING_LABELS: Record<ReviewRating, string> = {
  * normal first-correct rule; rating a card never creates coins by itself.
  */
 export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
-  const { db, settings, notifyDataChanged } = useApp();
+  const { db, settings, stats: dailyStats, notifyDataChanged } = useApp();
   const { pop, push } = useNavigation();
   const { colors } = useTheme();
   const reducedMotion = useReduceMotion();
@@ -77,6 +78,8 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
   const eventIdRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const wordStartedAt = useRef(Date.now());
+  /** Play the streak sound once, only on the answer that completes the goal. */
+  const goalMetRef = useRef(Boolean(dailyStats?.goalMetToday));
 
   const word = words[index] ?? null;
   const question = questions[index] ?? null;
@@ -163,9 +166,16 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
     };
     return ([1, 2, 3, 4] as ReviewRating[]).map((rating) => ({
       rating,
-      result: schedule(card, rating, new Date(), settings.targetRetention),
+      result: schedule(
+        card,
+        rating,
+        new Date(),
+        settings.targetRetention,
+        undefined,
+        settings.reviewIntervals,
+      ),
     }));
-  }, [word, settings.targetRetention]);
+  }, [word, settings.targetRetention, settings.reviewIntervals]);
 
   const listen = (text: string) => {
     setSpeechError(null);
@@ -216,6 +226,7 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
         ? Haptics.NotificationFeedbackType.Success
         : Haptics.NotificationFeedbackType.Warning,
     ).catch(() => undefined);
+    playSfx(result.correct ? 'correct' : 'wrong');
   };
 
   const saveRating = async (chosen: ReviewRating) => {
@@ -237,15 +248,23 @@ export function LearnScreen({ track, level }: { track: Track; level?: Level }) {
         schedule: preview.result,
         dailyGoal: settings.dailyGoal,
         eventId: eventIdRef.current,
+        cycleId: settings.studyCycleId,
+        usedHint: flipped,
       });
       setReviewed((value) => value + 1);
       if (answer.correct) setCorrectCount((value) => value + 1);
       setSessionCoins((value) => value + outcome.coinChange);
       setCoinNote({ amount: outcome.coinChange, reason: outcome.coinReason });
+      if (outcome.coinChange > 0) setTimeout(() => playSfx('coin'), 140);
+      if (outcome.goalMet && !goalMetRef.current) {
+        goalMetRef.current = true;
+        setTimeout(() => playSfx('streak'), 260);
+      }
       await notifyDataChanged();
 
       if (index + 1 >= words.length) {
         setStage('done');
+        playSfx('lesson');
       } else {
         setIndex((value) => value + 1);
         setStage('intro');

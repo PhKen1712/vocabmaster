@@ -38,6 +38,29 @@ export type LearningState = 'new' | 'learning' | 'review' | 'relearning' | 'know
 /** 1 = Again, 2 = Hard, 3 = Good, 4 = Easy (FSRS ratings). */
 export type ReviewRating = 1 | 2 | 3 | 4;
 
+/**
+ * Minutes until the next review for each self-rating. These are the learner's
+ * own learning steps: FSRS still updates memory strength, but the next check is
+ * scheduled at exactly these intervals so the UI can promise a real time.
+ */
+export interface ReviewIntervals {
+  again: number;
+  hard: number;
+  good: number;
+  easy: number;
+}
+
+export const DEFAULT_REVIEW_INTERVALS: ReviewIntervals = {
+  again: 5,
+  hard: 30,
+  good: 12 * 60,
+  easy: 24 * 60,
+};
+
+/** Smallest and largest interval the Settings UI accepts, in minutes. */
+export const MIN_REVIEW_INTERVAL = 1;
+export const MAX_REVIEW_INTERVAL = 7 * 24 * 60;
+
 export const TRACKS: readonly Track[] = ['general', 'ielts'];
 
 export const LEVELS: readonly Level[] = [0, 1, 2, 3, 4, 5, 6];
@@ -104,6 +127,18 @@ export interface Word {
   difficulty: number;
   reps: number;
   lapses: number;
+  /** Number of graded answers that were correct (all time, current cycle). */
+  correctCount?: number;
+  /** Number of graded answers that were wrong (all time, current cycle). */
+  wrongCount?: number;
+  /** Answers where the learner needed a hint or revealed the answer. */
+  hintCount?: number;
+  lastCorrectAt?: string | null;
+  lastWrongAt?: string | null;
+  /** The learner's latest self-rating (1–4), used by the forgetting score. */
+  memoryRating?: ReviewRating | null;
+  /** True when the words query joined the album membership. */
+  inAlbum?: boolean;
   lastReviewedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -236,6 +271,19 @@ export interface Settings {
   bestAsteroid: number;
   bestRush: number;
   bestMemory: number;
+  /** Per-rating learning steps; the next review is due exactly then. */
+  reviewIntervals: ReviewIntervals;
+  /** Short interaction sounds. Turning this off never disables speech. */
+  sfxEnabled: boolean;
+  sfxVolume: number;
+  /** Random word notifications picked automatically from the Album. */
+  albumNotifyEnabled: boolean;
+  albumIntervalMinutes: number;
+  /** Local hours (0–23) between which album notifications may fire. */
+  albumStartHour: number;
+  albumEndHour: number;
+  /** Identifies the current learning cycle so a reset can pay once again. */
+  studyCycleId: string;
 }
 
 /**
@@ -290,6 +338,14 @@ export const DEFAULT_SETTINGS: Settings = {
   bestAsteroid: 0,
   bestRush: 0,
   bestMemory: 0,
+  reviewIntervals: DEFAULT_REVIEW_INTERVALS,
+  sfxEnabled: true,
+  sfxVolume: 0.55,
+  albumNotifyEnabled: false,
+  albumIntervalMinutes: 30,
+  albumStartHour: 8,
+  albumEndHour: 22,
+  studyCycleId: 'initial',
 };
 
 /** One row of the in-app coin ledger. Coins are virtual and never cash. */

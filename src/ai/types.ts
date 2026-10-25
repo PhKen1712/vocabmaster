@@ -59,6 +59,12 @@ export interface AiRequest {
 export interface AiSuggestion extends WordInput {
   /** Short note explaining why the word is useful, shown in the preview card. */
   rationale?: string | null;
+  /**
+   * Whether `level` was actually judged by the model or filled from the
+   * learner's requested level because the model omitted it. The UI must not
+   * present a fallback as an AI assessment.
+   */
+  levelSource?: 'ai' | 'requested';
 }
 
 export interface AiParseResult {

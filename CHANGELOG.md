@@ -4,6 +4,99 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-26 — Phiên 14: lịch ôn tùy chỉnh, reset an toàn, Groq tự xếp level, album + thông báo ngẫu nhiên
+
+### Bối cảnh
+
+- Người dùng cần tự quy định khoảng thời gian cho bốn mức tự đánh giá, cần reset tiến độ học mà
+  không mất từ/level/chủ đề/album và vẫn nhận được xu khi học lại (có chống lạm dụng).
+- Groq đã trả `level` cho từng mục nhưng schema/validator cũ có thể để level người dùng chọn ghi đè,
+  nên chọn B2 cho cả danh sách làm từ B1 thành B2.
+- Album từ vựng và thông báo ngẫu nhiên trước đây chưa có; nhắc nhở chỉ là một thông báo cố định.
+
+### Đã thay đổi
+
+- **Schema v5** (`src/db/schema.ts`, `src/db/database.ts`):
+  - `words` thêm `correct_count`, `wrong_count`, `hint_count`, `last_correct_at`, `last_wrong_at`,
+    `memory_rating`; migration backfill từ bảng `reviews` cũ, sau đó mỗi lượt trả lời cập nhật trong
+    cùng transaction với `recordReview` (một lượt chỉ cộng một lần).
+  - Bảng `album_words` khoá chính `word_id` + FK `ON DELETE CASCADE` — **không** sao chép từ, xoá từ
+    khỏi ngân hàng tự xoá liên kết và không để thông báo cũ trỏ vào từ đã mất.
+  - `coin_ledger` thêm `cycle_id`; index thưởng đổi thành `(term_key, cycle_id)` để một chu kỳ học mới
+    thưởng lại được một lần, còn xoá/thêm lại trong cùng chu kỳ vẫn không thưởng.
+  - Cài đặt lịch ôn, âm thanh và thông báo album nằm trong JSON `app_settings` (`reviewIntervals`,
+    `sfxEnabled`, `sfxVolume`, `albumNotifyEnabled`, `albumIntervalMinutes`, `albumStartHour`,
+    `albumEndHour`, `studyCycleId`) nên không cần bảng cài đặt mới.
+  - Migration idempotent: `ALTER TABLE`/`CREATE TABLE IF NOT EXISTS`/`CREATE INDEX IF NOT EXISTS`,
+    backfill dữ liệu cũ, không đụng migration 1–4.
+- **Lịch ôn tùy chỉnh** (`src/srs/fsrs.ts`, `src/db/settings.ts`, `src/types.ts`):
+  `DEFAULT_REVIEW_INTERVALS` = 5 phút / 30 phút / 12 giờ / 24 giờ cho Again/Hard/Good/Easy;
+  `sanitizeReviewIntervals` validate 1 phút – 7 ngày (1–10.080 phút, `MIN/MAX_REVIEW_INTERVAL`).
+  `scheduleForRating` dùng đúng khoảng đã cấu hình cho `dueAt`; màn hình Cài đặt có bốn ô số + đơn vị
+  (phút/giờ/ngày) và nút **Khôi phục mặc định**. Đổi cài đặt **không** viết lại `due_at` đã hẹn.
+- **Reset dữ liệu học tập** (`src/db/reset.ts` mới, `SettingsScreen`): đặt `learning_state='new'`,
+  `due_at=NULL`, stability/difficulty/reps/lapses/last_reviewed_at về 0, xoá `reviews` và
+  `word_study_history`, tạo `studyCycleId` mới trong cùng luồng. Giữ nguyên từ, nghĩa, ví dụ, chủ đề,
+  level, album, số dư xu, streak, lịch sử giao dịch. Hộp thoại xác nhận nêu rõ phạm vi. Reset tiền xu
+  vẫn là thao tác riêng.
+- **Xu theo chu kỳ** (`src/coins/ledger.ts`): idempotency bằng `event_id` **và** `source_id`; thưởng
+  `reward` chỉ một lần cho `(term_key, cycle_id)`; gặp lại trả lời sai vẫn bị trừ. Ghi nhận lượt trả lời
+  dùng cùng `event_id` với ledger nên bấm đúp/retry không nhân đôi. Reset tiến độ không xoá ledger cũ.
+- **Groq xếp level từng mục** (`src/ai/schema.ts`, `src/ai/prompt.ts`, `src/ai/groq.ts`,
+  `src/wordlist/types.ts`, `src/screens/useWordListImport.ts`): level AI trả luôn thắng; không có chỗ nào
+  ghi đè nó bằng level người dùng chọn. `levelSource='ai'` khi AI trả level; nếu AI bỏ trống thì thử
+  kho từ kèm máy, cuối cùng mới dùng level đã chọn với nguồn `settings` + cảnh báo (không giả làm
+  đánh giá của AI). Prompt nêu rõ phải xếp CEFR theo nghĩa/ngữ cảnh, cụm từ là một đơn vị.
+  Test: chọn B2, Groq trả B1 → lưu B1; cụm không bị tách; level lọc/thưởng dùng level thật.
+- **Ưu tiên từ** (`src/study/priority.ts` mới, `src/db/words.ts` `getWeakWords`, `StudyScreen`):
+  điểm ưu tiên từ `overdue`, `wrong_count`, `last_rating`, `reps`, `hint_count`; chọn không lặp liên
+  tiếp và vẫn phủ từ đến hạn. Mục **Từ tôi hay quên** là truy vấn động, không lưu danh sách riêng.
+- **Âm thanh hiệu ứng** (`src/sound/sfx.ts` mới, `assets/sfx/*.wav`, `scripts/generate-sfx.mjs`,
+  `SettingsScreen`): 6 file WAV ngắn tự tạo (đúng/sai/xu/hoàn thành/streak/bắn trúng), phát bằng
+  `expo-audio` với một player tái sử dụng cho mỗi loại. Throttle 70 ms giữa hai âm bất kỳ và 120 ms cho
+  cùng một âm, nên không chồng tiếng. Tắt hiệu ứng không tắt giọng đọc; âm lượng riêng 0–100%.
+- **Album từ vựng** (`src/db/album.ts` mới, `src/screens/AlbumScreen.tsx` mới,
+  `src/screens/WordsScreen.tsx`, `src/db/words.ts`):
+  - Chế độ **Chọn** trong ngân hàng từ: checkbox, chọn tất cả kết quả đang lọc, bỏ chọn từng từ,
+    đếm số đã chọn, **Thêm vào Album** / **Bỏ khỏi Album** hàng loạt, thông báo "Đã thêm N từ".
+  - Lọc theo level (`actualLevel`), chủ đề, trạng thái học, có/không trong album; sắp xếp A–Z, Z–A,
+    level tăng/giảm, mới nhất, cũ nhất, tỷ lệ sai/đúng, từ đến hạn.
+  - Màn hình Album riêng: tìm kiếm, lọc level/chủ đề, sắp xếp, chọn nhiều, xoá khỏi album, mở chi
+    tiết, phát âm, bật/tắt thông báo, chu kỳ và khung giờ.
+  - Thêm/xoá album chỉ đổi liên kết `album_words`; không tạo bản sao từ, không đổi trạng thái học,
+    không đụng coin ledger.
+- **Thông báo ngẫu nhiên** (`src/notifications/album.ts` mới, `App.tsx`):
+  - Chọn từ bằng **túi từ có trọng số** trên toàn album (mặc định), ưu tiên từ chưa thông báo gần đây;
+    lịch sử gần đây lưu trong cài đặt; album 1 từ vẫn thông báo lại được; từ mới thêm có cơ hội ngay.
+  - Lên lịch tối đa 48 thông báo cục bộ mỗi lần (dưới giới hạn 64 pending của iOS), chia theo chu kỳ
+    và khung giờ; huỷ toàn bộ lịch album cũ trước khi tạo mới; tắt là dừng tạo lịch.
+  - Nội dung: từ/cụm từ + nghĩa tiếng Việt + câu ví dụ ngắn; không gọi Groq khi gửi.
+  - Nhấn thông báo mở thẳng chi tiết từ. Thông báo **không** đánh dấu đã học, không tăng streak,
+    không trao xu, không đổi `due_at`.
+- **Chuẩn hoá chủ đề** (`src/db/words.ts`): trim, gộp khoảng trắng, so sánh không phân biệt hoa/thường
+  trước khi tạo; dùng lại ID cũ cho thêm từ, nhập danh sách, Groq, sửa từ và album. Migration gộp chủ đề
+  trùng an toàn, giữ liên kết từ.
+
+### Kiểm thử
+
+- Thêm `src/study/__tests__/priority.test.ts`, `src/notifications/__tests__/selection.test.ts`,
+  `src/db/__tests__/reset.test.ts`, `src/sound/__tests__/sfx.test.ts`; mở rộng test settings, FSRS,
+  schema AI, ledger, words.
+- `npx tsc --noEmit` exit 0; `npx jest --runInBand` **284/284 pass trong 30 suite**;
+  `node scripts/check-migrations.mjs` OK (schema 5 trên SQLite thật); `npm run checkpoint:validate` OK.
+  (Xem `CHECKPOINT.json → test_results` và `tools/verify-report.txt` cho output thật.)
+
+### Chưa làm / giới hạn
+
+- Toàn bộ tính năng phiên này **chưa chạy trên iPhone** (Windows không prebuild iOS). Cần build lại
+  qua GitHub Actions/EAS rồi kiểm theo danh sách trong `NEXT_SESSION.md`.
+- iOS không bảo đảm thông báo cục bộ đúng từng phút; app lên lịch trước và iOS có thể trễ/gộp.
+- Hiệu ứng âm thanh dùng file WAV qua `expo-audio`; trên máy thật cần kiểm tra không làm nhỏ nhạc/TTS.
+- Chưa có số thông báo tối đa/ngày, giờ yên tĩnh riêng, chọn ngày trong tuần hay bộ lọc nâng cao cho
+  nguồn thông báo (mục 7.4 là tùy chọn); hiện chỉ có chu kỳ + khung giờ bắt đầu/kết thúc.
+- Chưa có màn hình quản lý nhiều album (hiện một album) và chưa có mục tiêu học thông minh (mục 10)
+  — để phiên sau, tránh làm loãng phạm vi.
+
 ## 2026-10-25 — Phiên 13: bỏ khoá thêm từ, mô tả song ngữ Anh–Việt
 
 ### Bối cảnh

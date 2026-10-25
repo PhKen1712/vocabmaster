@@ -93,6 +93,23 @@ describe('createWord while reviews are due', () => {
     expect(saved.lastReviewedAt).toBeNull();
   });
 
+  it('reuses the existing spelling of a topic instead of creating a lookalike', async () => {
+    const getFirstAsync = jest.fn(async (sql: string) => {
+      if (sql.includes('SELECT topic FROM words')) return { topic: 'Environment' };
+      return null;
+    });
+    const runAsync = jest.fn(async () => undefined);
+    const db = { getFirstAsync, runAsync } as unknown as SQLiteDatabase;
+
+    const saved = await createWord(db, {
+      term: 'sustainability',
+      meaningVi: 'sự bền vững',
+      topic: '  environment  ',
+      track: 'general',
+    });
+    expect(saved.topic).toBe('Environment');
+  });
+
   it('refuses a duplicate without touching the studied record', async () => {
     const existing = wordRow();
     const { db, runAsync } = fakeDb({ existing });

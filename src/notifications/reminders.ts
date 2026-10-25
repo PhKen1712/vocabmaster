@@ -35,8 +35,24 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return next.granted;
 }
 
+function isReminder(request: Notifications.NotificationRequest): boolean {
+  const data = request.content.data as Record<string, unknown> | null;
+  if (data?.kind === 'reminder') return true;
+  // Legacy weekly reminders had no `kind`.
+  return data?.kind === undefined && data?.screen === 'today';
+}
+
+/**
+ * Cancel only the weekly study reminders. Album notifications have their own
+ * queue and must survive changing the reminder time.
+ */
 export async function cancelReminders(): Promise<void> {
-  await Notifications.cancelAllScheduledNotificationsAsync();
+  const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+  await Promise.all(
+    scheduled
+      .filter(isReminder)
+      .map((request) => Notifications.cancelScheduledNotificationAsync(request.identifier)),
+  );
 }
 
 /**
@@ -65,7 +81,7 @@ export async function scheduleReminders(
         content: {
           title: 'Đến giờ học từ vựng',
           body,
-          data: { screen: 'today' },
+          data: { kind: 'reminder', screen: 'today' },
           sound: false,
         },
         trigger: {
@@ -85,5 +101,5 @@ export async function scheduleReminders(
 
 export async function getScheduledReminderCount(): Promise<number> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-  return scheduled.length;
+  return scheduled.filter(isReminder).length;
 }

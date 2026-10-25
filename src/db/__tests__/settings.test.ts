@@ -1,8 +1,14 @@
-import { DEFAULT_AI_MODEL, DEFAULT_GROQ_MODEL, DEFAULT_SETTINGS } from '../../types';
+import {
+  DEFAULT_AI_MODEL,
+  DEFAULT_GROQ_MODEL,
+  DEFAULT_REVIEW_INTERVALS,
+  DEFAULT_SETTINGS,
+} from '../../types';
 import {
   sanitizeAiModel,
   sanitizeAiProvider,
   sanitizeGroqModel,
+  sanitizeReviewIntervals,
   sanitizeSettings,
 } from '../settings';
 
@@ -62,6 +68,38 @@ describe('sanitizeSettings', () => {
     const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, aiProvider: undefined, groqModel: undefined });
     expect(settings.aiProvider).toBe('groq');
     expect(settings.groqModel).toBe(DEFAULT_GROQ_MODEL);
+  });
+
+  it('gives a row saved before custom intervals the documented defaults', () => {
+    const settings = sanitizeSettings({ ...DEFAULT_SETTINGS, reviewIntervals: undefined });
+    expect(settings.reviewIntervals).toEqual(DEFAULT_REVIEW_INTERVALS);
+    expect(settings.sfxEnabled).toBe(true);
+    expect(settings.studyCycleId).toBe('initial');
+  });
+
+  it('clamps custom intervals to minutes and never allows zero', () => {
+    const settings = sanitizeSettings({
+      ...DEFAULT_SETTINGS,
+      reviewIntervals: { again: 0, hard: -5, good: 5_000, easy: 10 },
+    });
+    expect(settings.reviewIntervals).toEqual({ again: 1, hard: 1, good: 5_000, easy: 10 });
+  });
+
+  it('keeps an explicit sound-effects preference and clamps its volume', () => {
+    const off = sanitizeSettings({ ...DEFAULT_SETTINGS, sfxEnabled: false, sfxVolume: 4 });
+    expect(off.sfxEnabled).toBe(false);
+    expect(off.sfxVolume).toBe(1);
+  });
+});
+
+describe('sanitizeReviewIntervals', () => {
+  it('falls back per field instead of dropping the whole object', () => {
+    expect(sanitizeReviewIntervals({ again: 7 })).toEqual({
+      again: 7,
+      hard: DEFAULT_REVIEW_INTERVALS.hard,
+      good: DEFAULT_REVIEW_INTERVALS.good,
+      easy: DEFAULT_REVIEW_INTERVALS.easy,
+    });
   });
 });
 

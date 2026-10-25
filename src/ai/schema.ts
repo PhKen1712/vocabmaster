@@ -215,9 +215,14 @@ export function parseSuggestions(raw: unknown, request: AiRequest): AiParseResul
 
     const aiLevel = asLevel(record.level);
     const level = aiLevel ?? request.level;
+    if (aiLevel === null) {
+      warnings.push(
+        `"${term}": AI không gắn cấp độ nên tạm dùng ${request.level} — bạn có thể sửa trong biểu mẫu.`,
+      );
+    }
     if (!request.lookupTerm && aiLevel !== null && Math.abs(aiLevel - request.level) >= 2) {
       warnings.push(
-        `"${term}": Gemini gắn cấp độ ${aiLevel} nhưng bạn chọn ${request.level} — có thể khó hơn mong đợi.`,
+        `"${term}": AI đánh giá cấp độ ${aiLevel} (bạn chọn ${request.level}) — vẫn lưu theo đánh giá thực tế.`,
       );
     }
 
@@ -247,6 +252,7 @@ export function parseSuggestions(raw: unknown, request: AiRequest): AiParseResul
       topic,
       track,
       level,
+      levelSource: aiLevel !== null ? 'ai' : 'requested',
       source: 'ai',
       aiGenerated: true,
       confirmed: false,

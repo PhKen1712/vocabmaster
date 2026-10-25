@@ -27,9 +27,11 @@ import { gradeAnswer, type GradeResult } from '../quiz/grading';
 import { describeInterval, schedule, type ScheduleResult } from '../srs/fsrs';
 import { speak } from '../speech/tts';
 import { useSpeechCheck } from '../speech/useSpeechCheck';
+import { playSfx } from '../sound/sfx';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
+import { sortWordsByPriority } from '../study/priority';
 import {
   LEVEL_SHORT,
   TRACK_LABELS,
@@ -48,7 +50,7 @@ const RATING_LABELS: Record<ReviewRating, string> = {
 };
 
 export function SessionScreen({ config }: { config: SessionConfig }) {
-  const { db, settings, notifyDataChanged } = useApp();
+  const { db, settings, stats: dailyStats, notifyDataChanged } = useApp();
   const { pop } = useNavigation();
   const { colors } = useTheme();
 
@@ -79,9 +81,15 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
   const eventIdRef = useRef<string | null>(null);
   const savingRef = useRef(false);
   const speech = useSpeechCheck();
+  /** The streak sound must fire once, on the answer that completes the goal. */
+  const goalMetRef = useRef(Boolean(dailyStats?.goalMetToday));
 
   const question = questions[index] ?? null;
   const accent = settings.ttsAccent;
+
+  useEffect(() => {
+    if (phase === 'done') playSfx('lesson');
+  }, [phase]);
 
   const load = useCallback(async () => {
     if (!db) return;
@@ -122,12 +130,16 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
           : [];
       }
 
+      // Due first, then the words with the weakest history. Passing
+      // `preserveOrder` keeps the generator from shuffling that ranking away.
+      candidates = sortWordsByPriority(candidates);
       const built = generateQuestions(
         candidates,
         learnedPool.length >= 2 ? learnedPool : pool.length > 0 ? pool : candidates,
         {
           limit: Math.min(20, candidates.length),
           kinds: config.kinds,
+          preserveOrder: true,
         },
       );
       setQuestions(built);
@@ -192,9 +204,16 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
     };
     return ([1, 2, 3, 4] as ReviewRating[]).map((rating) => ({
       rating,
-      result: schedule(card, rating, new Date(), settings.targetRetention),
+      result: schedule(
+        card,
+        rating,
+        new Date(),
+        settings.targetRetention,
+        undefined,
+        settings.reviewIntervals,
+      ),
     }));
-  }, [question, settings.targetRetention]);
+  }, [question, settings.targetRetention, settings.reviewIntervals]);
 
   const finishWithGrade = useCallback(
     (result: GradeResult) => {
@@ -220,6 +239,7 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
           ? Haptics.NotificationFeedbackType.Success
           : Haptics.NotificationFeedbackType.Warning,
       ).catch(() => undefined);
+      playSfx(result.correct ? 'correct' : 'wrong');
     },
     [index, questions],
   );
@@ -263,6 +283,8 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
         schedule: preview.result,
         dailyGoal: settings.dailyGoal,
         eventId: eventIdRef.current,
+        cycleId: settings.studyCycleId,
+        usedHint: question.kind === 'recall' && revealed,
       });
       if (outcome.duplicate) {
         // Already saved by an earlier tap; advance without moving coins twice.
@@ -273,6 +295,11 @@ export function SessionScreen({ config }: { config: SessionConfig }) {
           reason: outcome.coinReason,
         });
         setSessionCoins((value) => value + outcome.coinChange);
+        if (outcome.coinChange > 0) setTimeout(() => playSfx('coin'), 140);
+        if (outcome.goalMet && !goalMetRef.current) {
+          goalMetRef.current = true;
+          setTimeout(() => playSfx('streak'), 260);
+        }
       }
       await notifyDataChanged();
 

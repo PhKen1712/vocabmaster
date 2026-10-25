@@ -89,6 +89,25 @@ describe('parseSuggestions', () => {
     expect(result.warnings.some((item) => item.includes('cấp độ'))).toBe(true);
   });
 
+  it('keeps the per-item level Groq judged even when it is below the requested level', () => {
+    const result = parseSuggestions(
+      { words: [word({ term: 'abandon', level: 3, meaningVi: 'từ bỏ' })] },
+      request({ level: 4 }),
+    );
+    expect(result.suggestions[0]?.level).toBe(3);
+    expect(result.suggestions[0]?.levelSource).toBe('ai');
+  });
+
+  it('marks a missing level as a requested fallback, not an AI judgement', () => {
+    const result = parseSuggestions(
+      { words: [word({ term: 'abandon', level: undefined, meaningVi: 'từ bỏ' })] },
+      request({ level: 4 }),
+    );
+    expect(result.suggestions[0]?.level).toBe(4);
+    expect(result.suggestions[0]?.levelSource).toBe('requested');
+    expect(result.warnings.some((item) => item.includes('không gắn cấp độ'))).toBe(true);
+  });
+
   it('flags an untranslated meaning', () => {
     const result = parseSuggestions({ words: [word({ meaningVi: 'borrow' })] }, request());
     expect(result.warnings.some((item) => item.includes('chưa được dịch'))).toBe(true);

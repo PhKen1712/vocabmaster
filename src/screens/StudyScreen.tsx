@@ -1,13 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { providerLabel } from '../ai/provider';
-import { getLevelBreakdown, getTopics, listWords } from '../db/words';
+import { getLevelBreakdown, getTopics, getWeakWords, listWords } from '../db/words';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
 import { useTheme } from '../theme/ThemeProvider';
 import { spacing } from '../theme/tokens';
-import { LEVEL_LABELS, LEVEL_SHORT, type Level, type QuizKind, type Track } from '../types';
+import { LEVEL_LABELS, LEVEL_SHORT, type Level, type QuizKind, type Track, type Word } from '../types';
 import { AppText, Card, Chip, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 
@@ -35,6 +35,7 @@ export function StudyScreen() {
   const [topics, setTopics] = useState<{ topic: string; count: number }[]>([]);
   const [dueCount, setDueCount] = useState(0);
   const [freshCount, setFreshCount] = useState(0);
+  const [weak, setWeak] = useState<{ word: Word; wrongCount: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [topic, setTopic] = useState<string | null>(null);
 
@@ -44,13 +45,15 @@ export function StudyScreen() {
     if (!db) return;
     setLoading(true);
     try {
-      const [breakdown, topicRows, fresh] = await Promise.all([
+      const [breakdown, topicRows, fresh, weakRows] = await Promise.all([
         getLevelBreakdown(db, track),
         getTopics(db, track),
         listWords(db, { track, limit: 500 }),
+        getWeakWords(db, track, 5),
       ]);
       setLevels(breakdown);
       setTopics(topicRows);
+      setWeak(weakRows);
       setFreshCount(fresh.filter((word) => word.reps === 0).length);
       const due = await db.getFirstAsync<{ count: number }>(
         'SELECT COUNT(*) AS count FROM words WHERE track = ? AND reps > 0 AND due_at <= ?;',
@@ -225,6 +228,42 @@ export function StudyScreen() {
         </View>
       </Card>
 
+      {weak.length > 0 ? (
+        <Card soft style={{ marginBottom: spacing.md }}>
+          <AppText variant="micro" color={colors.danger}>
+            TỪ TÔI HAY QUÊN
+          </AppText>
+          <AppText variant="caption" color={colors.textMuted} style={{ marginTop: 2 }}>
+            Tổng hợp từ dữ liệu thật: số lần sai, số lần quên và mức ghi nhớ bạn tự đánh giá.
+          </AppText>
+          {weak.slice(0, 3).map(({ word, wrongCount }) => (
+            <Pressable
+              key={word.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Mở từ ${word.term}`}
+              onPress={() => push({ name: 'word', id: word.id })}
+              style={[styles.weakRow, { borderTopColor: colors.border }]}
+            >
+              <View style={{ flex: 1 }}>
+                <AppText variant="bodyStrong">{word.term}</AppText>
+                <AppText variant="caption" color={colors.textMuted} numberOfLines={1}>
+                  {word.meaningVi}
+                </AppText>
+              </View>
+              <AppText variant="micro" color={colors.danger}>
+                sai {wrongCount} lần
+              </AppText>
+            </Pressable>
+          ))}
+          <PrimaryButton
+            label={`Luyện ${weak.length} từ hay quên`}
+            variant="secondary"
+            onPress={() => push({ name: 'session', config: { mode: 'weak', track } })}
+            style={{ marginTop: spacing.md }}
+          />
+        </Card>
+      ) : null}
+
       <View style={styles.twoColumn}>
         <Card
           style={{ flex: 1 }}
@@ -264,11 +303,11 @@ export function StudyScreen() {
         <Card
           style={{ flex: 1 }}
           onPress={() => push({ name: 'session', config: { mode: 'weak', track } })}
-          accessibilityLabel="Luyện từ hay sai"
+          accessibilityLabel="Luyện từ tôi hay quên"
         >
           <AppText style={{ fontSize: 22 }}>🎯</AppText>
           <AppText variant="bodyStrong" style={{ marginTop: spacing.sm }}>
-            Từ hay sai
+            Từ tôi hay quên
           </AppText>
           <AppText variant="caption" color={colors.textMuted}>
             Ưu tiên từ bạn quên
@@ -288,6 +327,20 @@ export function StudyScreen() {
           </AppText>
         </Card>
       </View>
+
+      <Card onPress={() => push({ name: 'album' })} style={{ marginTop: spacing.md }}>
+        <View style={styles.sessionRow}>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodyStrong">Album từ vựng</AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              Tự chọn từ yêu thích, nhận thông báo ngẫu nhiên và luyện lại bất cứ lúc nào.
+            </AppText>
+          </View>
+          <AppText variant="headline" color={colors.primary}>
+            →
+          </AppText>
+        </View>
+      </Card>
 
       <SectionHeader title="Luyện từng kỹ năng" />
       <AppText variant="caption" color={colors.textMuted} style={{ marginBottom: spacing.md }}>
@@ -396,6 +449,14 @@ const styles = StyleSheet.create({
   skillGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
   skillCard: { flexBasis: '46%', flexGrow: 1 },
   levelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  weakRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: spacing.sm,
+  },
   levelBadge: {
     width: 44,
     height: 44,

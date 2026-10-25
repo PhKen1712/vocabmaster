@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import * as Notifications from 'expo-notifications';
 
 import { AppText, Banner, Screen } from './src/components/ui';
 import { ScreenTransition } from './src/components/ScreenTransition';
@@ -19,6 +20,7 @@ import { OnboardingScreen } from './src/screens/OnboardingScreen';
 import { TodayScreen } from './src/screens/TodayScreen';
 import { StudyScreen } from './src/screens/StudyScreen';
 import { WordsScreen } from './src/screens/WordsScreen';
+import { AlbumScreen } from './src/screens/AlbumScreen';
 import { StatsScreen } from './src/screens/StatsScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
 import { WordDetailScreen } from './src/screens/WordDetailScreen';
@@ -78,6 +80,32 @@ function BootError({ message }: { message: string }) {
   );
 }
 
+/** Open the word card behind an album notification (tap → detail). */
+function NotificationRouter() {
+  const { push } = useNavigation();
+  const handled = useRef(new Set<string>());
+
+  useEffect(() => {
+    const open = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const identifier = response.notification.request.identifier;
+      if (handled.current.has(identifier)) return;
+      const data = response.notification.request.content.data as Record<string, unknown> | null;
+      if (data?.kind !== 'album' || data?.screen !== 'word') return;
+      const id = data?.id;
+      if (typeof id !== 'string' || !id) return;
+      handled.current.add(identifier);
+      push({ name: 'word', id });
+    };
+
+    void Notifications.getLastNotificationResponseAsync().then(open).catch(() => undefined);
+    const subscription = Notifications.addNotificationResponseReceivedListener(open);
+    return () => subscription.remove();
+  }, [push]);
+
+  return null;
+}
+
 function RootContent() {
   const { ready, bootError, settings } = useApp();
   const { current, goToTab, stack } = useNavigation();
@@ -119,6 +147,9 @@ function RootContent() {
       break;
     case 'words':
       content = <WordsScreen />;
+      break;
+    case 'album':
+      content = <AlbumScreen />;
       break;
     case 'stats':
       content = <StatsScreen />;
@@ -179,6 +210,7 @@ function ThemedApp() {
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <NavigationProvider>
+        <NotificationRouter />
         <RootContent />
       </NavigationProvider>
     </>

@@ -11,6 +11,8 @@ import { AppState, type AppStateStatus } from 'react-native';
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { pruneAiCache } from '../ai/cache';
+import { scheduleAlbumNotifications, type AlbumScheduleResult } from '../notifications/album';
+import { configureSfx } from '../sound/sfx';
 import { getDailyStats } from '../db/activity';
 import { getDatabase, seedDatabase } from '../db/database';
 import { loadSettings, saveSettings } from '../db/settings';
@@ -29,6 +31,8 @@ interface AppContextValue {
   refresh: () => Promise<void>;
   updateSettings: (patch: Partial<Settings>) => Promise<Settings>;
   notifyDataChanged: () => Promise<void>;
+  /** Rebuild the album notification queue after album membership changes. */
+  rescheduleAlbumNotifications: () => Promise<AlbumScheduleResult | null>;
   widgetStatus: string | null;
 }
 
@@ -60,6 +64,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (cancelled) return;
         setDb(database);
         setSettings(loaded);
+        configureSfx({ enabled: loaded.sfxEnabled, volume: loaded.sfxVolume });
+        // Rebuild the bounded album queue on launch; disabled means the old
+        // queue is cancelled, never left running.
+        void scheduleAlbumNotifications(database, loaded).catch(() => undefined);
         const initialStats = await getDailyStats(database, loaded.track, loaded);
         if (cancelled) return;
         setStats(initialStats);
@@ -118,6 +126,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const saved = await saveSettings(database, merged);
         setSettings(saved);
         settingsRef.current = saved;
+        configureSfx({ enabled: saved.sfxEnabled, volume: saved.sfxVolume });
+        if (
+          'albumNotifyEnabled' in patch ||
+          'albumIntervalMinutes' in patch ||
+          'albumStartHour' in patch ||
+          'albumEndHour' in patch
+        ) {
+          void scheduleAlbumNotifications(database, saved).catch(() => undefined);
+        }
         void syncWidgets(database, saved);
         const next = await getDailyStats(database, saved.track, saved);
         setStats(next);
@@ -139,6 +156,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.remove();
   }, [db, refresh]);
 
+  const rescheduleAlbumNotifications = useCallback(async () => {
+    if (!db) return null;
+    return scheduleAlbumNotifications(db, settingsRef.current);
+  }, [db]);
+
   const value = useMemo<AppContextValue>(
     () => ({
       db,
@@ -150,6 +172,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refresh,
       updateSettings,
       notifyDataChanged,
+      rescheduleAlbumNotifications,
       widgetStatus,
     }),
     [
@@ -162,6 +185,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       refresh,
       updateSettings,
       notifyDataChanged,
+      rescheduleAlbumNotifications,
       widgetStatus,
     ],
   );

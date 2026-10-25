@@ -15,7 +15,7 @@ import { radius, spacing } from '../theme/tokens';
 import { LEVEL_LABELS, TRACK_LABELS, type ReviewLog, type Word } from '../types';
 
 export function WordDetailScreen({ id }: { id: string }) {
-  const { db, settings, notifyDataChanged, dataVersion } = useApp();
+  const { db, settings, notifyDataChanged, rescheduleAlbumNotifications, dataVersion } = useApp();
   const { push, pop } = useNavigation();
   const { colors } = useTheme();
   const [word, setWord] = useState<Word | null>(null);
@@ -78,6 +78,9 @@ export function WordDetailScreen({ id }: { id: string }) {
             if (!db) return;
             await deleteWord(db, word.id);
             await notifyDataChanged();
+            // Remove the deleted word from the pending album queue as well; a
+            // notification must never open a card that no longer exists.
+            await rescheduleAlbumNotifications();
             pop();
           },
         },

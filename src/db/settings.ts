@@ -5,10 +5,14 @@ import { DEFAULT_MUSIC_TRACK_ID, isMusicTrackId } from '../music/catalog';
 import {
   DEFAULT_AI_MODEL,
   DEFAULT_GROQ_MODEL,
+  DEFAULT_REVIEW_INTERVALS,
   DEFAULT_SETTINGS,
   LEVELS,
+  MAX_REVIEW_INTERVAL,
+  MIN_REVIEW_INTERVAL,
   RETIRED_AI_MODELS,
   type AiProvider,
+  type ReviewIntervals,
   type Settings,
   type Track,
 } from '../types';
@@ -46,6 +50,28 @@ function asTrack(value: unknown, fallback: Track): Track {
 function asNumber(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
+}
+
+function asInterval(value: unknown, fallback: number): number {
+  return Math.round(asNumber(value, fallback, MIN_REVIEW_INTERVAL, MAX_REVIEW_INTERVAL));
+}
+
+/** Missing or corrupted steps fall back per rating, never to "no review". */
+export function sanitizeReviewIntervals(raw: unknown): ReviewIntervals {
+  const value =
+    raw && typeof raw === 'object' ? (raw as Partial<Record<keyof ReviewIntervals, unknown>>) : {};
+  return {
+    again: asInterval(value.again, DEFAULT_REVIEW_INTERVALS.again),
+    hard: asInterval(value.hard, DEFAULT_REVIEW_INTERVALS.hard),
+    good: asInterval(value.good, DEFAULT_REVIEW_INTERVALS.good),
+    easy: asInterval(value.easy, DEFAULT_REVIEW_INTERVALS.easy),
+  };
+}
+
+function sanitizeCycleId(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_SETTINGS.studyCycleId;
+  const clean = value.trim().slice(0, 80);
+  return clean || DEFAULT_SETTINGS.studyCycleId;
 }
 
 /** Merge stored values with defaults and clamp anything out of range. */
@@ -97,6 +123,18 @@ export function sanitizeSettings(raw: unknown): Settings {
     bestAsteroid: Math.round(asNumber(value.bestAsteroid, 0, 0, 1_000_000)),
     bestRush: Math.round(asNumber(value.bestRush, 0, 0, 1_000_000)),
     bestMemory: Math.round(asNumber(value.bestMemory, 0, 0, 1_000_000)),
+    reviewIntervals: sanitizeReviewIntervals(value.reviewIntervals),
+    sfxEnabled: value.sfxEnabled === undefined ? DEFAULT_SETTINGS.sfxEnabled : Boolean(value.sfxEnabled),
+    sfxVolume: asNumber(value.sfxVolume, DEFAULT_SETTINGS.sfxVolume, 0, 1),
+    albumNotifyEnabled: Boolean(value.albumNotifyEnabled),
+    albumIntervalMinutes: Math.round(
+      asNumber(value.albumIntervalMinutes, DEFAULT_SETTINGS.albumIntervalMinutes, 5, 24 * 60),
+    ),
+    albumStartHour: Math.round(
+      asNumber(value.albumStartHour, DEFAULT_SETTINGS.albumStartHour, 0, 23),
+    ),
+    albumEndHour: Math.round(asNumber(value.albumEndHour, DEFAULT_SETTINGS.albumEndHour, 0, 23)),
+    studyCycleId: sanitizeCycleId(value.studyCycleId),
   };
 }
 

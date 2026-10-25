@@ -29,6 +29,10 @@ export interface RecordReviewInput {
    * id, so the review and the coin movement can never be applied twice.
    */
   eventId?: string;
+  /** Study cycle that owns this answer; a reset starts a new one. */
+  cycleId?: string;
+  /** True when the learner revealed a hint before answering. */
+  usedHint?: boolean;
   /** Injected for deterministic tests. */
   now?: Date;
 }
@@ -58,6 +62,7 @@ export async function recordReview(
   const now = input.now ?? new Date();
   const timestamp = now.toISOString();
   const eventId = input.eventId?.trim() || newId();
+  const cycleId = input.cycleId?.trim() || 'initial';
 
   // Idempotency at the data layer: the same answer can be submitted again after
   // a double tap or a retry without creating a second review or coin movement.
@@ -120,7 +125,13 @@ export async function recordReview(
     await db.runAsync(
       `UPDATE words SET
         learning_state = ?, due_at = ?, stability = ?, difficulty = ?,
-        reps = ?, lapses = ?, last_reviewed_at = ?, updated_at = ?
+        reps = ?, lapses = ?, last_reviewed_at = ?, updated_at = ?,
+        correct_count = correct_count + ?,
+        wrong_count = wrong_count + ?,
+        hint_count = hint_count + ?,
+        last_correct_at = CASE WHEN ? = 1 THEN ? ELSE last_correct_at END,
+        last_wrong_at = CASE WHEN ? = 1 THEN ? ELSE last_wrong_at END,
+        memory_rating = ?
        WHERE id = ?;`,
       [
         input.schedule.learningState,
@@ -131,6 +142,14 @@ export async function recordReview(
         input.schedule.lapses,
         input.schedule.lastReviewedAt,
         timestamp,
+        input.correct ? 1 : 0,
+        input.correct ? 0 : 1,
+        input.usedHint ? 1 : 0,
+        input.correct ? 1 : 0,
+        timestamp,
+        input.correct ? 0 : 1,
+        timestamp,
+        input.rating,
         input.word.id,
       ],
     );
@@ -167,7 +186,7 @@ export async function recordReview(
     // even if the word row was deleted and created again. Read it before the
     // update: the first *correct* answer is the only one that can pay, so a
     // word first seen wrong can still earn on its first valid completion.
-    const priorState = await getWordStudyState(db, input.word);
+    const priorState = await getWordStudyState(db, input.word, cycleId);
     const studiedBefore = await ensureWordStudied(db, input.word, input.correct, now);
 
     // Coins move inside the same transaction as the grade: a crash can never
@@ -191,6 +210,7 @@ export async function recordReview(
           validDays,
           log.id,
           now,
+          cycleId,
         );
         coinChange = outcome.amount;
         coinReason = outcome.alreadyRewarded
@@ -220,6 +240,12 @@ export async function recordReview(
     difficulty: input.schedule.difficulty,
     reps: input.schedule.reps,
     lapses: input.schedule.lapses,
+    correctCount: (input.word.correctCount ?? 0) + (input.correct ? 1 : 0),
+    wrongCount: (input.word.wrongCount ?? 0) + (input.correct ? 0 : 1),
+    hintCount: (input.word.hintCount ?? 0) + (input.usedHint ? 1 : 0),
+    lastCorrectAt: input.correct ? timestamp : (input.word.lastCorrectAt ?? null),
+    lastWrongAt: input.correct ? (input.word.lastWrongAt ?? null) : timestamp,
+    memoryRating: input.rating,
     lastReviewedAt: input.schedule.lastReviewedAt,
     updatedAt: timestamp,
   };

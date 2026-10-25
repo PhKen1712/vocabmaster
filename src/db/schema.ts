@@ -10,7 +10,7 @@ import type {
   WordSource,
 } from '../types';
 
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 /**
  * Forward-only migrations. Every entry runs exactly once, inside a transaction.
@@ -203,6 +203,58 @@ export const MIGRATIONS: { version: number; statements: string[] }[] = [
       `DROP TABLE IF EXISTS dictionary_cache;`,
     ],
   },
+  {
+    version: 5,
+    statements: [
+      // Learning history per word, so question order can favour the words this
+      // learner actually forgets instead of a random shuffle.
+      `ALTER TABLE words ADD COLUMN correct_count INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE words ADD COLUMN wrong_count INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE words ADD COLUMN hint_count INTEGER NOT NULL DEFAULT 0;`,
+      `ALTER TABLE words ADD COLUMN last_correct_at TEXT;`,
+      `ALTER TABLE words ADD COLUMN last_wrong_at TEXT;`,
+      `ALTER TABLE words ADD COLUMN memory_rating INTEGER;`,
+      `UPDATE words SET correct_count = (
+         SELECT COUNT(*) FROM reviews WHERE reviews.word_id = words.id AND reviews.correct = 1
+       );`,
+      `UPDATE words SET wrong_count = (
+         SELECT COUNT(*) FROM reviews WHERE reviews.word_id = words.id AND reviews.correct = 0
+       );`,
+      `UPDATE words SET last_correct_at = (
+         SELECT MAX(reviewed_at) FROM reviews WHERE reviews.word_id = words.id AND reviews.correct = 1
+       );`,
+      `UPDATE words SET last_wrong_at = (
+         SELECT MAX(reviewed_at) FROM reviews WHERE reviews.word_id = words.id AND reviews.correct = 0
+       );`,
+      // Album membership is a relation, never a copy: editing a word or its
+      // level in the bank is immediately visible in the album.
+      `CREATE TABLE IF NOT EXISTS album_words (
+        word_id TEXT PRIMARY KEY NOT NULL,
+        added_at TEXT NOT NULL,
+        last_notified_at TEXT,
+        notify_count INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (word_id) REFERENCES words (id) ON DELETE CASCADE
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_album_added ON album_words (added_at DESC);`,
+      // A study reset starts a new cycle. Rewards are unique per term *per
+      // cycle*, so learning the same word again after an explicit reset can pay
+      // once, while deleting/re-adding inside one cycle still cannot.
+      `ALTER TABLE coin_ledger ADD COLUMN cycle_id TEXT;`,
+      `UPDATE coin_ledger SET cycle_id = 'initial' WHERE cycle_id IS NULL;`,
+      `DROP INDEX IF EXISTS idx_coin_reward_term;`,
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_coin_reward_term_cycle
+        ON coin_ledger (term_key, cycle_id) WHERE kind = 'reward' AND term_key IS NOT NULL;`,
+      // Merge topics that differ only by case or repeated spaces, keeping the
+      // shortest existing spelling as the canonical one.
+      `UPDATE words SET topic = REPLACE(REPLACE(TRIM(topic), '  ', ' '), '  ', ' ')
+        WHERE topic IS NOT NULL;`,
+      `UPDATE words SET topic = (
+         SELECT w2.topic FROM words w2
+         WHERE w2.topic IS NOT NULL AND LOWER(w2.topic) = LOWER(words.topic)
+         ORDER BY LENGTH(w2.topic) ASC, w2.topic ASC LIMIT 1
+       ) WHERE topic IS NOT NULL AND TRIM(topic) <> '';`,
+    ],
+  },
 ];
 
 export interface WordRow {
@@ -236,6 +288,13 @@ export interface WordRow {
   difficulty: number;
   reps: number;
   lapses: number;
+  correct_count?: number;
+  wrong_count?: number;
+  hint_count?: number;
+  last_correct_at?: string | null;
+  last_wrong_at?: string | null;
+  memory_rating?: number | null;
+  in_album?: number;
   last_reviewed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -336,6 +395,16 @@ export function rowToWord(row: WordRow): Word {
     difficulty: row.difficulty,
     reps: row.reps,
     lapses: row.lapses,
+    correctCount: row.correct_count ?? 0,
+    wrongCount: row.wrong_count ?? 0,
+    hintCount: row.hint_count ?? 0,
+    lastCorrectAt: row.last_correct_at ?? null,
+    lastWrongAt: row.last_wrong_at ?? null,
+    memoryRating:
+      row.memory_rating === 1 || row.memory_rating === 2 || row.memory_rating === 3 || row.memory_rating === 4
+        ? (row.memory_rating as ReviewRating)
+        : null,
+    inAlbum: row.in_album === 1,
     lastReviewedAt: row.last_reviewed_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -400,6 +469,12 @@ export const WORD_COLUMNS = [
   'difficulty',
   'reps',
   'lapses',
+  'correct_count',
+  'wrong_count',
+  'hint_count',
+  'last_correct_at',
+  'last_wrong_at',
+  'memory_rating',
   'last_reviewed_at',
   'created_at',
   'updated_at',
@@ -437,6 +512,12 @@ export function wordInsertValues(word: Word): (string | number | null)[] {
     word.difficulty,
     word.reps,
     word.lapses,
+    word.correctCount ?? 0,
+    word.wrongCount ?? 0,
+    word.hintCount ?? 0,
+    word.lastCorrectAt ?? null,
+    word.lastWrongAt ?? null,
+    word.memoryRating ?? null,
     word.lastReviewedAt,
     word.createdAt,
     word.updatedAt,

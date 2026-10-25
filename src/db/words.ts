@@ -35,11 +35,23 @@ export interface WordQuery {
   state?: LearningState;
   search?: string;
   dueOnly?: boolean;
+  /** Only words saved in the Album, or only words that are not. */
+  albumOnly?: boolean;
+  notInAlbum?: boolean;
   /** Only unconfirmed AI drafts (normally never persisted, kept for safety). */
   source?: WordSource;
   limit?: number;
   offset?: number;
-  sort?: 'recent' | 'alpha' | 'due';
+  sort?:
+    | 'recent'
+    | 'oldest'
+    | 'alpha'
+    | 'alpha_desc'
+    | 'due'
+    | 'level_asc'
+    | 'level_desc'
+    | 'wrong'
+    | 'correct';
 }
 
 function buildWhere(query: WordQuery): { clause: string; params: (string | number)[] } {
@@ -78,6 +90,12 @@ function buildWhere(query: WordQuery): { clause: string; params: (string | numbe
     conditions.push('reps > 0 AND due_at IS NOT NULL AND due_at <= ?');
     params.push(nowIso());
   }
+  if (query.albumOnly) {
+    conditions.push('EXISTS (SELECT 1 FROM album_words a WHERE a.word_id = words.id)');
+  }
+  if (query.notInAlbum) {
+    conditions.push('NOT EXISTS (SELECT 1 FROM album_words a WHERE a.word_id = words.id)');
+  }
 
   return {
     clause: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '',
@@ -88,13 +106,49 @@ function buildWhere(query: WordQuery): { clause: string; params: (string | numbe
 function orderBy(sort: WordQuery['sort']): string {
   switch (sort) {
     case 'alpha':
-      return 'ORDER BY term COLLATE NOCASE ASC';
+      return 'ORDER BY words.term COLLATE NOCASE ASC';
+    case 'alpha_desc':
+      return 'ORDER BY words.term COLLATE NOCASE DESC';
+    case 'oldest':
+      return 'ORDER BY words.created_at ASC';
     case 'due':
-      return 'ORDER BY (due_at IS NULL) ASC, due_at ASC';
+      return 'ORDER BY (words.due_at IS NULL) ASC, words.due_at ASC';
+    case 'level_asc':
+      return 'ORDER BY words.level ASC, words.term COLLATE NOCASE ASC';
+    case 'level_desc':
+      return 'ORDER BY words.level DESC, words.term COLLATE NOCASE ASC';
+    case 'wrong':
+      return `ORDER BY (words.wrong_count * 1.0 / MAX(1, words.correct_count + words.wrong_count)) DESC,
+        words.wrong_count DESC, words.term COLLATE NOCASE ASC`;
+    case 'correct':
+      return `ORDER BY (words.correct_count * 1.0 / MAX(1, words.correct_count + words.wrong_count)) DESC,
+        words.correct_count DESC, words.term COLLATE NOCASE ASC`;
     case 'recent':
     default:
-      return 'ORDER BY created_at DESC';
+      return 'ORDER BY words.created_at DESC';
   }
+}
+
+/**
+ * Reuse the spelling already in the bank. Topics are free text, so without this
+ * "Environment", "environment" and " ENVIRONMENT " would split one topic into
+ * three filters and three AI prompts.
+ */
+export async function resolveTopic(
+  db: SQLiteDatabase,
+  topic: string | null | undefined,
+): Promise<string | null> {
+  const clean = topic?.trim().replace(/\s+/g, ' ') ?? '';
+  if (!clean) return null;
+  // Topics are shared across tracks: one canonical spelling keeps filters and
+  // AI prompts from splitting "Environment" and "environment" into two lists.
+  const row = await db.getFirstAsync<{ topic: string }>(
+    `SELECT topic FROM words
+     WHERE topic IS NOT NULL AND LOWER(TRIM(topic)) = LOWER(?)
+     ORDER BY LENGTH(topic) ASC, topic ASC LIMIT 1;`,
+    [clean],
+  );
+  return row?.topic ?? clean;
 }
 
 export async function listWords(db: SQLiteDatabase, query: WordQuery = {}): Promise<Word[]> {
@@ -102,10 +156,21 @@ export async function listWords(db: SQLiteDatabase, query: WordQuery = {}): Prom
   const limit = query.limit ?? 200;
   const offset = query.offset ?? 0;
   const rows = await db.getAllAsync<WordRow>(
-    `SELECT * FROM words ${clause} ${orderBy(query.sort)} LIMIT ? OFFSET ?;`,
+    `SELECT words.*, EXISTS (SELECT 1 FROM album_words a WHERE a.word_id = words.id) AS in_album
+     FROM words ${clause} ${orderBy(query.sort)} LIMIT ? OFFSET ?;`,
     [...params, limit, offset],
   );
   return rows.map(rowToWord);
+}
+
+/** Ids for a bulk action such as "select every filtered result". */
+export async function listWordIds(db: SQLiteDatabase, query: WordQuery = {}): Promise<string[]> {
+  const { clause, params } = buildWhere(query);
+  const rows = await db.getAllAsync<{ id: string }>(
+    `SELECT words.id FROM words ${clause} ${orderBy(query.sort)} LIMIT ?;`,
+    [...params, query.limit ?? 5000],
+  );
+  return rows.map((row) => row.id);
 }
 
 export async function countWords(db: SQLiteDatabase, query: WordQuery = {}): Promise<number> {
@@ -118,7 +183,11 @@ export async function countWords(db: SQLiteDatabase, query: WordQuery = {}): Pro
 }
 
 export async function getWord(db: SQLiteDatabase, id: string): Promise<Word | null> {
-  const row = await db.getFirstAsync<WordRow>('SELECT * FROM words WHERE id = ?;', [id]);
+  const row = await db.getFirstAsync<WordRow>(
+    `SELECT words.*, EXISTS (SELECT 1 FROM album_words a WHERE a.word_id = words.id) AS in_album
+     FROM words WHERE id = ?;`,
+    [id],
+  );
   return row ? rowToWord(row) : null;
 }
 
@@ -160,6 +229,7 @@ export async function createWord(db: SQLiteDatabase, input: WordInput): Promise<
   const existing = await findWordByTerm(db, term, track);
   if (existing) throw new DuplicateWordError(existing);
 
+  const topic = await resolveTopic(db, input.topic);
   const timestamp = nowIso();
   const word: Word = {
     id: newId(),
@@ -175,7 +245,7 @@ export async function createWord(db: SQLiteDatabase, input: WordInput): Promise<
     antonyms: input.antonyms ?? [],
     collocations: input.collocations ?? [],
     wordFamily: input.wordFamily ?? [],
-    topic: input.topic?.trim() || null,
+    topic,
     track,
     level: input.level ?? 2,
     source: input.source ?? 'manual',
@@ -192,6 +262,12 @@ export async function createWord(db: SQLiteDatabase, input: WordInput): Promise<
     difficulty: 0,
     reps: 0,
     lapses: 0,
+    correctCount: 0,
+    wrongCount: 0,
+    hintCount: 0,
+    lastCorrectAt: null,
+    lastWrongAt: null,
+    memoryRating: null,
     lastReviewedAt: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -229,6 +305,9 @@ export async function updateWord(
   const duplicate = await findWordByTerm(db, term, track);
   if (duplicate && duplicate.id !== id) throw new DuplicateWordError(duplicate);
 
+  const topic =
+    patch.topic !== undefined ? await resolveTopic(db, patch.topic) : current.topic;
+
   const next: Word = {
     ...current,
     term,
@@ -251,7 +330,7 @@ export async function updateWord(
     antonyms: patch.antonyms ?? current.antonyms,
     collocations: patch.collocations ?? current.collocations,
     wordFamily: patch.wordFamily ?? current.wordFamily,
-    topic: patch.topic !== undefined ? patch.topic?.trim() || null : current.topic,
+    topic,
     track,
     level: patch.level ?? current.level,
     note: patch.note !== undefined ? patch.note?.trim() || null : current.note,
@@ -314,6 +393,10 @@ export async function updateWord(
 export async function deleteWord(db: SQLiteDatabase, id: string): Promise<void> {
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM reviews WHERE word_id = ?;', [id]);
+    // Explicit as well as the FK cascade: an old install may have been opened
+    // before foreign keys were enabled, and a stale album row would then point
+    // at nothing and break notification scheduling.
+    await db.runAsync('DELETE FROM album_words WHERE word_id = ?;', [id]);
     await db.runAsync('DELETE FROM words WHERE id = ?;', [id]);
   });
 }
@@ -455,16 +538,15 @@ export async function getWeakWords(
   track: Track,
   limit = 20,
 ): Promise<{ word: Word; wrongCount: number }[]> {
-  const since = new Date(Date.now() - 45 * 86_400_000).toISOString();
   const rows = await db.getAllAsync<WordRow & { wrong_count: number }>(
-    `SELECT w.*, COUNT(r.id) AS wrong_count
+    `SELECT w.*, w.wrong_count AS wrong_count
      FROM words w
-     JOIN reviews r ON r.word_id = w.id
-     WHERE w.track = ? AND r.correct = 0 AND r.reviewed_at >= ?
-     GROUP BY w.id
-     ORDER BY wrong_count DESC, w.lapses DESC
+     WHERE w.track = ? AND w.reps > 0
+       AND (w.wrong_count > 0 OR w.lapses > 0 OR w.memory_rating IN (1, 2))
+     ORDER BY (w.wrong_count * 1.0 / MAX(1, w.correct_count + w.wrong_count)) DESC,
+       w.wrong_count DESC, w.lapses DESC, COALESCE(w.last_wrong_at, '') DESC
      LIMIT ?;`,
-    [track, since, limit],
+    [track, limit],
   );
   return rows.map((row) => ({ word: rowToWord(row), wrongCount: row.wrong_count ?? 0 }));
 }

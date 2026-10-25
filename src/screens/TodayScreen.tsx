@@ -358,8 +358,24 @@ export function TodayScreen() {
         </Card>
       ) : null}
 
+      <SectionHeader title="Album từ vựng" actionLabel="Mở Album" onAction={() => push({ name: 'album' })} />
+      <Card onPress={() => push({ name: 'album' })} style={{ marginBottom: spacing.md }}>
+        <View style={styles.weakRow}>
+          <View style={{ flex: 1 }}>
+            <AppText variant="bodyStrong">Bộ sưu tập từ bạn chọn</AppText>
+            <AppText variant="caption" color={colors.textMuted}>
+              Thêm hàng loạt từ từ ngân hàng, rồi để app tự chọn ngẫu nhiên một từ gửi thông báo
+              theo chu kỳ bạn đặt.
+            </AppText>
+          </View>
+          <AppText variant="headline" color={colors.primary}>
+            →
+          </AppText>
+        </View>
+      </Card>
+
       <SectionHeader
-        title="Cần chú ý"
+        title="Từ tôi hay quên"
         actionLabel={data?.weak.length ? 'Luyện ngay' : undefined}
         onAction={
           data?.weak.length

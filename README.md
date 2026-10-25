@@ -5,7 +5,8 @@
 General English / IELTS, phát âm, luyện nói, streak, nhắc nhở, gợi ý từ bằng **Groq (mặc định)
 hoặc Gemini**, **nhập danh sách từ và cụm từ** rồi để Groq viết nghĩa/phiên âm/ví dụ (không còn
 phụ thuộc API từ điển), **bài học từ mới có giới thiệu trước khi kiểm tra**, **nhạc nền tự tạo**,
-**ba trò chơi học từ**, **xu ảo** và **khôi phục chuỗi ngày học**.
+**ba trò chơi học từ**, **xu ảo** và **khôi phục chuỗi ngày học**, **lịch ôn tùy chỉnh**,
+**reset tiến độ an toàn**, **album từ vựng có thông báo ngẫu nhiên** và **hiệu ứng âm thanh**.
 
 **Dev: Phạm Bảo Lâm**
 
@@ -151,6 +152,90 @@ hoặc dùng AI bất cứ lúc nào; từ vừa thêm nằm trong ngân hàng v
 ứng dụng mới yêu cầu hoàn thành các từ đến hạn trước. Quy tắc này nằm ở `createWord` (không gọi cổng
 ôn tập) và `src/study/gate.ts` (chỉ `startNewLearning` bị chặn), có test riêng.
 
+## Tùy chỉnh lịch ôn tập
+
+Mỗi lần tự đánh giá một từ, bạn chọn **Chưa nhớ / Khó / Dễ / Rất dễ**. Khoảng thời gian tới lần
+kiểm tra tiếp theo của từng mức nằm trong **Cài đặt → Học tập → Tùy chỉnh lịch ôn tập**:
+
+| Mức | Mặc định |
+|---|---|
+| Chưa nhớ | 5 phút |
+| Khó | 30 phút |
+| Dễ | 12 giờ |
+| Rất dễ | 24 giờ |
+
+- Nhập số + chọn phút/giờ/ngày (tối thiểu 1 phút, tối đa 7 ngày = 10.080 phút); có
+  **Khôi phục mặc định**.
+- Cài đặt lưu trong SQLite và được dùng thật khi tính `next_review_at` trong `src/srs/fsrs.ts`.
+- Đổi cài đặt **không** sửa lịch đã đặt cho những từ đang chờ; từ đã lên lịch giữ nguyên `due_at`,
+  lần đánh giá kế tiếp mới áp giá trị mới.
+- Lỗi mạng/API/âm thanh không được ghi thành câu trả lời sai và không đổi lịch.
+
+## Reset dữ liệu học tập
+
+**Cài đặt → Dữ liệu → Reset dữ liệu học tập** (có hộp thoại xác nhận) đưa **mọi từ** về trạng thái
+chưa học: `learning_state = 'new'`, `due_at = NULL`, `reps/lapses/streak/ratings = 0`, xoá lịch sử
+`reviews`. Giữ nguyên từ, nghĩa, ví dụ, chủ đề, level, album, **số dư xu**, streak và lịch sử giao dịch.
+
+Mỗi lần reset tạo một **chu kỳ học mới** (`studyCycleId` trong cài đặt). Xu khi học lại được tính theo chu kỳ:
+- Lần đầu trả lời đúng một từ trong chu kỳ mới được thưởng theo giá hiện hành.
+- Mỗi `(từ, chu kỳ)` chỉ thưởng một lần, kể cả bấm đúp, retry hay gọi API nhiều lần
+  (`coin_ledger.source_id UNIQUE` + `event_id`).
+- Gặp lại từ đã thưởng mà trả lời sai vẫn bị trừ xu.
+- Reset **không** xoá lịch sử giao dịch và không thể khai thác bằng cách xoá rồi thêm lại từ.
+
+## Groq tự xếp level cho từng từ
+
+Level bạn chọn trên giao diện chỉ là **định hướng** (`requestedLevel`), không phải level chính thức.
+Khi nhập danh sách, Groq đánh giá **từng từ/cụm từ** theo nghĩa và ngữ cảnh rồi trả `level`; app
+validate và lưu `actualLevel`. Ví dụ chọn B2 nhưng nhập
+`abandon, criminal, undertake, ubiquitous, take into account` thì `abandon`/`criminal` vẫn có thể là
+B1, `ubiquitous` có thể là C1.
+
+- `actualLevel` là level dùng cho hiển thị, lọc, thống kê, độ khó câu hỏi và tính xu.
+- Level AI trả **không bị ghi đè** bởi level đã chọn. Nếu AI bỏ trống level, app thử kho từ kèm máy;
+  chỉ khi cả hai đều không có mới dùng level đã chọn và ghi rõ nguồn là cài đặt kèm cảnh báo — mục đó
+  không được coi là `actualLevel` do AI đánh giá.
+- Cụm từ được giữ nguyên khi tách danh sách và khi gửi Groq; không phân loại theo độ dài từ.
+
+## Album từ vựng và thông báo ngẫu nhiên
+
+- Trong **Từ vựng**, bấm **Chọn** để bật chế độ chọn hàng loạt: checkbox từng từ, **Chọn tất cả kết
+  quả đang lọc**, bỏ chọn vài từ, rồi **Thêm vào Album** trong một thao tác.
+- Bộ lọc: level (`actualLevel`), chủ đề, trạng thái học (mới/đang học/cần ôn/đã thành thạo),
+  có/không trong album. Sắp xếp: A–Z, Z–A, level tăng/giảm, mới/cũ, tỷ lệ sai/đúng, từ đến hạn.
+- **Album** là màn hình riêng: xem từ, level, nghĩa, chủ đề, trạng thái; tìm/lọc/sắp xếp; chọn nhiều
+  để xoá khỏi album; phát âm; mở chi tiết.
+- Album chỉ lưu **liên kết** `album_words` tới từ trong ngân hàng, không sao chép dữ liệu. Sửa nghĩa,
+  ví dụ, chủ đề hay level trong ngân hàng được phản ánh ngay trong album. Xoá khỏi album không xoá từ,
+  không đổi trạng thái học, không đụng xu.
+
+**Thông báo ngẫu nhiên:** bật trong Album; app tự chọn từ bằng túi từ có trọng số trên **toàn bộ
+album** — bạn không phải bật thông báo cho từng từ. Mỗi thông báo có từ/cụm từ, nghĩa tiếng Việt và
+câu ví dụ ngắn. Chống lặp bằng lịch sử gần đây; album ít từ vẫn hoạt động; từ mới thêm có cơ hội ngay.
+
+- Chu kỳ 10/15/30 phút, 1/2/4 giờ; khung giờ bắt đầu–kết thúc.
+- Tối đa 48 thông báo cục bộ được lên lịch trước (dưới giới hạn 64 pending của iOS); đổi cài đặt sẽ
+  **huỷ lịch cũ** rồi tạo lại; tắt là không tạo lịch mới.
+- **iOS không bảo đảm đúng từng phút**: thông báo cục bộ có thể trễ hoặc bị gộp khi máy ở chế độ tiết
+  kiệm pin/Focus. App lên lịch trước thay vì chạy nền vô hạn.
+- Nhấn thông báo mở chi tiết từ. Thông báo **không** đánh dấu đã học, không tăng streak, không trao xu,
+  không đổi lịch ôn.
+
+## Hiệu ứng âm thanh
+
+Các hiệu ứng ngắn cho: trả lời đúng, trả lời sai, nhận xu, hoàn thành lượt học, đạt mốc streak và bắn
+trúng thiên thạch. Sáu file WAV tự tạo trong `assets/sfx/` (script `scripts/generate-sfx.mjs`), phát
+bằng `expo-audio`. Bật/tắt và chỉnh âm lượng trong **Cài đặt → Hiệu ứng âm thanh**; lưu qua lần khởi
+động lại. Hiệu ứng được throttle (70 ms giữa hai âm bất kỳ, 120 ms cho cùng một âm) và không chồng lên
+nhau; **tắt hiệu ứng không tắt giọng đọc từ vựng**.
+
+## Từ tôi hay quên
+
+Mục này trong **Học** là truy vấn động từ dữ liệu thật (`wrong_count`, `last_wrong_at`, `last_rating`,
+`hint_count`, `due_at`), không phải danh sách lưu riêng. Từ sai nhiều và tự đánh giá “Chưa nhớ/Khó”
+được ưu tiên; khi trả lời đúng nhiều lần, mức ưu tiên giảm dần. Có thể bắt đầu phiên ôn ngắn từ đây.
+
 ## Mô tả song ngữ khi điền từ (General English)
 
 Khi một bài tập đưa **mô tả** rồi yêu cầu điền từ, General English luôn hiện cả hai ngôn ngữ:
@@ -282,21 +367,22 @@ VocabMaster/
 ├── src/
 │   ├── ai/                 # AI client (Gemini + Groq), prompt, schema, cache, retry
 │   ├── audio/              # audio session: media ↔ playback cho TTS
+│   ├── sound/              # hiệu ứng tương tác (expo-audio, WAV trong assets/sfx)
 │   ├── coins/              # ledger, giá xu, hệ số streak
 │   ├── components/         # UI primitives, patterns, motion, chuyển màn hình
 │   ├── data/seed.ts        # 40 từ khởi tạo (General + IELTS)
-│   ├── db/                 # schema v4, migration, repository, backup
+│   ├── db/                 # schema v5, migration, repository, album (album.ts), reset, backup
 │   ├── games/              # engine thuần: asteroid, rush, memory
 │   ├── lib/                # text, date, id
 │   ├── navigation/         # stack + tab
-│   ├── notifications/      # nhắc nhở hằng tuần
+│   ├── notifications/      # nhắc nhở hằng tuần + thông báo album ngẫu nhiên
 │   ├── quiz/               # sinh câu hỏi + chấm điểm
 │   ├── screens/            # màn hình (gồm LearnScreen nhiều giai đoạn)
 │   ├── speech/             # TTS, nhận diện, phản hồi
 │   ├── srs/                # FSRS
 │   ├── state/              # AppProvider
 │   ├── streak/             # streak thuần
-│   ├── study/              # cổng chặn phiên học từ mới khi còn từ đến hạn
+│   ├── study/              # cổng chặn phiên học từ mới + điểm ưu tiên từ
 │   ├── theme/              # design tokens
 │   ├── wordlist/           # phân tách danh sách từ/cụm từ
 │   └── widgets/            # snapshot + sync
@@ -311,7 +397,12 @@ VocabMaster/
 - Widget không cập nhật tức thì; iOS điều tiết tần suất.
 - AI (Gemini hoặc Groq) có thể trả dữ liệu sai; mọi từ phải qua bước xem/sửa/lưu.
 - Không còn API từ điển; chất lượng IPA/ví dụ phụ thuộc vào model AI đang chọn.
-- Không hỗ trợ Android (cấu hình `platforms: ["ios"]`).
+- Thông báo album là thông báo cục bộ: iOS không bảo đảm đúng từng phút, có thể trễ/gộp khi máy ở
+  chế độ tiết kiệm pin hoặc Focus; app lên lịch trước tối đa 48 thông báo và huỷ lịch cũ khi đổi cài đặt.
+- Chưa có giới hạn số thông báo/ngày riêng, giờ yên tĩnh riêng, chọn ngày trong tuần hay bộ lọc nâng cao
+  cho nguồn thông báo album (các mục này là tùy chọn trong yêu cầu).
+- Hiệu ứng âm thanh dùng WAV qua expo-audio; chưa nghe thử trên iPhone thật.
+- Chưa hỗ trợ Android (cấu hình `platforms: ["ios"]`).
 - Chưa có đồng bộ nhiều thiết bị (dữ liệu cục bộ, backup thủ công).
 - Chưa chạy các tính năng mới trên iPhone: máy Windows không build iOS; phải build lại qua GitHub Actions/EAS rồi cài.
 
@@ -338,9 +429,9 @@ VocabMaster/
 ## Kiểm thử
 
 ```bash
-npm test                  # 26 bộ unit test, 257 test
+npm test                  # 30 bộ unit test, 284 test
 npm run typecheck         # TypeScript strict
-npm run check:migrations  # migration 1→4 trên SQLite thật (node:sqlite)
+npm run check:migrations  # migration 1→5 trên SQLite thật (node:sqlite)
 npm run verify            # typecheck + test + migration + checkpoint
 node scripts/validate-checkpoint.mjs
 ```

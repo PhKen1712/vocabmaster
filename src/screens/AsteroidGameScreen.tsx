@@ -26,6 +26,7 @@ import { useGameWords } from '../games/useGameWords';
 import { normalizeTerm } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { useApp } from '../state/AppProvider';
+import { playSfx } from '../sound/sfx';
 import { useTheme } from '../theme/ThemeProvider';
 import { radius, spacing } from '../theme/tokens';
 import { TRACK_LABELS } from '../types';
@@ -126,6 +127,7 @@ export function AsteroidGameScreen() {
 
     if (result.destroyed) {
       addBurst(result.destroyed);
+      playSfx('hit');
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else if (result.wrong) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);

@@ -195,6 +195,9 @@ export function Input({
   autoCapitalize = 'none',
   keyboardType,
   style,
+  maxLength,
+  onSubmitEditing,
+  onBlur,
 }: {
   value: string;
   onChangeText: (text: string) => void;
@@ -204,6 +207,9 @@ export function Input({
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
   keyboardType?: 'default' | 'number-pad' | 'email-address';
   style?: StyleProp<TextStyle>;
+  maxLength?: number;
+  onSubmitEditing?: () => void;
+  onBlur?: () => void;
 }) {
   const { colors } = useTheme();
   return (
@@ -217,6 +223,9 @@ export function Input({
       autoCapitalize={autoCapitalize}
       autoCorrect={false}
       keyboardType={keyboardType}
+      maxLength={maxLength}
+      onSubmitEditing={onSubmitEditing}
+      onBlur={onBlur}
       style={[
         styles.input,
         typography.body,
@@ -276,6 +285,11 @@ export function WordCard({
             {word.source === 'ai' ? (
               <AppText variant="micro" color={colors.warning}>
                 AI
+              </AppText>
+            ) : null}
+            {word.inAlbum ? (
+              <AppText variant="micro" color={colors.primary}>
+                ALBUM
               </AppText>
             ) : null}
           </View>

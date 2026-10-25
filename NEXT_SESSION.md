@@ -2,20 +2,23 @@
 
 ## 1. Dự án đang ở đâu
 
-- **Đã xanh (chạy thật ngày 2026-10-25):** `npx tsc --noEmit` exit 0 (0 lỗi),
-  `npx jest --runInBand` **257/257 test pass trong 26 suite**,
-  `node scripts/check-migrations.mjs` **OK** (schema 4 trên SQLite thật).
-- **Mới nhất (2026-10-25, chưa commit tại thời điểm viết):** **bỏ hoàn toàn API từ điển**, Groq xử lý
-  cả từ đơn và cụm từ; **nhập danh sách** chia lô + cache + báo kết quả từng phần;
-  **mỗi từ chỉ thưởng xu một lần** theo `term_key` bền vững, sai khi gặp lại vẫn bị trừ; ledger có
-  `source_id` chống xử lý trùng; **chỉ chặn phiên học từ mới khi còn từ đến hạn** (`src/study/gate.ts`,
-  `startNewLearning`) — **thêm từ, dán danh sách, gọi Groq, sửa/xoá từ không bao giờ bị khoá**;
-  **học từ mới nhiều giai đoạn** (giới thiệu → lật thẻ → kiểm tra → tự đánh giá,
-  `src/screens/LearnScreen.tsx`); **mô tả song ngữ Anh–Việt** cho General English
-  (`src/quiz/description.ts`, `src/components/WordDescription.tsx`); **bắn thiên thạch** giảm mật độ + đục ký tự (`src/games/asteroid.ts`);
-  **60 giây** tự xáo thêm câu để chơi trọn phút; **audio session** nâng lên playback khi đọc từ để
-  không phụ thuộc công tắc chuông (`src/audio/session.ts`); **nhận diện giọng nói** có watchdog 9 giây
-  và chấm phần đã nghe thay vì treo. Đọc `CHANGELOG.md` mục 2026-10-25 trước khi sửa.
+- **Đã xanh (chạy thật ngày 2026-10-26):** `npx tsc --noEmit` exit 0 (0 lỗi),
+  `npx jest --runInBand` **284/284 test pass trong 30 suite**,
+  `node scripts/check-migrations.mjs` **OK** (schema 5 trên SQLite thật),
+  `node scripts/validate-checkpoint.mjs` **hợp lệ**.
+- **Mới nhất (2026-10-26, chưa chạy trên iPhone):** **lịch ôn tùy chỉnh** 4 mức (mặc định 5 phút /
+  30 phút / 12 giờ / 24 giờ, lưu bền, có khôi phục mặc định, dùng thật khi tính `dueAt`);
+  **reset tiến độ học** (`src/db/reset.ts`) giữ từ/level/chủ đề/album/xu/streak và mở **chu kỳ học mới**
+  để thưởng lại một lần; **Groq xếp level từng mục** (level AI thắng, lọc/thống kê/tính xu dùng level
+  thật); **ưu tiên từ hay sai + “Từ tôi hay quên”** (`src/study/priority.ts`); **hiệu ứng âm thanh**
+  (`src/sound/sfx.ts`, `assets/sfx/*.wav`); **Album từ vựng** (`src/db/album.ts`,
+  `src/screens/AlbumScreen.tsx`) với chọn hàng loạt/lọc/sắp xếp; **thông báo ngẫu nhiên toàn album**
+  (`src/notifications/album.ts`, túi từ có trọng số, tối đa 48 lịch, huỷ khi tắt) — không đánh dấu đã
+  học, không tăng streak, không trao xu; **chuẩn hoá chủ đề**. Đọc `CHANGELOG.md` mục 2026-10-26 trước khi sửa.
+- **Nền cũ (2026-10-25):** bỏ hoàn toàn API từ điển, Groq xử lý cả từ đơn và cụm từ; nhập danh sách
+  chia lô + cache; mỗi từ chỉ thưởng xu một lần theo `term_key`, sai khi gặp lại vẫn bị trừ; chỉ chặn
+  **phiên học từ mới** khi còn từ đến hạn; học từ mới nhiều giai đoạn; mô tả song ngữ; thiên thạch
+  giảm mật độ + đục ký tự; 60 giây chơi trọn phút; audio session playback; watchdog nhận diện giọng nói.
 - **Nền cũ (2026-10-24):** nhạc nền 5 bản, ba game, sáu dạng luyện kỹ năng, xu ảo, khôi phục chuỗi,
   chọn giọng nam/nữ, phòng luyện phát âm; schema v3. Đọc thêm `docs/WORD_BANK.md`.
 - **Đã xoá:** `src/dict/*`, `src/db/dictCache.ts`, `src/screens/useWordListLookup.ts`,
@@ -78,12 +81,29 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
      (cụm phải được giữ nguyên, không tách thành từ đơn), xem kết quả từng phần, thử bấm tạo hai lần
      liên tiếp (không được nhân đôi), rồi thử tắt Wi-Fi để thấy nút **Thử lại** chỉ cho phần lỗi.
    Ghi kết quả thật vào `CHECKPOINT.json → test_results.device_tests`.
-2b. **Kiểm khoá ôn tập**: tạo một từ đến hạn (đổi ngày máy hoặc chờ), mở Học/ Tạo bộ từ/ Nhập danh sách
-   — tất cả phải bị chặn và chỉ nút Ôn tập hoạt động; ôn xong phải mở khoá ngay.
+2b. **Kiểm khoá ôn tập**: tạo một từ đến hạn (đổi ngày máy hoặc chờ). Mở **Học từ mới** → phải bị
+   chặn và chỉ nút Ôn tập hoạt động; ôn xong phải mở khoá ngay. Ngược lại, **thêm từ đơn, dán danh
+   sách, gọi Groq, sửa/xoá từ vẫn phải dùng được** — từ vừa thêm không vào lịch ôn và không bị coi là đã học.
 2c. **Kiểm học từ mới**: từ chưa học phải hiện thẻ giới thiệu trước, lật thẻ có ví dụ + nghe, sau đó
    mới có câu kiểm tra; lật thẻ nhiều lần không cộng xu; từ đã thưởng gặp lại trả lời đúng = 0 xu,
    trả lời sai vẫn bị trừ.
 2d. **Kiểm 60 giây** với bộ từ nhỏ (4 từ): phải chơi đủ 60 giây nhờ xáo thêm câu, không kết thúc sau 4 câu.
+2e. **Kiểm lịch ôn tùy chỉnh**: Cài đặt → Lịch ôn tập, đổi “Chưa nhớ” thành 2 phút, trả lời sai một từ
+   và kiểm tra từ đến hạn sau ~2 phút; từ đã có `due_at` trước đó **không** bị đổi; bấm khôi phục mặc định.
+2f. **Kiểm reset tiến độ**: ghi lại số từ/album/số dư xu/streak → Reset dữ liệu học tập → mọi từ về
+   “chưa học”, từ/level/chủ đề/album/xu/streak còn nguyên; học lại đúng lần đầu được thưởng, lần hai
+   không thưởng, trả lời sai vẫn bị trừ; ledger không có giao dịch trùng.
+2g. **Kiểm Groq level**: chọn B2, dán `abandon, criminal, undertake, ubiquitous, take into account`.
+   Từng dòng phải có level riêng; `abandon`/`criminal` không được tự thành B2; lọc theo level dùng
+   đúng level đã lưu; cụm từ vẫn là một mục.
+2h. **Kiểm Album**: lọc B1 → Chọn tất cả kết quả đang lọc → bỏ chọn 2 từ → Thêm vào Album; mở Album
+   kiểm tra đủ số, sửa nghĩa một từ trong ngân hàng → Album đổi theo; xoá hàng loạt chỉ khỏi Album.
+2i. **Kiểm thông báo Album**: bật, chu kỳ 10 phút, khung giờ hiện tại; xem “Đang chờ trên máy”; tắt →
+   phải huỷ lịch; bật lại → từ được chọn ngẫu nhiên, không lặp ngay, nội dung có từ + nghĩa + ví dụ;
+   nhấn thông báo mở đúng chi tiết từ; kiểm tra không tăng streak/không trao xu/không đổi lịch ôn.
+   Ghi rõ iOS có thể trễ/gộp thông báo — đây là giới hạn nền tảng, không phải lỗi code.
+2j. **Kiểm hiệu ứng âm thanh**: bật/nghe thử, tắt → không phát nhưng giọng đọc từ vẫn chạy; trả lời
+   đúng/sai liên tiếp nhanh → không chồng tiếng; mở nhạc nền và đọc từ → hiệu ứng không làm tắt TTS.
 3. **Quyết định Apple Developer Program.** Không có nó thì widget chỉ render placeholder
    vì không có App Group để chia sẻ dữ liệu.
 4. **`eas init` + development build.** EAS chạy prebuild trên macOS; sau build kiểm tra:
@@ -131,7 +151,13 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 | Lưu lượt ôn | `src/db/reviews.ts` |
 | Nhập/xuất dữ liệu | `src/db/backup.ts` (dùng `expo-file-system/legacy`) |
 | AI (Gemini/Groq) | `src/ai/gemini.ts`, `src/ai/groq.ts`, `src/ai/index.ts` |
-| Cấp độ tự tra | `src/ai/levels.ts`, `packLevel` trong `src/data/packs.ts` |
+| Cấp độ thật của từ | `level` trên `words` + `levelSource` khi nhập danh sách; `packLevel` trong `src/data/packs.ts` |
+| Lịch ôn tùy chỉnh | `src/srs/fsrs.ts` (`scheduleForRating`), `src/types.ts` (`ReviewIntervals`) |
+| Reset tiến độ | `src/db/reset.ts`, `SettingsScreen` |
+| Album | `src/db/album.ts`, `src/screens/AlbumScreen.tsx`, `WordsScreen` |
+| Thông báo album | `src/notifications/album.ts`, `src/notifications/selection.ts` |
+| Hiệu ứng âm thanh | `src/sound/sfx.ts`, `assets/sfx/*.wav` |
+| Ưu tiên từ / hay quên | `src/study/priority.ts`, `getWeakWords` trong `src/db/words.ts` |
 | Chọn nhà cung cấp / key | `src/ai/provider.ts`, `src/screens/SettingsScreen.tsx` |
 | Widget | `widgets/*.tsx`, `src/widgets/*` |
 | Giao diện | `src/screens/*`, `src/components/*`, `src/theme/*` |
@@ -140,7 +166,7 @@ Nếu report ghi fail, đọc đúng lỗi đầu tiên rồi sửa — đừng 
 
 ## 8. Định nghĩa "xong" cho phiên tới
 
-- `node scripts/verify.mjs` exit 0 (đang đạt).
+- `node scripts/verify.mjs` exit 0 (đang đạt: 284 test, schema 5).
 - `git log` có ít nhất 1 commit sạch, không secret.
-- EAS build cài được lên iPhone; ít nhất widget Home Screen hiển thị đúng dữ liệu thật.
+- Build macOS cài được lên iPhone; kiểm 2e–2j và ghi kết quả thật vào `CHECKPOINT.json`.
 - Nếu chưa có tài khoản Apple: ghi rõ `blocked`, không tuyên bố hoàn thành.
