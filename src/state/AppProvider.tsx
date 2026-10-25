@@ -151,6 +151,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (state === 'active' && db) {
         void refresh();
         void syncWidgets(db, settingsRef.current);
+        // The album queue is deliberately short (iOS keeps only 64 pending
+        // notifications). Refill it whenever the learner comes back, so a long
+        // gap between launches does not silently end the schedule.
+        void scheduleAlbumNotifications(db, settingsRef.current).catch(() => undefined);
       }
     });
     return () => subscription.remove();
