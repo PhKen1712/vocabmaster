@@ -178,9 +178,14 @@ máy trước khi server xác nhận**, và một thay đổi đang chờ không
 > Edge Function; khoá tài khoản → Auth trả `user_banned` khi đăng nhập; cộng xu có xác nhận + lịch sử
 > (`admin_adjust_coins`); sửa cấu hình AI lưu thật vào `app_config`.
 >
-> **Chưa có:** deploy panel lên host công khai (cần tài khoản Cloudflare/Vercel), trang xem chi tiết
-> tiến trình của một người dùng (mới có số đếm), quản lý khoá Groq từ panel (khoá thuộc secret của
-> Edge Function, chưa dựng proxy AI).
+> **Bổ sung cùng ngày:** trang **chi tiết người dùng** (`admin_user_detail`, `admin_user_words`,
+> `admin_user_activity`) với biểu đồ 30 ngày, bộ lọc *đến hạn / hay quên / đã thuộc*; trang **Từ điển**
+> (`admin_terms`) sửa nghĩa/IPA/level cho từ dùng chung và **gộp từ trùng** (`admin_merge_terms`).
+> Đã thử: sửa nghĩa → lưu thật; gộp bản trùng → 2 lượt ôn được giữ, bản ghi trùng bị bỏ khi người học
+> đã có bản của từ giữ lại.
+>
+> **Chưa có:** deploy panel lên host công khai (cần tài khoản Cloudflare/Vercel); quản lý khoá Groq từ
+> panel (khoá thuộc secret của Edge Function, chưa dựng proxy AI); phân quyền chi tiết admin xem/sửa.
 
 - Ứng dụng web riêng trong `admin/` (React + Vite + TypeScript), dùng publishable key + JWT của
   admin; **mọi thao tác đặc quyền đi qua Edge Function kiểm tra lại `is_admin()`**.
@@ -267,7 +272,7 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 | 2 | Thiết kế: kiến trúc, dữ liệu, đồng bộ, phân quyền, Groq, migration | **Xong cho backend đã chọn** (tài liệu này) |
 | 3 | Triển khai backend (DB, Auth, RLS, thao tác, bảo vệ API/xu) | **Một phần** — schema + RLS + hàm xu + 20/20 kiểm chứng; chưa có Edge Function |
 | 4 | Tích hợp app (lưu online, đồng bộ tiến trình/Album/cài đặt) | **Chưa** — cần bước 3 |
-| 5 | Admin panel | **Một phần lớn** — chạy được: tài khoản, xu, cấu hình AI, tổng quan; chưa deploy công khai |
+| 5 | Admin panel | **Gần đủ dùng** — tổng quan, tài khoản, chi tiết người dùng, từ điển (sửa/gộp), xu, cấu hình AI; chưa deploy công khai |
 | 6 | Tùy chỉnh chu kỳ Album | **Xong** (tự nhập phút/giờ, không còn danh sách cố định) |
 | 7 | Khung nhập danh sách nhiều dòng + VI/EN + Groq dịch | **Xong** |
 | 8 | Hỗ trợ máy tính | **Chưa** — đã có đánh giá ở mục 7 |

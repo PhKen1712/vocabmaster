@@ -4,6 +4,41 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-27 — Phiên 18: chi tiết người dùng + quản lý từ điển trong admin panel
+
+### Đã thay đổi
+
+- `supabase/migrations/0003_admin_detail.sql` (mới, **đã áp**): `admin_user_detail()`, `admin_user_words()`
+  (lọc all/due/forgotten/mastered), `admin_user_activity()` (30 ngày), `admin_terms()` (tìm theo chữ +
+  level, sắp xếp theo số người học/mới/level/A-Z, kèm `learners` và `due_now`), `admin_merge_terms()`
+  (chuyển `user_words`/`album_items`/`reviews`/`coin_ledger` sang bản giữ lại rồi xoá bản trùng).
+- `admin/src/pages/UserDetail.tsx` (mới): 8 thẻ số liệu, biểu đồ cột 30 ngày (thuần CSS, không thêm
+  thư viện), bảng từ với 4 bộ lọc và phân trang.
+- `admin/src/pages/Dictionary.tsx` (mới): sửa nghĩa/định nghĩa/IPA/từ loại/ví dụ/level của từ dùng chung;
+  gộp từ trùng có xác nhận hai bước.
+- `admin/src/App.tsx`, `Accounts.tsx`: thêm tab **Từ điển**, bấm tên tài khoản để mở chi tiết; tab
+  Tài khoản vẫn sáng khi đang xem chi tiết.
+- `admin/src/lib/format.ts`: `levelShort()` đúng thang của app (0 = starter, 1..6 = A1..C2).
+- `admin/src/lib/api.ts`: các loader/updater tương ứng; `adjustCoins` nhận `sourceId` từ nơi gọi.
+
+### Kiểm chứng bằng dữ liệu thật (rồi dọn sạch)
+
+- Chi tiết `qa-user2`: 3 từ đang học, 1 hay quên, 1 đã thuộc, chính xác 7 ngày 64%, streak 10,
+  biểu đồ 10 cột — khớp đúng dữ liệu đã chèn.
+- Bộ lọc: *Hay quên* → đúng từ sai 3 > đúng 2; *Đến hạn* → đúng từ quá hạn.
+- Từ điển: 4 từ với số người học/đến hạn đúng; **sửa nghĩa** → lưu thật (`updated_at` đổi).
+- **Gộp từ trùng**: gộp `civil obligations` vào `civil liability` → 2 lượt ôn được giữ, bản ghi tiến
+  trình trùng bị bỏ (người học đã có bản của từ giữ lại), từ bị gộp biến mất khỏi danh sách.
+- Dọn sạch: xoá 2 tài khoản thử + toàn bộ từ; DB còn đúng 1 tài khoản, 0 từ, 0 tiến trình.
+
+### Lỗi gặp khi kiểm thử (của script seed, không phải của app)
+
+- PostgREST từ chối chèn batch khi các object **không cùng tập khoá** (`PGRST102 All object keys must
+  match`). Lần chèn đầu thất bại và vì tôi không kiểm `status` nên tưởng là RLS. Đã chèn từng dòng và
+  kiểm mã trả về.
+
+---
+
 ## 2026-10-27 — Phiên 17: web admin panel chạy thật + Edge Function quản lý tài khoản
 
 ### Đã thay đổi

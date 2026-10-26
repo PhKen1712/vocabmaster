@@ -250,6 +250,11 @@
       "name": "Web admin panel: accounts, coins, AI config, admin-only gate",
       "status": "tested",
       "evidence": "admin/ (React+Vite, cổng 5180) + migration 0002_admin.sql + Edge Function admin-users (deployed v1). Kiểm chứng thật: đăng nhập admin; tổng quan đọc admin_stats; tạo qa-user qua panel; khoá → POST /auth/v1/token trả 400 user_banned; cộng 50 xu → số dư và lịch sử đúng; sửa ai_daily_limit 200→150 sống qua reload; phiên cũ của tài khoản đã xoá bị từ chối. Dọn sạch tài khoản thử sau khi kiểm."
+    },
+    {
+      "name": "Admin panel: per-user detail (activity chart, due/forgotten/mastered) and shared dictionary editing + duplicate merge",
+      "status": "tested",
+      "evidence": "0003_admin_detail.sql (admin_user_detail, admin_user_words, admin_user_activity, admin_terms, admin_merge_terms) + admin/src/pages/UserDetail.tsx, Dictionary.tsx. Kiểm với dữ liệu thật: 3 từ/1 hay quên/1 đã thuộc/64% chính xác/streak 10; lọc đến hạn và hay quên đúng; sửa nghĩa lưu thật; gộp từ trùng giữ 2 lượt ôn và bỏ bản ghi trùng. Dữ liệu thử đã xoá."
     }
   ],
   "in_progress_features": [

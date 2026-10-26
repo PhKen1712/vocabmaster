@@ -5,10 +5,12 @@ import { supabase, configProblem } from './lib/supabase';
 import { errorMessage, type AccountRow } from './lib/api';
 import Overview from './pages/Overview';
 import Accounts from './pages/Accounts';
+import UserDetail from './pages/UserDetail';
+import Dictionary from './pages/Dictionary';
 import Coins from './pages/Coins';
 import AiSettings from './pages/AiSettings';
 
-type Tab = 'overview' | 'accounts' | 'coins' | 'ai';
+type Tab = 'overview' | 'accounts' | 'user' | 'dictionary' | 'coins' | 'ai';
 
 interface AdminProfile {
   username: string;
@@ -19,6 +21,7 @@ interface AdminProfile {
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview', label: 'Tổng quan' },
   { id: 'accounts', label: 'Tài khoản' },
+  { id: 'dictionary', label: 'Từ điển' },
   { id: 'coins', label: 'Xu' },
   { id: 'ai', label: 'Groq / AI' },
 ];
@@ -30,6 +33,7 @@ export default function App() {
   const [checking, setChecking] = useState(true);
   const [tab, setTab] = useState<Tab>('overview');
   const [selected, setSelected] = useState<AccountRow | null>(null);
+  const [detail, setDetail] = useState<AccountRow | null>(null);
 
   const checkAccess = useCallback(async (current: Session | null) => {
     if (!current) {
@@ -107,15 +111,19 @@ export default function App() {
           </div>
         </div>
         <nav>
-          {TABS.map((item) => (
-            <button
-              key={item.id}
-              className={`nav ${tab === item.id ? 'active' : ''}`}
-              onClick={() => setTab(item.id)}
-            >
-              {item.label}
-            </button>
-          ))}
+          {TABS.map((item) => {
+            // Khi đang xem chi tiết một người, tab "Tài khoản" vẫn sáng.
+            const active = tab === item.id || (item.id === 'accounts' && tab === 'user');
+            return (
+              <button
+                key={item.id}
+                className={`nav ${active ? 'active' : ''}`}
+                onClick={() => setTab(item.id)}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-foot">
           <div className="small muted">Đăng nhập</div>
@@ -135,8 +143,19 @@ export default function App() {
               setSelected(account);
               setTab('coins');
             }}
+            onOpen={(account) => {
+              setDetail(account);
+              setTab('user');
+            }}
           />
         )}
+        {tab === 'user' &&
+          (detail ? (
+            <UserDetail account={detail} onBack={() => setTab('accounts')} />
+          ) : (
+            <p className="muted">Chọn một tài khoản ở tab Tài khoản.</p>
+          ))}
+        {tab === 'dictionary' && <Dictionary />}
         {tab === 'coins' && <Coins selected={selected} onSelect={setSelected} />}
         {tab === 'ai' && <AiSettings />}
       </main>

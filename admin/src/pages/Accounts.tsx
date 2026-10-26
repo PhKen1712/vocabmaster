@@ -5,7 +5,13 @@ import { dateTime, num, shortId } from '../lib/format';
 
 const PAGE_SIZE = 25;
 
-export default function Accounts({ onPick }: { onPick: (account: AccountRow) => void }) {
+export default function Accounts({
+  onPick,
+  onOpen,
+}: {
+  onPick: (account: AccountRow) => void;
+  onOpen: (account: AccountRow) => void;
+}) {
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -109,7 +115,7 @@ export default function Accounts({ onPick }: { onPick: (account: AccountRow) => 
             </thead>
             <tbody>
               {rows.map((row) => (
-                <AccountLine key={row.user_id} row={row} onPick={onPick} onChanged={load} />
+                <AccountLine key={row.user_id} row={row} onPick={onPick} onOpen={onOpen} onChanged={load} />
               ))}
               {!loading && rows.length === 0 && (
                 <tr>
@@ -210,10 +216,12 @@ function CreateForm({ onCreated }: { onCreated: (username: string) => void }) {
 function AccountLine({
   row,
   onPick,
+  onOpen,
   onChanged,
 }: {
   row: AccountRow;
   onPick: (account: AccountRow) => void;
+  onOpen: (account: AccountRow) => void;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -265,7 +273,9 @@ function AccountLine({
     <>
       <tr>
         <td>
-          <div>{row.username}</div>
+          <button className="link" onClick={() => onOpen(row)} title="Xem chi tiết tiến trình">
+            {row.username}
+          </button>
           <div className="muted mono">{shortId(row.user_id)}</div>
         </td>
         <td>
