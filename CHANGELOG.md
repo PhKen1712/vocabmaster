@@ -4,6 +4,51 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-27 — Phiên 17: web admin panel chạy thật + Edge Function quản lý tài khoản
+
+### Đã thay đổi
+
+- `admin/` (mới): React + Vite + TypeScript, cổng 5180. Đăng nhập bằng tài khoản có
+  `profiles.role='admin'`; chặn kèm thông báo rõ khi sai mật khẩu, bị khoá, không có hồ sơ hoặc không phải
+  admin. Bốn trang: **Tổng quan** (số liệu thật), **Tài khoản** (tìm, phân trang, tạo, khoá/mở, đặt lại
+  mật khẩu), **Xu** (số dư, cộng/trừ có xác nhận hai bước + lý do bắt buộc, lịch sử giao dịch), **Groq / AI**
+  (model, bật/tắt, hạn mức, mức sử dụng).
+- `supabase/migrations/0002_admin.sql` (mới): `admin_stats()`, `admin_accounts()` (tìm theo username/UUID,
+  phân trang, kèm số từ/đến hạn/lượt ôn/xu), `admin_coin_balance()`. Tất cả `security definer` + tự kiểm
+  `is_admin()`.
+- `supabase/functions/admin-users/index.ts` (mới, **đã deploy version 1**): xác minh JWT người gọi → kiểm
+  `role/status` trong database → mới dùng service-role để tạo / khoá / mở / đặt lại mật khẩu. Khoá tài khoản
+  đặt thêm `ban_duration` để Auth từ chối đăng nhập, không chỉ đổi nhãn trong bảng.
+- `scripts/apply-cloud.mjs` (mới, `npm run cloud:apply`): áp toàn bộ migration + deploy toàn bộ function qua
+  Supabase Management API, dùng `SUPABASE_ACCESS_TOKEN` trong `.env.cloud.local`.
+- `.env.example`: bổ sung tên biến `SUPABASE_ACCESS_TOKEN`.
+
+### Kiểm chứng bằng thao tác thật trên panel
+
+- Đăng nhập admin → Tổng quan hiện **2 tài khoản, 2 admin, 0 bị khoá** (đúng dữ liệu).
+- Tạo `qa-user` qua form → danh sách thành 3 dòng.
+- Khoá `qa-user`: dòng đổi thành "bị khoá", **và** `POST /auth/v1/token` trả `400 user_banned`.
+- Cộng 50 xu có xác nhận: số dư 0 → 50, lịch sử ghi `+50 / 50 / lý do / source_id`.
+- Sửa hạn mức AI 200 → 150, `Ctrl+R` vẫn là 150 (lưu thật, không phải state tạm).
+- Tài khoản đã bị xoá nhưng còn phiên cũ → panel từ chối: "Tài khoản này chưa có hồ sơ trong hệ thống."
+- Dọn sạch: xoá `qa-user` + `qa-admin`, sổ xu về 0 dòng. Còn lại đúng một tài khoản của người dùng.
+
+### Lỗi tự phát hiện khi đọc lại code
+
+- **`source_id` sinh quá muộn.** Panel sinh mã giao dịch bên trong hàm gọi, nên nếu mạng lỗi *sau khi* server
+  đã ghi, bấm lại sẽ tạo **hai** giao dịch. Đã chuyển việc sinh mã về lúc bấm "Xem lại" và dùng lại khi
+  xác nhận — đúng ý đồ idempotent của `admin_adjust_coins`.
+
+### Còn dở / cần biết
+
+- Panel **chưa deploy công khai** (mới chạy `localhost:5180`); deploy tĩnh lên Cloudflare Pages/Vercel cần
+  tài khoản của người dùng.
+- Chưa có trang chi tiết tiến trình của từng người (mới có số đếm).
+- Chưa quản lý khoá Groq từ panel: khoá thuộc secret của Edge Function và proxy AI chưa dựng.
+- **Token `sbp_` và khoá `service_role` đã bị dán vào chat** → phải thu hồi trước khi có người dùng thật.
+
+---
+
 ## 2026-10-27 — Phiên 16: dựng backend Supabase thật, kiểm chứng RLS và sổ xu
 
 ### Bối cảnh

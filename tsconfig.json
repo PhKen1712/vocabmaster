@@ -8,5 +8,7 @@
     "types": ["jest"]
   },
   "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", "ios", "android"]
+  // `admin` (Vite, tsconfig riêng) và `supabase/functions` (Deno) không thuộc
+  // tsconfig của app; để nguyên trong include sẽ làm typecheck của app báo lỗi giả.
+  "exclude": ["node_modules", "ios", "android", "admin", "supabase"]
 }

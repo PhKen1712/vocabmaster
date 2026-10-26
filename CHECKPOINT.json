@@ -245,6 +245,11 @@
       "name": "Supabase backend: shared dictionary, per-user progress, RLS, idempotent coin ledger",
       "status": "tested",
       "evidence": "supabase/migrations/0001_init.sql áp trên project iuplquhrbzmfdmcdfeox; npm run verify:cloud 20/20 với hai tài khoản thật: B không đọc/ghi được dữ liệu A, gửi trùng source_id chỉ cộng một lần, 3 request song song tạo 1 giao dịch, client không chèn được vào coin_ledger, không tự PATCH profiles.role=admin (403 sau khi thêm revoke), tài khoản locked bị chặn ghi."
+    },
+    {
+      "name": "Web admin panel: accounts, coins, AI config, admin-only gate",
+      "status": "tested",
+      "evidence": "admin/ (React+Vite, cổng 5180) + migration 0002_admin.sql + Edge Function admin-users (deployed v1). Kiểm chứng thật: đăng nhập admin; tổng quan đọc admin_stats; tạo qa-user qua panel; khoá → POST /auth/v1/token trả 400 user_banned; cộng 50 xu → số dư và lịch sử đúng; sửa ai_daily_limit 200→150 sống qua reload; phiên cũ của tài khoản đã xoá bị từ chối. Dọn sạch tài khoản thử sau khi kiểm."
     }
   ],
   "in_progress_features": [
@@ -340,11 +345,6 @@
       "reason": "phụ thuộc backend đã dựng"
     },
     {
-      "name": "Web admin panel (accounts, coins, Groq settings)",
-      "status": "planned",
-      "reason": "phụ thuộc backend đã dựng; mọi thao tác đặc quyền phải qua Edge Function"
-    },
-    {
       "name": "Web client for studying on a computer, optional Electron/Tauri shell later",
       "status": "planned",
       "reason": "Expo hỗ trợ web qua react-native-web; expo-notifications không chạy trên web và expo-sqlite cần WASM/OPFS + header COOP/COEP"
@@ -355,9 +355,9 @@
       "reason": "Khoá Groq hiện nằm trong Keychain trên thiết bị; chuyển lên server cần Edge Function + ai_usage."
     },
     {
-      "name": "Web admin panel (React + Vite): tài khoản, xu, cấu hình Groq",
+      "name": "Deploy admin panel lên host tĩnh công khai (Cloudflare Pages/Vercel)",
       "status": "planned",
-      "reason": "Backend đã có admin_adjust_coins + is_admin(); cần giao diện và Edge Function cho thao tác đặc quyền."
+      "reason": "Panel hiện chỉ chạy localhost:5180; deploy cần tài khoản của người dùng, và phải giới hạn truy cập vì URL công khai."
     }
   ],
   "known_bugs": [

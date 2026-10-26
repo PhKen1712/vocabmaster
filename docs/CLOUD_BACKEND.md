@@ -170,6 +170,18 @@ máy trước khi server xác nhận**, và một thay đổi đang chờ không
 
 ## 6. Web admin panel
 
+> **Đã dựng và chạy thật (27/10/2026)** trong thư mục [`admin/`](../admin) (React + Vite + TypeScript).
+> `npm run dev` trong `admin/` → `http://localhost:5180`. Đăng nhập bằng tài khoản có `profiles.role = 'admin'`.
+>
+> **Đã kiểm chứng bằng thao tác thật:** đăng nhập admin; từ chối tài khoản không có hồ sơ/quyền;
+> Tổng quan đọc số liệu thật (`admin_stats`); danh sách + tìm kiếm (`admin_accounts`); tạo tài khoản qua
+> Edge Function; khoá tài khoản → Auth trả `user_banned` khi đăng nhập; cộng xu có xác nhận + lịch sử
+> (`admin_adjust_coins`); sửa cấu hình AI lưu thật vào `app_config`.
+>
+> **Chưa có:** deploy panel lên host công khai (cần tài khoản Cloudflare/Vercel), trang xem chi tiết
+> tiến trình của một người dùng (mới có số đếm), quản lý khoá Groq từ panel (khoá thuộc secret của
+> Edge Function, chưa dựng proxy AI).
+
 - Ứng dụng web riêng trong `admin/` (React + Vite + TypeScript), dùng publishable key + JWT của
   admin; **mọi thao tác đặc quyền đi qua Edge Function kiểm tra lại `is_admin()`**.
 - Màn hình: Tổng quan (số tài khoản, hoạt động, lượt gọi AI, lỗi gần nhất) · Tài khoản (danh
@@ -255,7 +267,7 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 | 2 | Thiết kế: kiến trúc, dữ liệu, đồng bộ, phân quyền, Groq, migration | **Xong cho backend đã chọn** (tài liệu này) |
 | 3 | Triển khai backend (DB, Auth, RLS, thao tác, bảo vệ API/xu) | **Một phần** — schema + RLS + hàm xu + 20/20 kiểm chứng; chưa có Edge Function |
 | 4 | Tích hợp app (lưu online, đồng bộ tiến trình/Album/cài đặt) | **Chưa** — cần bước 3 |
-| 5 | Admin panel | **Chưa** — cần bước 3 |
+| 5 | Admin panel | **Một phần lớn** — chạy được: tài khoản, xu, cấu hình AI, tổng quan; chưa deploy công khai |
 | 6 | Tùy chỉnh chu kỳ Album | **Xong** (tự nhập phút/giờ, không còn danh sách cố định) |
 | 7 | Khung nhập danh sách nhiều dòng + VI/EN + Groq dịch | **Xong** |
 | 8 | Hỗ trợ máy tính | **Chưa** — đã có đánh giá ở mục 7 |
@@ -311,7 +323,32 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 - Hành vi khi vượt hạn mức free và khi project bị tạm dừng.
 - Trên web: `expo-sqlite` (WASM/OPFS/COOP-COEP) và thông báo (không hỗ trợ cục bộ).
 
-## 14. Tài liệu liên quan
+## 14. Cách áp migration và deploy Edge Function
+
+Hai đường, chọn một:
+
+**A. Qua Dashboard (không cần token)**
+
+1. SQL Editor → dán nội dung `supabase/migrations/000N_*.sql` → Run.
+2. Edge Functions → *Deploy a new function* → *Via editor* → tên `admin-users` → dán
+   `supabase/functions/admin-users/index.ts` → Deploy. Không cần đặt secret: Supabase tự cấp
+   `SUPABASE_URL` và `SUPABASE_SERVICE_ROLE_KEY` cho function.
+
+**B. Qua Management API (một lệnh, cần token)**
+
+1. Tạo Personal Access Token: Supabase → Account → Access Tokens → *Generate new token*.
+2. Đặt `SUPABASE_ACCESS_TOKEN=sbp_...` trong `.env.cloud.local` (đã gitignore).
+3. `npm run cloud:apply` — chạy mọi file trong `supabase/migrations/` theo thứ tự rồi deploy mọi
+   thư mục trong `supabase/functions/`.
+
+Endpoint đã dùng (đối chiếu tài liệu Supabase):
+`POST /v1/projects/{ref}/database/query` với `{ query }`, và
+`POST /v1/projects/{ref}/functions/deploy?slug=...` với multipart `metadata` + `file`.
+
+> Token `sbp_` có quyền quản trị project: coi như mật khẩu, thu hồi được ở cùng trang đã tạo.
+> Không commit, không dán vào chat.
+
+## 15. Tài liệu liên quan
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — kiến trúc hiện tại của app.
 - [TEST_PLAN.md](TEST_PLAN.md) — cách chạy kiểm thử.

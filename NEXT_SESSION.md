@@ -12,13 +12,22 @@
   bằng hai tài khoản thật (cách ly dữ liệu, xu idempotent kể cả 3 request song song, không tự nâng
   admin, tài khoản locked bị chặn). Đã bắt và vá 2 lỗi thật: default-privileges làm lộ `profiles.role`,
   và JWT đặt sai vào header `apikey`.
-- **Chưa làm:** Edge Function proxy Groq, đồng bộ trong app (migration SQLite v6 + outbox), web admin
-  panel, bản web. Thiết kế + quy tắc đồng bộ ở [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md).
+- **MỚI XONG, ĐÃ KIỂM CHỨNG (27/10/2026):** **web admin panel** ở [`admin/`](admin) (React + Vite, cổng 5180)
+  — đăng nhập admin, tổng quan, tài khoản (tạo/khoá/đặt lại mật khẩu qua Edge Function `admin-users` đã
+  deploy), xu (cộng/trừ có xác nhận + lịch sử), cấu hình AI. Migration `0002_admin.sql` đã áp; deploy bằng
+  `npm run cloud:apply`. Đã thử thật: tạo user → khoá → Auth trả `user_banned`; cộng 50 xu → lịch sử đúng;
+  sửa hạn mức AI lưu qua `Ctrl+R`; phiên cũ của tài khoản đã xoá bị từ chối.
+- **Chưa làm:** Edge Function proxy Groq (khoá AI vẫn ở thiết bị), đồng bộ trong app (migration SQLite v6 +
+  outbox), bản web cho người học, deploy panel lên host công khai. Thiết kế + quy tắc đồng bộ ở
+  [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md).
 - **Chặn:** (1) `disable_signup` vẫn `false` → ai có app cũng tự đăng ký được; cần tắt trong
   Authentication → Sign In / Providers rồi **thử lại** `auth.admin.createUser`. (2) Khoá `service_role`
   đã lộ trong lịch sử chat → thu hồi trước khi có người dùng thật, thay bằng khoá mới đặt trong
   `.env.cloud.local` (đừng dán vào chat nữa).
-- **Lệnh kiểm nhanh:** `npm run check:cloud` (cấu hình/kết nối) và `npm run verify:cloud` (RLS + xu).
+- **Lệnh kiểm nhanh:** `npm run check:cloud` (cấu hình/kết nối), `npm run verify:cloud` (RLS + xu + idempotent),
+  `npm run cloud:apply` (áp migration + deploy function), `cd admin && npm run dev` (mở panel).
+- **Bảo mật:** token `sbp_` và khoá `service_role` đã lộ trong lịch sử chat — **thu hồi trước khi có người
+  dùng thật**, thay bằng giá trị mới đặt trong `.env.cloud.local` (đừng dán vào chat).
 - **Số liệu mới:** `npx tsc --noEmit` 0 lỗi; `npx jest --runInBand` **323/323 test trong 33 suite**
   (2026-10-27); `node scripts/check-migrations.mjs` OK; `node scripts/validate-checkpoint.mjs` hợp lệ.
 
