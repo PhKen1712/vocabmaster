@@ -63,6 +63,11 @@ function asSuggestion(value: unknown): AiSuggestion | null {
     aiGenerated: true,
     confirmed: false,
     rationale: typeof record.rationale === 'string' ? record.rationale : null,
+    // A cached Vietnamese row must come back with its translation intact; losing
+    // these fields would silently turn it into an English-looking row.
+    sourceVi: typeof record.sourceVi === 'string' ? record.sourceVi : null,
+    englishOptions: list('englishOptions'),
+    uncertain: record.uncertain === true,
   };
 }
 

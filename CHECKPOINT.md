@@ -1,10 +1,10 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-26
-- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** + **(2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ theo chu kỳ có chống trùng xu, Groq tự xếp level từng mục, điểm ưu tiên từ + “Từ tôi hay quên”, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề** — **typecheck 0 lỗi, 284/284 unit test xanh trong 30 suite, schema v5 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25/26 **chưa chạy trên thiết bị**
+- **last_updated:** 2026-10-27
+- **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** + **(2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ theo chu kỳ có chống trùng xu, Groq tự xếp level từng mục, điểm ưu tiên từ + “Từ tôi hay quên”, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề** + **(2026-10-27) chu kỳ thông báo Album do người dùng tự nhập (giờ/phút, không còn danh sách cố định) và khung nhập danh sách mỗi dòng một mục trộn Việt/Anh có Groq dịch sang tiếng Anh; tài khoản trực tuyến + đồng bộ + web admin panel mới ở bước thiết kế (`docs/CLOUD_BACKEND.md`)** — **typecheck 0 lỗi, 323/323 unit test xanh trong 33 suite, schema v5 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25/26 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
-- **current_branch / commit:** `main` · Groq provider + cấp độ tự tra (2026-10-23, xem `git log`)
+- **current_branch / commit:** `main` · cập nhật 2026-10-27 (chu kỳ Album tự nhập + nhập danh sách Việt/Anh), xem `git log`
 - **remote:** `https://github.com/phamkenn/vocabmaster.git` (private)
 
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
@@ -452,6 +452,24 @@ Giới hạn kỹ thuật đã ghi trong app: iOS không bảo đảm thông bá
 lịch trước tối đa 48 thông báo (dưới giới hạn 64 pending), huỷ lịch cũ khi đổi cài đặt, tắt là ngừng tạo.
 Chưa có giới hạn số thông báo/ngày, giờ yên tĩnh riêng, chọn ngày trong tuần hay bộ lọc nâng cao cho
 nguồn thông báo; các mục này là tùy chọn trong yêu cầu.
+
+## 23. Phiên 2026-10-27 — trạng thái từng yêu cầu (chu kỳ Album, nhập danh sách, backend)
+
+| Yêu cầu | Trạng thái | Ghi chú |
+|---|---|---|
+| Chu kỳ Album tùy biến, không giới hạn danh sách cố định | **Xong** | `src/notifications/interval.ts`; kiểm tra dữ liệu nhập, cảnh báo giới hạn iOS, lưu bền, không tự đổi giá trị |
+| Mỗi Enter = một mục, giữ nguyên cụm từ | **Xong** | `src/wordlist/parse.ts` tách theo ký tự xuống dòng thật |
+| Nhận diện tiếng Việt / tiếng Anh theo từng mục | **Xong** | `src/lib/lang.ts` |
+| Groq dịch mục tiếng Việt, giữ đầu vào gốc, có lựa chọn khác | **Xong** | `prompt.ts`/`schema.ts`/`match.ts` với `sourceVi`, `englishOptions`, `uncertain`, ghi chú `Gốc:` |
+| Tài khoản do admin tạo | **Chưa** | thiết kế ở `docs/CLOUD_BACKEND.md`; chờ project Supabase |
+| Dữ liệu học trực tuyến + đồng bộ iPhone ↔ máy tính | **Chưa** | quy tắc đồng bộ từng loại dữ liệu đã chốt trong tài liệu |
+| Web admin panel (tài khoản, xu, Groq) | **Chưa** | cùng blocker; mọi thao tác đặc quyền phải qua Edge Function |
+| Bản web / máy tính | **Chưa** | Expo hỗ trợ web; desktop chỉ là vỏ Electron/Tauri; đã liệt kê module chạy được/không |
+| Bảo mật (RLS, không để client sửa xu, khoá không vào app) | **Thiết kế xong** | chưa có gì để kiểm thử |
+
+**Số liệu thật (2026-10-27):** `npx tsc --noEmit` 0 lỗi · `npx jest --runInBand` 33 suite / 323 test
+pass · `node scripts/check-migrations.mjs` OK · `node scripts/validate-checkpoint.mjs` hợp lệ.
+Không có test nào gọi Groq/Gemini/iOS thật. **Chưa build iOS**, nên hai tính năng mới chưa chạy trên máy.
 
 ---
 

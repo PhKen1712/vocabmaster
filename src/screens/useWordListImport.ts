@@ -6,18 +6,21 @@ import { explainCacheKey, readExplainCache, writeExplainCache } from '../ai/cach
 import { describeAiError } from '../ai/errors';
 import type { AiSuggestion } from '../ai/types';
 import { packLevel } from '../data/packs';
-import { normalizeTerm } from '../lib/text';
+import { normalizeTerm, uniqueStrings } from '../lib/text';
 import type { Level, Track } from '../types';
-import { parseWordList } from '../wordlist/parse';
+import { buildSuggestionPools, matchSuggestion } from '../wordlist/match';
+import { parseWordList, type ParsedListItem } from '../wordlist/parse';
 import { entryFromSuggestion, failedEntry, type ListEntry } from '../wordlist/types';
 
 /**
  * State machine for "paste a list of words / phrases".
  *
- * Groq is the only source of vocabulary data. There is intentionally no
- * dictionary lookup and no dictionary fallback: a phrase such as
- * `take into account` is explained as one unit instead of being rejected for
- * not being a single word.
+ * The list may mix languages: English items go straight to the dictionary path,
+ * Vietnamese items are translated to English by Groq first (one item per line,
+ * phrases kept whole). Groq is still the only source of vocabulary data. There
+ * is intentionally no dictionary lookup and no dictionary fallback: a phrase
+ * such as `take into account` is explained as one unit instead of being rejected
+ * for not being a single word.
  *
  * The list is answered in small batches (10 items) because Groq's free tier has
  * a tokens-per-minute budget and a single 50-word answer is easily truncated.
@@ -48,6 +51,12 @@ export interface WordListImport {
   unknownLevels: number;
   /** Failed rows still waiting for a retry. */
   failedCount: number;
+  /** Items detected as Vietnamese in the current text. */
+  vietnameseCount: number;
+  /** Ready rows that Groq translated from Vietnamese. */
+  translatedCount: number;
+  /** Switch a translated row to another English option Groq offered. */
+  chooseOption: (normalized: string, term: string) => void;
   lookUp: () => void;
   retryFailed: () => void;
   cancel: () => void;
@@ -60,13 +69,6 @@ export interface UseWordListImportOptions {
   level: Level;
   topic: string;
   model: string;
-}
-
-function matchKey(term: string): string {
-  // Groq sometimes prefixes a verb with "to " even when the learner did not.
-  // Accept that spelling for matching, but keep the learner's own term when
-  // saving so the bank does not silently acquire a duplicate variant.
-  return normalizeTerm(term).replace(/^to\s+/, '');
 }
 
 /**
@@ -91,16 +93,29 @@ function levelOf(
 }
 
 function readyEntry(
-  term: string,
+  requested: ParsedListItem,
   suggestion: AiSuggestion,
   track: Track,
   cached: boolean,
 ): ListEntry {
+  const translated = requested.language === 'vi';
+  // The row that gets saved is always the English term: for a Vietnamese item
+  // that is the term Groq chose, never the Vietnamese the learner typed.
+  const term = translated ? suggestion.term : requested.value;
   const resolved = levelOf(suggestion, term, track);
   return entryFromSuggestion(term, suggestion, {
     level: resolved.level,
     levelSource: resolved.source,
     cached,
+    key: requested.value,
+    language: requested.language,
+    translation: translated
+      ? {
+          sourceTerm: requested.value,
+          englishOptions: uniqueStrings([term, ...(suggestion.englishOptions ?? [])]).slice(0, 3),
+          uncertain: suggestion.uncertain === true,
+        }
+      : null,
   });
 }
 
@@ -171,25 +186,26 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
   }, []);
 
   const run = useCallback(
-    async (terms: string[], kept: ListEntry[] = []) => {
-      if (!db || runningRef.current || terms.length === 0) return;
+    async (items: ParsedListItem[], kept: ListEntry[] = []) => {
+      if (!db || runningRef.current || items.length === 0) return;
       runningRef.current = true;
       const controller = new AbortController();
       abortRef.current = controller;
 
+      const terms = items.map((item) => item.value);
       setRunning(true);
       setError(null);
       setNote(null);
       setDone(0);
-      setTotal(terms.length);
+      setTotal(items.length);
       setEntries(mergeEntries(terms, new Map(), kept));
 
       const resolved = new Map<string, ListEntry>();
       const keys = new Map<string, string>();
-      for (const term of terms) {
+      for (const item of items) {
         keys.set(
-          term,
-          explainCacheKey({ provider: 'groq', model, track, level, term }),
+          item.value,
+          explainCacheKey({ provider: 'groq', model, track, level, term: item.value }),
         );
       }
 
@@ -197,11 +213,11 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
       let cacheHits = 0;
       try {
         const cached = await readExplainCache(db, [...keys.values()]);
-        for (const term of terms) {
-          const key = keys.get(term);
+        for (const item of items) {
+          const key = keys.get(item.value);
           const suggestion = key ? cached.get(key) : undefined;
           if (!suggestion) continue;
-          resolved.set(normalizeTerm(term), readyEntry(term, suggestion, track, true));
+          resolved.set(normalizeTerm(item.value), readyEntry(item, suggestion, track, true));
           cacheHits += 1;
         }
       } catch {
@@ -212,77 +228,85 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
         setEntries(mergeEntries(terms, resolved, kept));
       }
 
-      const pending = terms.filter((term) => !resolved.has(normalizeTerm(term)));
+      const pending = items.filter((item) => !resolved.has(normalizeTerm(item.value)));
       let stopped: string | null = null;
+      let processed = resolved.size;
       const toCache: { key: string; suggestion: AiSuggestion }[] = [];
 
-      for (let start = 0; start < pending.length; start += BATCH_SIZE) {
-        if (controller.signal.aborted) break;
-        const batch = pending.slice(start, start + BATCH_SIZE);
-        setNote(
-          `Groq đang viết nghĩa cho ${Math.min(start + batch.length, pending.length)}/${pending.length} từ…`,
-        );
-
-        try {
-          const result = await generateVocabulary(
-            {
-              track,
-              level,
-              topic: topic.trim() || null,
-              count: batch.length,
-              explainTerms: batch,
-              avoidTerms: [],
-              weakTerms: [],
-            },
-            {
-              provider: 'groq',
-              model,
-              signal: controller.signal,
-              timeoutMs: EXPLAIN_TIMEOUT_MS,
-              attempts: 2,
-            },
+      // Vietnamese first, so the English terms appear early; a problem in one
+      // language never blocks the other.
+      for (const language of ['vi', 'en'] as const) {
+        const group = pending.filter((item) => item.language === language);
+        for (let start = 0; start < group.length; start += BATCH_SIZE) {
+          if (controller.signal.aborted || stopped) break;
+          const batch = group.slice(start, start + BATCH_SIZE);
+          const translating = language === 'vi';
+          setNote(
+            translating
+              ? `Groq đang dịch ${Math.min(processed + batch.length, pending.length)}/${pending.length} mục tiếng Việt sang tiếng Anh…`
+              : `Groq đang viết nghĩa cho ${Math.min(processed + batch.length, pending.length)}/${pending.length} từ…`,
           );
 
-          const byTerm = new Map<string, AiSuggestion>();
-          const byBare = new Map<string, AiSuggestion>();
-          for (const suggestion of result.suggestions) {
-            byTerm.set(normalizeTerm(suggestion.term), suggestion);
-            byBare.set(matchKey(suggestion.term), suggestion);
-          }
+          try {
+            const result = await generateVocabulary(
+              {
+                track,
+                level,
+                topic: topic.trim() || null,
+                count: batch.length,
+                explainTerms: batch.map((item) => item.value),
+                translateFromVi: translating,
+                avoidTerms: [],
+                weakTerms: [],
+              },
+              {
+                provider: 'groq',
+                model,
+                signal: controller.signal,
+                timeoutMs: EXPLAIN_TIMEOUT_MS,
+                attempts: 2,
+              },
+            );
 
-          for (const term of batch) {
-            const normalized = normalizeTerm(term);
-            const suggestion =
-              byTerm.get(normalized) ?? byBare.get(matchKey(term)) ?? null;
-            if (suggestion) {
-              resolved.set(normalized, readyEntry(term, suggestion, track, false));
-              const key = keys.get(term);
-              if (key) toCache.push({ key, suggestion });
-            } else {
-              resolved.set(
-                normalized,
-                failedEntry(
-                  term,
-                  'Groq không trả về mục này. Bấm thử lại — các từ đã xong được giữ nguyên.',
-                ),
-              );
+            const pools = buildSuggestionPools(result.suggestions);
+
+            const claimed = new Set<AiSuggestion>();
+            for (const [index, item] of batch.entries()) {
+              const normalized = normalizeTerm(item.value);
+              const suggestion = matchSuggestion(item, index, pools, claimed);
+              if (suggestion) {
+                claimed.add(suggestion);
+                resolved.set(normalized, readyEntry(item, suggestion, track, false));
+                const key = keys.get(item.value);
+                if (key) toCache.push({ key, suggestion });
+              } else {
+                resolved.set(
+                  normalized,
+                  failedEntry(
+                    item.value,
+                    'Groq không trả về mục này. Bấm thử lại — các từ đã xong được giữ nguyên.',
+                  ),
+                );
+              }
             }
-          }
 
-          setDone((value) => Math.min(terms.length, value + batch.length));
-          setEntries(mergeEntries(terms, resolved, kept));
-        } catch (caught) {
-          if (controller.signal.aborted) break;
-          const view = describeAiError(caught, 'Groq');
-          stopped = view.hint ? `${view.title}. ${view.hint}` : view.body;
-          // Do not retry a key/quota problem once per batch: mark the rest as
-          // failed with the same honest reason and stop burning requests.
-          for (const term of pending.slice(start)) {
-            if (resolved.has(normalizeTerm(term))) continue;
-            resolved.set(normalizeTerm(term), failedEntry(term, stopped));
+            processed += batch.length;
+            setDone((value) => Math.min(items.length, value + batch.length));
+            setEntries(mergeEntries(terms, resolved, kept));
+          } catch (caught) {
+            if (controller.signal.aborted) break;
+            const view = describeAiError(caught, 'Groq');
+            stopped = view.hint ? `${view.title}. ${view.hint}` : view.body;
+            // Do not retry a key/quota problem once per batch: mark everything
+            // still unresolved with the same honest reason and stop.
+            for (const item of pending) {
+              const key = normalizeTerm(item.value);
+              if (resolved.has(key)) continue;
+              resolved.set(key, failedEntry(item.value, stopped));
+            }
+            setEntries(mergeEntries(terms, resolved, kept));
+            break;
           }
-          setEntries(mergeEntries(terms, resolved, kept));
-          break;
         }
       }
 
@@ -301,10 +325,12 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
         } else if (failed.length > 0) {
           setError(`${failed.length} mục chưa xử lý được. Bấm "Thử lại" cho đúng các mục đó.`);
         }
+        const translated = ready.filter((entry) => entry.sourceTerm).length;
         const pieces: string[] = [];
         if (cacheHits > 0) pieces.push(`${cacheHits} từ lấy từ bộ nhớ đệm, không tốn lượt gọi`);
+        if (translated > 0) pieces.push(`${translated} mục tiếng Việt đã được dịch sang tiếng Anh`);
         if (ready.length > 0) pieces.push(`${ready.length} từ đã có nghĩa tiếng Việt`);
-        if (terms.length > BATCH_SIZE) pieces.push('danh sách dài được chia thành nhiều đợt');
+        if (items.length > BATCH_SIZE) pieces.push('danh sách dài được chia thành nhiều đợt');
         setNote(pieces.length > 0 ? pieces.join(' · ') : null);
       }
 
@@ -316,14 +342,22 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
   );
 
   const lookUp = useCallback(() => {
-    void run(parsed.terms);
-  }, [run, parsed.terms]);
+    void run(parsed.items);
+  }, [run, parsed.items]);
 
   const retryFailed = useCallback(() => {
     const failed = entries.filter((entry) => entry.status === 'failed');
     if (failed.length === 0) return;
     const kept = entries.filter((entry) => entry.status !== 'failed');
-    void run(failed.map((entry) => entry.term), kept);
+    void run(
+      failed.map((entry) => ({
+        // A failed row is addressed by the text the learner typed, which for a
+        // Vietnamese row is the row key itself.
+        value: entry.sourceTerm ?? entry.term,
+        language: entry.language,
+      })),
+      kept,
+    );
   }, [entries, run]);
 
   const toggle = useCallback((normalized: string) => {
@@ -333,6 +367,14 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
       else next.add(normalized);
       return next;
     });
+  }, []);
+
+  const chooseOption = useCallback((normalized: string, term: string) => {
+    // The meaning, level and example stay as Groq wrote them for the first
+    // option; only the saved English term follows the learner's choice.
+    setEntries((previous) =>
+      previous.map((entry) => (entry.normalized === normalized ? { ...entry, term } : entry)),
+    );
   }, []);
 
   const selectAll = useCallback(
@@ -385,6 +427,9 @@ export function useWordListImport(options: UseWordListImportOptions): WordListIm
     note,
     unknownLevels,
     failedCount: entries.filter((entry) => entry.status === 'failed').length,
+    vietnameseCount: parsed.vietnamese.length,
+    translatedCount: entries.filter((entry) => entry.status === 'ready' && entry.sourceTerm).length,
+    chooseOption,
     lookUp,
     retryFailed,
     cancel,

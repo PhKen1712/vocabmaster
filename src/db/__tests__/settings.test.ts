@@ -85,6 +85,20 @@ describe('sanitizeSettings', () => {
     expect(settings.reviewIntervals).toEqual({ again: 1, hard: 1, good: 5_000, easy: 10 });
   });
 
+  it('honours a hand-typed album cycle instead of snapping it to a preset', () => {
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: 7 }).albumIntervalMinutes).toBe(7);
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: 90 }).albumIntervalMinutes).toBe(90);
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: 150 }).albumIntervalMinutes).toBe(150);
+  });
+
+  it('keeps the album cycle inside one minute … one week', () => {
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: 0 }).albumIntervalMinutes).toBe(1);
+    expect(sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: -30 }).albumIntervalMinutes).toBe(1);
+    expect(
+      sanitizeSettings({ ...DEFAULT_SETTINGS, albumIntervalMinutes: 99_999 }).albumIntervalMinutes,
+    ).toBe(10_080);
+  });
+
   it('keeps an explicit sound-effects preference and clamps its volume', () => {
     const off = sanitizeSettings({ ...DEFAULT_SETTINGS, sfxEnabled: false, sfxVolume: 4 });
     expect(off.sfxEnabled).toBe(false);

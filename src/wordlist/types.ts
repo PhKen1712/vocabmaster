@@ -1,5 +1,6 @@
 import type { AiSuggestion } from '../ai/types';
 import type { Level, WordField, WordInput } from '../types';
+import { detectLanguage, type InputLanguage } from '../lib/lang';
 import { normalizeTerm } from '../lib/text';
 
 /**
@@ -11,8 +12,21 @@ import { normalizeTerm } from '../lib/text';
  * silently disappear.
  */
 export interface ListEntry {
+  /** The term that will be saved: English, including for translated rows. */
   term: string;
+  /**
+   * Row key. It is the item the learner typed — the Vietnamese text for a
+   * translated row — so a retry or a re-run always addresses the same row.
+   */
   normalized: string;
+  /** Detected per item; a mixed list works because of this. */
+  language: InputLanguage;
+  /** The Vietnamese the learner typed, when Groq translated this row. */
+  sourceTerm: string | null;
+  /** English candidates for a translated row, best first. Empty otherwise. */
+  englishOptions: string[];
+  /** True when Groq said it was not sure about the translation. */
+  uncertain: boolean;
   status: 'ready' | 'failed';
   meaningVi: string | null;
   ipa: string | null;
@@ -44,14 +58,29 @@ export function missingListFields(entry: Omit<ListEntry, 'missing'>): WordField[
   return missing;
 }
 
+export interface ListEntryExtras {
+  level: Level | null;
+  levelSource: ListEntry['levelSource'];
+  cached: boolean;
+  /** Row key when it differs from `term` (the Vietnamese the learner typed). */
+  key?: string;
+  language?: InputLanguage;
+  /** Present when Groq turned a Vietnamese item into an English term. */
+  translation?: { sourceTerm: string; englishOptions: string[]; uncertain: boolean } | null;
+}
+
 export function entryFromSuggestion(
   term: string,
   suggestion: AiSuggestion,
-  extras: { level: Level | null; levelSource: ListEntry['levelSource']; cached: boolean },
+  extras: ListEntryExtras,
 ): ListEntry {
   const base: Omit<ListEntry, 'missing'> = {
     term,
-    normalized: normalizeTerm(term),
+    normalized: normalizeTerm(extras.key ?? term),
+    language: extras.language ?? detectLanguage(term),
+    sourceTerm: extras.translation?.sourceTerm ?? null,
+    englishOptions: extras.translation?.englishOptions ?? [],
+    uncertain: extras.translation?.uncertain ?? false,
     status: 'ready',
     meaningVi: suggestion.meaningVi?.trim() || null,
     ipa: suggestion.ipa?.trim() || null,
@@ -76,6 +105,10 @@ export function failedEntry(term: string, error: string): ListEntry {
   return {
     term,
     normalized: normalizeTerm(term),
+    language: detectLanguage(term),
+    sourceTerm: null,
+    englishOptions: [],
+    uncertain: false,
     status: 'failed',
     meaningVi: null,
     ipa: null,
@@ -120,6 +153,8 @@ export function entryToWordInput(
     source: 'ai',
     aiGenerated: true,
     confirmed: true,
-    note: null,
+    // Keep the original Vietnamese next to the English term, so the learner can
+    // still see what they typed after the row is saved.
+    note: entry.sourceTerm ? `Gốc: ${entry.sourceTerm}` : null,
   };
 }

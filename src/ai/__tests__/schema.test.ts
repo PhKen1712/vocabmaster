@@ -120,6 +120,75 @@ describe('parseSuggestions', () => {
   });
 });
 
+describe('parseSuggestions for Vietnamese items', () => {
+  const vi = { sourceVi: 'trách nhiệm dân sự', meaningVi: 'trách nhiệm dân sự' };
+
+  it('keeps the learner’s Vietnamese next to the English term Groq chose', () => {
+    const result = parseSuggestions(
+      {
+        words: [
+          word({
+            term: 'civil liability',
+            ...vi,
+            meaningVi: 'trách nhiệm dân sự',
+            englishOptions: ['civil liability', 'civil responsibility'],
+            uncertain: false,
+          }),
+        ],
+      },
+      request({ translateFromVi: true }),
+    );
+
+    expect(result.suggestions[0]?.term).toBe('civil liability');
+    expect(result.suggestions[0]?.sourceVi).toBe('trách nhiệm dân sự');
+    expect(result.suggestions[0]?.englishOptions).toEqual([
+      'civil liability',
+      'civil responsibility',
+    ]);
+  });
+
+  it('always lists the saved term first, even if the model did not', () => {
+    const result = parseSuggestions(
+      { words: [word({ term: 'civil liability', ...vi, englishOptions: ['civil responsibility'] })] },
+      request({ translateFromVi: true }),
+    );
+
+    expect(result.suggestions[0]?.englishOptions).toEqual([
+      'civil liability',
+      'civil responsibility',
+    ]);
+  });
+
+  it('warns when the model echoed the Vietnamese instead of translating it', () => {
+    const result = parseSuggestions(
+      { words: [word({ term: 'trách nhiệm dân sự', sourceVi: 'trách nhiệm dân sự' })] },
+      request({ translateFromVi: true }),
+    );
+
+    expect(result.warnings.some((line) => line.includes('chưa có từ tiếng Anh'))).toBe(true);
+  });
+
+  it('flags an uncertain translation instead of hiding it', () => {
+    const result = parseSuggestions(
+      { words: [word({ term: 'civil liability', sourceVi: 'trách nhiệm dân sự', uncertain: true })] },
+      request({ translateFromVi: true }),
+    );
+
+    expect(result.suggestions[0]?.uncertain).toBe(true);
+    expect(result.warnings.some((line) => line.includes('không chắc'))).toBe(true);
+  });
+
+  it('ignores translation-only fields for a plain English request', () => {
+    const result = parseSuggestions(
+      { words: [word({ sourceVi: 'trách nhiệm dân sự', englishOptions: ['borrow'] })] },
+      request(),
+    );
+
+    expect(result.suggestions[0]?.sourceVi).toBeNull();
+    expect(result.suggestions[0]?.englishOptions).toEqual([]);
+  });
+});
+
 describe('extractJson', () => {
   it('reads plain JSON', () => {
     expect(extractJson('{"words":[]}')).toEqual({ words: [] });

@@ -50,6 +50,13 @@ export interface AiRequest {
    * At most 20 items, matching the `count` limit.
    */
   explainTerms?: string[];
+  /**
+   * The items in `explainTerms` are Vietnamese, not English. The provider must
+   * choose the English term first (returned as `term`), keep the learner's own
+   * text in `sourceVi`, offer up to three `englishOptions`, and then explain the
+   * chosen English term exactly as it would for an English item.
+   */
+  translateFromVi?: boolean;
   /** Terms already in the local database, sent so Gemini avoids duplicates. */
   avoidTerms: string[];
   /** Words the learner frequently gets wrong, for targeted practice. */
@@ -65,6 +72,12 @@ export interface AiSuggestion extends WordInput {
    * present a fallback as an AI assessment.
    */
   levelSource?: 'ai' | 'requested';
+  /** Vietnamese the learner typed, returned untouched by the model. */
+  sourceVi?: string | null;
+  /** Other acceptable English terms for a translated item, best first. */
+  englishOptions?: string[];
+  /** True when the model flagged the translation as uncertain. */
+  uncertain?: boolean;
 }
 
 export interface AiParseResult {

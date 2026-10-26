@@ -1,6 +1,10 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DEFAULT_MUSIC_TRACK_ID, isMusicTrackId } from '../music/catalog';
+import {
+  MAX_ALBUM_INTERVAL_MINUTES,
+  MIN_ALBUM_INTERVAL_MINUTES,
+} from '../notifications/interval';
 
 import {
   DEFAULT_AI_MODEL,
@@ -127,8 +131,16 @@ export function sanitizeSettings(raw: unknown): Settings {
     sfxEnabled: value.sfxEnabled === undefined ? DEFAULT_SETTINGS.sfxEnabled : Boolean(value.sfxEnabled),
     sfxVolume: asNumber(value.sfxVolume, DEFAULT_SETTINGS.sfxVolume, 0, 1),
     albumNotifyEnabled: Boolean(value.albumNotifyEnabled),
+    // The learner picks the cycle, so the only clamp here is "a cycle exists"
+    // and "it fits in a week". A 5-minute floor would silently overrule a
+    // deliberate 7-minute choice.
     albumIntervalMinutes: Math.round(
-      asNumber(value.albumIntervalMinutes, DEFAULT_SETTINGS.albumIntervalMinutes, 5, 24 * 60),
+      asNumber(
+        value.albumIntervalMinutes,
+        DEFAULT_SETTINGS.albumIntervalMinutes,
+        MIN_ALBUM_INTERVAL_MINUTES,
+        MAX_ALBUM_INTERVAL_MINUTES,
+      ),
     ),
     albumStartHour: Math.round(
       asNumber(value.albumStartHour, DEFAULT_SETTINGS.albumStartHour, 0, 23),

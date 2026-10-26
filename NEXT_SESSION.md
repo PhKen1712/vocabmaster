@@ -1,5 +1,22 @@
 # NEXT SESSION — bắt đầu từ đây
 
+## 0. Việc mới nhất (2026-10-27)
+
+- **Đã xong, đã kiểm thử (chưa chạy trên iPhone):** chu kỳ thông báo Album **do người dùng tự nhập**
+  (`src/notifications/interval.ts`) — nhập giờ/phút, từ chối 0/âm/chữ/quá 7 ngày, **không tự đổi** giá
+  trị đã nhập, cảnh báo khi dưới 15 phút; và khung nhập danh sách **mỗi dòng một mục** trộn Việt/Anh,
+  **Groq dịch mục tiếng Việt sang tiếng Anh** rồi mới giải nghĩa (chip chọn cách dịch khác, cụm gốc lưu
+  trong ghi chú `Gốc: …`).
+- **MỚI Ở BƯỚC THIẾT KẾ, chưa có code:** tài khoản do admin tạo, dữ liệu trực tuyến, đồng bộ
+  iPhone ↔ máy tính, web admin panel (tài khoản/xu/Groq), bản web. Toàn bộ thiết kế ở
+  [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md): backend chọn **Supabase**, kèm bảng chi phí/giới hạn
+  có nguồn và danh sách điểm phải kiểm chứng trước khi tin.
+- **Chặn:** chưa có project Supabase và chưa có khoá. Cần người dùng tạo project (gói Free) rồi đưa
+  URL + publishable key + service-role key qua **một file riêng trong project** (không dán vào chat).
+  Xem mục 12 của tài liệu thiết kế.
+- **Số liệu mới:** `npx tsc --noEmit` 0 lỗi; `npx jest --runInBand` **323/323 test trong 33 suite**
+  (2026-10-27); `node scripts/check-migrations.mjs` OK; `node scripts/validate-checkpoint.mjs` hợp lệ.
+
 ## 1. Dự án đang ở đâu
 
 - **Đã xanh (chạy thật ngày 2026-10-26):** `npx tsc --noEmit` exit 0 (0 lỗi),

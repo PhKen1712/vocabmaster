@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { AppText, Card, Chip, EmptyState, PrimaryButton, Screen, SectionHeader } from '../components/ui';
@@ -10,7 +10,14 @@ import {
   removeWordsFromAlbum,
   type AlbumSort,
 } from '../db/album';
-import { getScheduledAlbumCount } from '../notifications/album';
+import { ALBUM_NOTIFICATION_LIMIT, getScheduledAlbumCount } from '../notifications/album';
+import {
+  ALBUM_INTERVAL_PRESETS,
+  describeAlbumIntervalRisk,
+  formatAlbumInterval,
+  splitAlbumInterval,
+  validateAlbumInterval,
+} from '../notifications/interval';
 import { displayTerm } from '../lib/text';
 import { useNavigation } from '../navigation/NavigationProvider';
 import { speak } from '../speech/tts';
@@ -27,8 +34,6 @@ const SORTS: { id: AlbumSort; label: string }[] = [
   { id: 'level_desc', label: 'Cấp cao → thấp' },
   { id: 'due', label: 'Đến hạn' },
 ];
-
-const INTERVALS = [10, 15, 30, 60, 120, 240];
 
 export function AlbumScreen() {
   const { db, settings, updateSettings, dataVersion, rescheduleAlbumNotifications, notifyDataChanged } =
@@ -49,6 +54,27 @@ export function AlbumScreen() {
   const [selecting, setSelecting] = useState(false);
   const [scheduledCount, setScheduledCount] = useState<number | null>(null);
   const [scheduling, setScheduling] = useState(false);
+  const [intervalHoursText, setIntervalHoursText] = useState(() =>
+    String(splitAlbumInterval(settings.albumIntervalMinutes).hours),
+  );
+  const [intervalMinutesText, setIntervalMinutesText] = useState(() =>
+    String(splitAlbumInterval(settings.albumIntervalMinutes).minutes),
+  );
+  const [intervalError, setIntervalError] = useState<string | null>(null);
+  const [intervalSaved, setIntervalSaved] = useState(false);
+  const lastIntervalRef = useRef(settings.albumIntervalMinutes);
+
+  // Only an external change (a quick preset, settings restored elsewhere)
+  // rewrites the fields; text the learner is still typing is never overwritten.
+  useEffect(() => {
+    if (lastIntervalRef.current === settings.albumIntervalMinutes) return;
+    lastIntervalRef.current = settings.albumIntervalMinutes;
+    const parts = splitAlbumInterval(settings.albumIntervalMinutes);
+    setIntervalHoursText(String(parts.hours));
+    setIntervalMinutesText(String(parts.minutes));
+    setIntervalError(null);
+    setIntervalSaved(false);
+  }, [settings.albumIntervalMinutes]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(query.trim()), 250);
@@ -122,6 +148,32 @@ export function AlbumScreen() {
     );
   };
 
+  const saveInterval = async () => {
+    const result = validateAlbumInterval(intervalHoursText, intervalMinutesText);
+    if (!result.ok) {
+      setIntervalError(result.error);
+      return;
+    }
+    setIntervalError(null);
+    lastIntervalRef.current = result.minutes;
+    await updateSettings({ albumIntervalMinutes: result.minutes });
+    setIntervalSaved(true);
+  };
+
+  const applyPreset = (minutes: number) => {
+    const parts = splitAlbumInterval(minutes);
+    setIntervalHoursText(String(parts.hours));
+    setIntervalMinutesText(String(parts.minutes));
+    setIntervalError(null);
+    setIntervalSaved(false);
+    void updateSettings({ albumIntervalMinutes: minutes });
+  };
+
+  const intervalRisk = describeAlbumIntervalRisk(
+    settings.albumIntervalMinutes,
+    ALBUM_NOTIFICATION_LIMIT,
+  );
+
   const scheduleNow = async () => {
     setScheduling(true);
     try {
@@ -141,7 +193,7 @@ export function AlbumScreen() {
         Alert.alert(
           `Đã lên ${result.scheduled} thông báo`,
           result.truncated
-            ? 'iOS chỉ giữ một số lượng thông báo đang chờ nhất định. App lên trước một hàng đợi ngắn và bổ sung mỗi khi bạn mở app. Chu kỳ 10 phút vì vậy không thể chạy liên tục nhiều giờ khi app đóng.'
+            ? `Hàng đợi này phủ khoảng ${Math.round(result.coverageHours)} giờ ở chu kỳ ${formatAlbumInterval(settings.albumIntervalMinutes)}. iOS chỉ giữ một số lượng thông báo đang chờ nhất định, nên app lên trước một hàng đợi ngắn và bổ sung mỗi khi bạn mở app.`
             : 'Mỗi thông báo lấy ngẫu nhiên một từ trong Album, ưu tiên từ lâu chưa xuất hiện.',
         );
       }
@@ -188,18 +240,73 @@ export function AlbumScreen() {
         </View>
 
         <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.md }}>
-          Chu kỳ
+          Chu kỳ — bạn tự nhập (ví dụ 7 phút, 90 phút, 2 giờ 30 phút)
+        </AppText>
+        <View style={styles.intervalRow}>
+          <Input
+            value={intervalHoursText}
+            onChangeText={(next) => {
+              setIntervalHoursText(next);
+              setIntervalError(null);
+              setIntervalSaved(false);
+            }}
+            placeholder="0"
+            keyboardType="number-pad"
+            maxLength={3}
+            style={styles.intervalInput}
+          />
+          <AppText variant="caption" color={colors.textMuted}>
+            giờ
+          </AppText>
+          <Input
+            value={intervalMinutesText}
+            onChangeText={(next) => {
+              setIntervalMinutesText(next);
+              setIntervalError(null);
+              setIntervalSaved(false);
+            }}
+            placeholder="0"
+            keyboardType="number-pad"
+            maxLength={4}
+            style={styles.intervalInput}
+          />
+          <AppText variant="caption" color={colors.textMuted}>
+            phút
+          </AppText>
+        </View>
+        <AppText variant="caption" color={colors.textMuted}>
+          Đang dùng: {formatAlbumInterval(settings.albumIntervalMinutes)}
+          {intervalSaved ? ' · đã lưu' : ''}
+        </AppText>
+        {intervalError ? (
+          <AppText variant="caption" color={colors.danger} style={{ marginTop: spacing.xs }}>
+            {intervalError}
+          </AppText>
+        ) : null}
+        <PrimaryButton
+          label="Lưu chu kỳ"
+          variant="secondary"
+          onPress={() => void saveInterval()}
+          style={{ marginTop: spacing.sm, paddingHorizontal: spacing.lg }}
+        />
+        <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.sm }}>
+          Chọn nhanh
         </AppText>
         <ChipRow>
-          {INTERVALS.map((minutes) => (
+          {ALBUM_INTERVAL_PRESETS.map((minutes) => (
             <Chip
               key={minutes}
-              label={minutes < 60 ? `${minutes} phút` : `${minutes / 60} giờ`}
+              label={formatAlbumInterval(minutes)}
               active={settings.albumIntervalMinutes === minutes}
-              onPress={() => void updateSettings({ albumIntervalMinutes: minutes })}
+              onPress={() => applyPreset(minutes)}
             />
           ))}
         </ChipRow>
+        {intervalRisk ? (
+          <AppText variant="caption" color={colors.warning} style={{ marginTop: spacing.sm }}>
+            {intervalRisk}
+          </AppText>
+        ) : null}
 
         <Stepper
           label="Giờ bắt đầu"
@@ -454,6 +561,14 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.md,
   },
+  intervalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.xs,
+    flexWrap: 'wrap',
+  },
+  intervalInput: { minWidth: 64 },
   actionRow: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.md },
   loading: { paddingVertical: spacing.huge, alignItems: 'center' },
   wordCard: { marginBottom: spacing.sm },

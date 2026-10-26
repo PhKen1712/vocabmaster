@@ -7,6 +7,10 @@ import {
   type AlbumNotificationCandidate,
 } from '../db/album';
 import type { Settings } from '../types';
+import {
+  albumCoverageHours,
+  MIN_ALBUM_INTERVAL_MINUTES,
+} from './interval';
 import { chooseAlbumWord } from './selection';
 import { requestNotificationPermission } from './reminders';
 
@@ -32,6 +36,8 @@ export interface AlbumScheduleResult {
   reason: AlbumScheduleReason;
   /** True when the queue is shorter than the requested interval window. */
   truncated: boolean;
+  /** Hours the queue covers at the learner's cycle, so the UI can be honest. */
+  coverageHours: number;
 }
 
 function notificationKind(request: Notifications.NotificationRequest): string | null {
@@ -87,24 +93,27 @@ export async function scheduleAlbumNotifications(
 ): Promise<AlbumScheduleResult> {
   await cancelAlbumNotifications();
   if (!settings.albumNotifyEnabled) {
-    return { scheduled: 0, reason: 'disabled', truncated: false };
+    return { scheduled: 0, reason: 'disabled', truncated: false, coverageHours: 0 };
   }
 
   const candidates = await listAlbumNotificationCandidates(db);
   if (candidates.length === 0) {
-    return { scheduled: 0, reason: 'no-words', truncated: false };
+    return { scheduled: 0, reason: 'no-words', truncated: false, coverageHours: 0 };
   }
 
   const granted = await requestNotificationPermission();
   if (!granted) {
-    return { scheduled: 0, reason: 'permission', truncated: false };
+    return { scheduled: 0, reason: 'permission', truncated: false, coverageHours: 0 };
   }
 
-  const intervalMs = Math.max(5, settings.albumIntervalMinutes) * 60_000;
+  // The learner's own cycle is honoured exactly. Any hidden floor here would
+  // silently overrule a deliberate 7-minute or 90-minute choice.
+  const intervalMinutes = Math.max(MIN_ALBUM_INTERVAL_MINUTES, settings.albumIntervalMinutes);
+  const intervalMs = intervalMinutes * 60_000;
   const startHour = settings.albumStartHour;
   const endHour = settings.albumEndHour;
   const windowMinutes = endHour > startHour ? (endHour - startHour) * 60 : 24 * 60;
-  const slotsInWindow = Math.floor(windowMinutes / Math.max(5, settings.albumIntervalMinutes));
+  const slotsInWindow = Math.floor(windowMinutes / intervalMinutes);
   const truncated = slotsInWindow > ALBUM_NOTIFICATION_LIMIT;
 
   // In-memory state keeps the first 48 picks balanced without 48 DB reads.
@@ -160,7 +169,12 @@ export async function scheduleAlbumNotifications(
     await markAlbumNotified(db, [id], chosenAt[index] ?? now.toISOString());
   }
 
-  return { scheduled, reason: 'ok', truncated };
+  return {
+    scheduled,
+    reason: 'ok',
+    truncated,
+    coverageHours: albumCoverageHours(intervalMinutes, scheduled),
+  };
 }
 
 export async function getScheduledAlbumCount(): Promise<number> {
@@ -175,7 +189,7 @@ export function describeAlbumSchedule(result: AlbumScheduleResult): string | nul
   if (result.reason === 'disabled') return null;
   if (result.scheduled === 0) return 'Chưa lên được thông báo nào. Thử lại sau.';
   if (result.truncated) {
-    return `Đã lên ${result.scheduled} thông báo. iOS giới hạn thông báo đang chờ, nên app chỉ giữ một hàng đợi ngắn và bổ sung khi bạn mở app.`;
+    return `Đã lên ${result.scheduled} thông báo (khoảng ${Math.round(result.coverageHours)} giờ theo chu kỳ của bạn). iOS giới hạn thông báo đang chờ, nên app giữ một hàng đợi ngắn và bổ sung khi bạn mở app.`;
   }
   return `Đã lên ${result.scheduled} thông báo tiếp theo.`;
 }

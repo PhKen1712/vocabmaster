@@ -1,3 +1,4 @@
+import { detectLanguage } from '../lib/lang';
 import { normalizeTerm, uniqueStrings } from '../lib/text';
 import type { Level, Track } from '../types';
 import type { AiParseResult, AiRequest, AiSuggestion } from './types';
@@ -12,6 +13,9 @@ export const RESPONSE_SCHEMA = {
         type: 'OBJECT',
         properties: {
           term: { type: 'STRING' },
+          sourceVi: { type: 'STRING' },
+          englishOptions: { type: 'ARRAY', items: { type: 'STRING' } },
+          uncertain: { type: 'BOOLEAN' },
           ipa: { type: 'STRING' },
           partOfSpeech: { type: 'STRING' },
           meaningVi: { type: 'STRING' },
@@ -199,6 +203,29 @@ export function parseSuggestions(raw: unknown, request: AiRequest): AiParseResul
     const ipaRaw = asString(record.ipa, 80);
     const topic = asString(record.topic, 80) ?? request.topic?.trim() ?? null;
 
+    // A Vietnamese row must come back as an English term. The learner's own
+    // text is mirrored verbatim so the preview can show both languages, and a
+    // row that was not actually translated is flagged instead of being saved.
+    const translated = request.translateFromVi === true;
+    const sourceVi = translated ? asString(record.sourceVi, 120) : null;
+    const englishOptions = translated
+      ? uniqueStrings([term, ...asStringArray(record.englishOptions)]).slice(0, 3)
+      : [];
+    const uncertain = translated && record.uncertain === true;
+    if (translated) {
+      if (detectLanguage(term) === 'vi') {
+        warnings.push(
+          `"${term}": Groq trả lại nguyên cụm tiếng Việt — chưa có từ tiếng Anh, kiểm tra lại.`,
+        );
+      }
+      if (!sourceVi) {
+        warnings.push(`"${term}": thiếu lại cụm tiếng Việt gốc.`);
+      }
+      if (uncertain) {
+        warnings.push(`"${term}": Groq không chắc về bản dịch này — đọc kỹ trước khi thêm.`);
+      }
+    }
+
     const partOfSpeech = normalizePartOfSpeech(partOfSpeechRaw);
     if (partOfSpeech && !PART_OF_SPEECH.has(partOfSpeech)) {
       warnings.push(`"${term}": từ loại "${partOfSpeech}" chưa chuẩn — kiểm tra lại trước khi thêm.`);
@@ -236,6 +263,9 @@ export function parseSuggestions(raw: unknown, request: AiRequest): AiParseResul
     const track: Track = request.track;
     suggestions.push({
       term,
+      sourceVi,
+      englishOptions,
+      uncertain,
       meaningVi,
       // A pasted-list explanation may legitimately omit the part of speech;
       // defaulting a single word to "phrase" would then be a lie. Normal

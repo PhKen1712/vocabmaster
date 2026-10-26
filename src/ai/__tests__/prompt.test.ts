@@ -32,6 +32,33 @@ describe('buildPrompt', () => {
     expect(prompt).not.toContain('Do not repeat any of these existing terms');
   });
 
+  it('asks for an English term first when the pasted items are Vietnamese', () => {
+    const prompt = buildPrompt(
+      request({
+        count: 20,
+        explainTerms: ['trách nhiệm dân sự', 'bảo vệ môi trường'],
+        translateFromVi: true,
+      }),
+    );
+
+    expect(prompt).toContain('typed 2 item(s) in Vietnamese');
+    expect(prompt).toContain('1. trách nhiệm dân sự');
+    expect(prompt).toContain('2. bảo vệ môi trường');
+    expect(prompt).toContain('never split or merge');
+    expect(prompt).toContain('sourceVi');
+    expect(prompt).toContain('englishOptions');
+    expect(prompt).toContain('level: judge the ENGLISH term');
+    // Still a list request: the learner chose the items, the model may not.
+    expect(prompt).not.toContain('Create 10 English vocabulary items');
+  });
+
+  it('uses the English explanation prompt when the list is English', () => {
+    const prompt = buildPrompt(request({ explainTerms: ['make a decision'] }));
+
+    expect(prompt).toContain('Explain exactly 1 English item(s)');
+    expect(prompt).not.toContain('in Vietnamese');
+  });
+
   it('keeps the normal generation prompt when there is no pasted list', () => {
     const prompt = buildPrompt(request());
 

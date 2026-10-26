@@ -446,6 +446,9 @@ function requestSignature(request: AiRequest, model: string): string {
     request.lookupTerm ?? '',
     request.avoidTerms.length,
     request.explainTerms?.join('|') ?? '',
+    // A Vietnamese batch and an English batch must never share one in-flight
+    // request: their answers mean different things.
+    request.translateFromVi ? 'vi' : 'en',
   ]);
 }
 

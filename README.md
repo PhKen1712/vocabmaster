@@ -116,16 +116,33 @@ Không còn API từ điển nào trong ứng dụng. Trước đây bước tra
 
 ### Nhập danh sách
 
+**Mỗi dòng là một mục.** Danh sách có thể trộn tiếng Anh và tiếng Việt:
+
 ```
-criminal, civil, take into account, in terms of, carry out an investigation
+criminal
+take into account
+bảo vệ môi trường
+trách nhiệm dân sự
 ```
 
-- Dấu phẩy / chấm phẩy / xuống dòng là dấu phân cách; **khoảng trắng bên trong cụm được giữ nguyên**.
-  `take into account` là **một** mục, không bị tách thành ba.
-- Cắt khoảng trắng thừa, bỏ mục rỗng, bỏ trùng lặp không phân biệt hoa/thường, giữ thứ tự bạn nhập.
-- Màn hình xem trước hiện số mục hợp lệ và những mục bị bỏ kèm lý do (quá dài, không phải chữ Latin).
-  Không có mục nào biến mất âm thầm.
+- Một dòng = một mục. **Một cụm bị xuống dòng trên màn hình vẫn là một mục** — app chỉ dựa vào ký tự
+  xuống dòng có thật trong dữ liệu, không dựa vào cách trình bày. `take into account` không bị tách
+  thành ba mục và không bao giờ bị tách theo khoảng trắng.
+- Dấu phẩy / chấm phẩy vẫn tách mục trong cùng một dòng, nên danh sách một dòng kiểu cũ vẫn chạy.
+- Cắt khoảng trắng thừa, bỏ dòng trống, bỏ trùng lặp không phân biệt hoa/thường, giữ thứ tự, **giữ
+  nguyên dấu tiếng Việt**, hiểu cả xuống dòng Windows (CRLF).
+- **Mục tiếng Việt được Groq dịch sang từ tiếng Anh tương ứng rồi mới giải nghĩa.** App nhận diện
+  ngôn ngữ **từng mục** (`src/lib/lang.ts`), không giả định cả danh sách cùng một ngôn ngữ. Cụm tiếng
+  Việt được dịch nguyên cụm (`bảo vệ môi trường` → `environmental protection`); từ chuyên ngành xét
+  ngữ cảnh trước khi chọn (`trách nhiệm dân sự` → `civil liability`).
+- Nếu có nhiều cách dịch hợp lý, thẻ xem trước hiện các lựa chọn để bạn đổi ngay. Bản dịch Groq không
+  chắc được ghi rõ “Groq chưa chắc bản dịch này”, và cụm tiếng Việt gốc được lưu trong ghi chú của từ
+  (`Gốc: …`) nên đầu vào gốc không bị mất.
+- Màn hình xem trước hiện số mục hợp lệ, số mục tiếng Việt sẽ được dịch và những mục bị bỏ kèm lý do
+  (quá dài, không có chữ nào). Không có mục nào biến mất âm thầm.
 - Danh sách tối đa 50 mục; phần vượt quá được báo rõ thay vì cắt lặng lẽ.
+- Mục lỗi được **thử lại riêng** (`Thử lại`), các mục đã xong giữ nguyên; lỗi Groq không làm hỏng
+  toàn bộ danh sách và không được tính là câu trả lời sai.
 
 ### Groq xử lý và lưu
 
@@ -214,7 +231,13 @@ B1, `ubiquitous` có thể là C1.
 album** — bạn không phải bật thông báo cho từng từ. Mỗi thông báo có từ/cụm từ, nghĩa tiếng Việt và
 câu ví dụ ngắn. Chống lặp bằng lịch sử gần đây; album ít từ vẫn hoạt động; từ mới thêm có cơ hội ngay.
 
-- Chu kỳ 10/15/30 phút, 1/2/4 giờ; khung giờ bắt đầu–kết thúc.
+- **Chu kỳ do bạn tự nhập**, không phải danh sách cố định: nhập số giờ và số phút (7 phút, 25 phút,
+  90 phút, 2 giờ 30 phút …). Có vài nút chọn nhanh cho tiện, nhưng giá trị tự nhập luôn được tôn trọng.
+  Giá trị 0, số âm, chữ hoặc quá 7 ngày bị từ chối kèm lý do rõ ràng — app **không tự đổi** giá trị bạn
+  đã nhập. Chu kỳ dưới 15 phút sẽ hiện cảnh báo về giới hạn của iOS.
+- Khung giờ bắt đầu–kết thúc; nếu giờ kết thúc ≤ giờ bắt đầu thì hiểu là gửi cả ngày.
+- `src/notifications/interval.ts` là nơi duy nhất định nghĩa cách nhập/hiển thị/kiểm tra chu kỳ, dùng
+  chung cho màn hình Album và bộ lập lịch.
 - Tối đa 48 thông báo cục bộ được lên lịch trước (dưới giới hạn 64 pending của iOS); đổi cài đặt sẽ
   **huỷ lịch cũ** rồi tạo lại; tắt là không tạo lịch mới.
 - **iOS không bảo đảm đúng từng phút**: thông báo cục bộ có thể trễ hoặc bị gộp khi máy ở chế độ tiết
@@ -426,10 +449,25 @@ VocabMaster/
 | Không biết lỗi ở đâu | Cài đặt → AI → **Lần gọi AI gần đây** (nhà cung cấp + mã lỗi + HTTP status từng bước) |
 | Không mở được DB sau cập nhật | Đóng hẳn app, mở lại; migration rollback giữ dữ liệu cũ |
 
+## Tài khoản trực tuyến, đồng bộ và admin panel (thiết kế — chưa triển khai)
+
+Người dùng muốn tài khoản do admin tạo, dữ liệu học tập lưu trực tuyến, dùng cùng tài khoản trên
+iPhone và máy tính, và một web admin panel quản lý tài khoản/xu/Groq. **Phần này mới ở bước thiết kế:
+chưa có project backend nào được tạo, chưa có khoá nào, và không tính năng nào dưới đây đang chạy.**
+
+- Backend được chọn: **Supabase** (Postgres + Auth + RLS). Lý do, giới hạn gói miễn phí kèm nguồn,
+  bảng dữ liệu, quy tắc đồng bộ từng loại dữ liệu, phân quyền, cách giữ khoá Groq, bảng chi phí và
+  kế hoạch chuyển dữ liệu từ máy lên tài khoản nằm trong [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md).
+- Bản web/máy tính: Expo hỗ trợ web qua React Native for Web; **không** có nền tảng desktop của Expo
+  (desktop chỉ là vỏ Electron/Tauri quanh bản web). Danh sách module chạy được/không chạy được trên web
+  cũng ở tài liệu trên.
+- Việc cần làm trước khi viết code backend: tạo project Supabase và cung cấp khoá qua một file riêng
+  trong project (không dán vào chat). Xem mục 12 của tài liệu thiết kế.
+
 ## Kiểm thử
 
 ```bash
-npm test                  # 30 bộ unit test, 284 test
+npm test                  # 33 bộ unit test, 323 test
 npm run typecheck         # TypeScript strict
 npm run check:migrations  # migration 1→5 trên SQLite thật (node:sqlite)
 npm run verify            # typecheck + test + migration + checkpoint
@@ -445,3 +483,5 @@ Trạng thái thật của các lần chạy nằm trong `CHECKPOINT.json → te
 - `CHANGELOG.md` — lịch sử thay đổi theo phiên
 - `NEXT_SESSION.md` — việc cần làm ngay
 - `docs/FEASIBILITY.md`, `docs/ARCHITECTURE.md`, `docs/BUILD_AND_INSTALL.md`, `docs/TEST_PLAN.md`
+- `docs/CLOUD_BACKEND.md` — thiết kế tài khoản, dữ liệu trực tuyến, đồng bộ và web admin panel
+  (chưa triển khai), kèm bảng chi phí/giới hạn và các điểm phải kiểm chứng

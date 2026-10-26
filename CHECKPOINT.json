@@ -3,10 +3,10 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-26",
-  "current_phase": "Giai đoạn 1–6 + Groq là nguồn nội dung duy nhất cho cả từ đơn và cụm từ + mỗi từ thưởng xu một lần theo term_key/chu kỳ + chỉ chặn phiên học từ mới khi còn từ đến hạn (thêm từ không bị khoá) + bài học từ mới nhiều giai đoạn + mô tả song ngữ + thiên thạch đục ký tự + 60 giây chơi trọn phút + audio session playback + watchdog nhận diện giọng nói + (2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ có chu kỳ xu mới, Groq xếp level từng mục, ưu tiên từ + Từ tôi hay quên, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề. Typecheck 0 lỗi, 284/284 test trong 30 suite, schema v5 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25/26 CHƯA chạy trên iPhone.",
+  "last_updated": "2026-10-27",
+  "current_phase": "Giai đoạn 1–7 + (2026-10-27) chu kỳ thông báo Album do người dùng tự nhập (phút/giờ, không còn danh sách cố định, có kiểm tra và cảnh báo giới hạn iOS) và khung nhập danh sách \"mỗi dòng một mục\" trộn tiếng Việt/Anh với Groq dịch mục tiếng Việt sang tiếng Anh rồi mới giải nghĩa. Tài khoản trực tuyến, đồng bộ dữ liệu, web admin panel và bản web/máy tính MỚI Ở BƯỚC THIẾT KẾ (docs/CLOUD_BACKEND.md, backend chọn Supabase) — chưa có project backend, chưa có khoá, chưa có dòng code backend nào. Typecheck 0 lỗi, 323 test trong 33 suite, schema v5 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25/26/27 CHƯA chạy trên iPhone.",
   "current_branch": "main",
-  "current_commit": "main · xem git log (2026-10-26)",
+  "current_commit": "main · xem git log (2026-10-27)",
   "tech_stack": [
     "React Native 0.88.0",
     "Expo SDK 58 (expo ~58.0.14)",
@@ -230,6 +230,16 @@
       "name": "Bilingual English–Vietnamese descriptions for General English recall",
       "status": "tested",
       "evidence": "src/quiz/description.ts derives an English description from definition_en (or example_en) and a Vietnamese one from meaning_vi, replaces the target with a blank in both, treats an all-blank result as missing, and keeps phrases whole. QuizQuestion carries descriptionEn/descriptionVi; SessionScreen and LearnScreen show both blocks for General English typing, vi_to_en, cloze and context; listening, speaking, en_to_vi and IELTS are unchanged. Missing English is reported rather than invented. Tests: description.test.ts, quiz.test.ts."
+    },
+    {
+      "name": "Album notification cycle is typed by the learner, not chosen from a fixed list",
+      "status": "tested",
+      "evidence": "src/notifications/interval.ts owns parsing/formatting/validation/warning for a cycle entered as hours+minutes (7 phút, 90 phút, 2 giờ 30 phút …): zero, negative, non-numeric and > 7 ngày are rejected with a readable reason and the typed value is never silently rewritten; AlbumScreen shows two numeric inputs, a quick-preset row that is only a shortcut, an \"đang dùng\" line and a warning below 15 phút about iOS background limits. src/db/settings.ts clamps to 1…10080 minutes (the old 5-minute floor that overruled a deliberate 7-minute choice is gone) and src/notifications/album.ts schedules on the exact cycle and reports coverageHours. Tests: interval.test.ts (9), settings.test.ts (7-minute/90-minute/150-minute kept, 0 → 1, 99999 → 10080)."
+    },
+    {
+      "name": "Pasted list: one item per real newline, Vietnamese and English mixed",
+      "status": "tested",
+      "evidence": "src/wordlist/parse.ts splits on real newlines then commas, keeps phrases whole, skips blank lines, understands CRLF, keeps Vietnamese diacritics and labels every item with src/lib/lang.ts. Vietnamese items are sent to Groq with translateFromVi: a new prompt (src/ai/prompt.ts buildTranslatePrompt) asks for the English term, sourceVi, englishOptions and uncertain; src/ai/schema.ts validates those fields, warns when the model echoed Vietnamese instead of translating, and src/wordlist/match.ts links each answer back to the row it belongs to (by sourceVi first, then term, then position for Vietnamese rows only, never reusing one answer twice). The preview shows the Vietnamese source, alternative translations as tappable chips and the uncertainty flag, and the original Vietnamese is kept in the word note (\"Gốc: …\"). Tests: parse.test.ts (mixed list, CRLF, phrases, diacritics), lang.test.ts, match.test.ts, prompt.test.ts, schema.test.ts."
     }
   ],
   "in_progress_features": [
@@ -251,6 +261,11 @@
       "status": "implemented",
       "status_detail": "validator_written_not_run",
       "evidence": "scripts/validate-checkpoint.mjs"
+    },
+    {
+      "name": "Cloud accounts, online sync, web admin panel, web/desktop client",
+      "status": "blocked",
+      "reason": "Thiết kế đã xong trong docs/CLOUD_BACKEND.md (backend chọn Supabase, mô hình dữ liệu dùng chung từ điển + tiến trình riêng, quy tắc đồng bộ từng loại dữ liệu, phân quyền, quản lý khoá Groq, bảng chi phí/giới hạn kèm nguồn, kế hoạch chuyển dữ liệu không mất mát). Chưa viết code backend vì cần project Supabase thật và khoá do người dùng tạo."
     }
   ],
   "pending_features": [
@@ -308,6 +323,26 @@
       "name": "Collocation training, sentence building and a dedicated synonym challenge",
       "status": "planned",
       "reason": "the six current drills cover typing, listening, cloze, context, confusable words and speaking; these three need new question kinds and grading rules"
+    },
+    {
+      "name": "Supabase project: schema, RLS, Edge Functions (xu idempotent, AI proxy)",
+      "status": "blocked",
+      "reason": "cần người dùng tạo project và cung cấp khoá qua file riêng; chưa có thông tin xác thực"
+    },
+    {
+      "name": "Sync layer in the app (outbox, merge rules, migration v6, first-login import)",
+      "status": "planned",
+      "reason": "phụ thuộc backend đã dựng"
+    },
+    {
+      "name": "Web admin panel (accounts, coins, Groq settings)",
+      "status": "planned",
+      "reason": "phụ thuộc backend đã dựng; mọi thao tác đặc quyền phải qua Edge Function"
+    },
+    {
+      "name": "Web client for studying on a computer, optional Electron/Tauri shell later",
+      "status": "planned",
+      "reason": "Expo hỗ trợ web qua react-native-web; expo-notifications không chạy trên web và expo-sqlite cần WASM/OPFS + header COOP/COEP"
     }
   ],
   "known_bugs": [
@@ -546,12 +581,24 @@
     {
       "capability": "A one-day broken streak is restored only after twice the daily new-word goal",
       "how_to_verify": "Miss a day, learn the double quota, press Khôi phục streak on Today"
+    },
+    {
+      "capability": "Album cycle typed by the learner is honoured on iOS, including a cycle shorter than 15 minutes",
+      "how_to_verify": "Album → nhập 7 phút → Lưu → kiểm tra \"Đang chờ\" và nội dung thông báo nhận được, cùng cảnh báo về giới hạn nền của iOS"
+    },
+    {
+      "capability": "A mixed Vietnamese/English list is translated and saved correctly with live Groq",
+      "how_to_verify": "Tạo bộ từ → dán \"criminal\nbảo vệ môi trường\ntake into account\ntrách nhiệm dân sự\" → kiểm tra 4 mục, chọn cách dịch khác, và ghi chú \"Gốc: …\" trong chi tiết từ"
+    },
+    {
+      "capability": "Anything about accounts, online storage, sync or the admin panel — nothing backend exists yet",
+      "how_to_verify": "Không kiểm được: phải tạo project Supabase trước (docs/CLOUD_BACKEND.md mục 12–13)"
     }
   ],
   "test_results": {
-    "last_run": "2026-10-26",
+    "last_run": "2026-10-27",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 30/30 suites, 284/284 tests (2026-10-26). node scripts/check-migrations.mjs passed for schema 1->5 (fresh install, v3/v4 upgrades, reward cycles, album, topic merge). No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine, so notifications, SFX, album UI and the new schedule were not exercised on a device.",
+    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 33/33 suites, 323/323 tests (2026-10-27). node scripts/check-migrations.mjs passed for schema 1->5 (fresh install, v3/v4 upgrades, reward cycles, album, topic merge). No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine, so notifications, the typed album cycle, the Vietnamese translation flow, SFX and the album UI were not exercised on a device.",
     "typecheck": {
       "command": "npx tsc --noEmit (TypeScript 6.0.3)",
       "exit_code": 0,
@@ -560,9 +607,9 @@
     "unit_tests": {
       "command": "npx jest --runInBand",
       "exit_code": 0,
-      "suites_passed": 30,
+      "suites_passed": 33,
       "suites_failed": 0,
-      "tests_passed": 284,
+      "tests_passed": 323,
       "tests_failed": 0
     },
     "expo_doctor": {
@@ -576,9 +623,10 @@
       "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
     },
     "commands_pending": [
-      "Build the 2026-10-26 tree with the macOS workflow, install the IPA, and run the device checklist in NEXT_SESSION.md",
-      "Device verification: custom review intervals, reset progress + re-earning coins, per-item Groq levels, forgettable words, SFX, bulk album selection, album notifications (schedule/cancel/random pick/body/tap)",
-      "Widget / live Gemini / live Groq on device remain unverified in this session"
+      "Build the 2026-10-27 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md",
+      "Device verification: type a 7-minute and a 2 giờ 30 phút album cycle, try 0/−5/chữ, and confirm the queue covers the stated hours",
+      "Device verification: paste a mixed list (criminal / bảo vệ môi trường / take into account / trách nhiệm dân sự) and confirm 4 rows, the Vietnamese source line, the alternative-translation chips and the saved note",
+      "Cloud work (Supabase, sync, admin panel, web client) cannot start until a real project and its keys exist"
     ],
     "suites_written": [
       "src/ai/__tests__/errors.test.ts",
@@ -595,12 +643,15 @@
       "src/db/__tests__/words.test.ts",
       "src/games/__tests__/asteroid-blank.test.ts",
       "src/games/__tests__/games.test.ts",
+      "src/lib/__tests__/lang.test.ts",
       "src/lib/__tests__/text.test.ts",
       "src/music/__tests__/catalog.test.ts",
+      "src/notifications/__tests__/interval.test.ts",
       "src/notifications/__tests__/selection.test.ts",
       "src/quiz/__tests__/description.test.ts",
       "src/quiz/__tests__/placement.test.ts",
       "src/quiz/__tests__/quiz.test.ts",
+      "src/sound/__tests__/sfx.test.ts",
       "src/speech/__tests__/pronunciation.test.ts",
       "src/speech/__tests__/recognition.test.ts",
       "src/speech/__tests__/voices.test.ts",
@@ -608,8 +659,8 @@
       "src/streak/__tests__/restore.test.ts",
       "src/streak/__tests__/streak.test.ts",
       "src/study/__tests__/gate.test.ts",
-      "src/sound/__tests__/sfx.test.ts",
       "src/study/__tests__/priority.test.ts",
+      "src/wordlist/__tests__/match.test.ts",
       "src/wordlist/__tests__/parse.test.ts"
     ],
     "device_tests": {
@@ -938,6 +989,10 @@
     }
   ],
   "next_steps": [
+    "Tạo project Supabase (gói Free), xác nhận có/không cần thẻ, và đưa URL + publishable key + service-role key qua một file riêng trong project (không dán vào chat).",
+    "Sau khi có khoá: viết schema + RLS + Edge Functions (award_coins idempotent, proxy Groq), rồi kiểm bằng hai tài khoản rằng A không đọc được dữ liệu của B và tài khoản bị khoá bị chặn ở server.",
+    "Dựng web admin panel (tài khoản, xu, cấu hình Groq) và lớp đồng bộ trong app (outbox + quy tắc hợp nhất trong docs/CLOUD_BACKEND.md mục 4, migration v6, nhập dữ liệu máy lên tài khoản).",
+    "Build bản 2026-10-27 bằng workflow macOS, cài IPA và chạy checklist thiết bị trong NEXT_SESSION.md.",
     "Build the 2026-10-26 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md.",
     "Device-test the four custom intervals end to end, including that existing due_at values are not rewritten when settings change.",
     "Device-test reset: all words return to new, album/level/topic survive, and re-learning can earn once per new cycle without duplicate ledger rows.",
@@ -961,6 +1016,16 @@
       "blocks": [
         "verified_on_device status"
       ]
+    },
+    {
+      "blocker": "Chưa có project Supabase và khoá API",
+      "needs": "Người dùng tạo project (gói Free) và cung cấp khoá qua file riêng trong project",
+      "blocks": [
+        "schema + RLS + Edge Functions",
+        "đồng bộ dữ liệu giữa iPhone và máy tính",
+        "web admin panel",
+        "bản web/máy tính dùng chung tài khoản"
+      ]
     }
   ],
   "environment_requirements": {
@@ -973,7 +1038,8 @@
     "accounts": [
       "Expo account (free) for EAS Build",
       "Apple Developer Program (paid) for App Groups and device distribution",
-      "Google AI Studio API key (optional, entered in app)"
+      "Google AI Studio API key (optional, entered in app)",
+      "Supabase account (free plan) — CHƯA tạo; cần cho tài khoản, đồng bộ và admin panel"
     ],
     "node_engine": "^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0",
     "ios_target": "iOS 18+",

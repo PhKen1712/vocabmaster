@@ -4,6 +4,52 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-27 — Phiên 15: chu kỳ Album tự nhập, danh sách Việt/Anh (Groq dịch), thiết kế backend
+
+### Bối cảnh
+
+- Yêu cầu mở rộng lớn: tài khoản do admin tạo, dữ liệu học trực tuyến, dùng chung iPhone + máy tính,
+  web admin panel quản lý tài khoản/xu/Groq, khung nhập danh sách nhiều dòng trộn tiếng Việt/Anh, và
+  chu kỳ thông báo Album do người dùng tự đặt (không phải danh sách cố định).
+- Hai yêu cầu cuối **không cần backend** nên đã làm xong trong phiên này.
+- Phần tài khoản/đồng bộ/admin **không thể** triển khai thật khi chưa có project backend và chưa có
+  khoá, nên phiên này chốt thiết kế (`docs/CLOUD_BACKEND.md`) và **không** dựng giao diện giả.
+
+### Đã thay đổi
+
+- **Chu kỳ thông báo Album tự nhập** (`src/notifications/interval.ts` mới, `src/screens/AlbumScreen.tsx`,
+  `src/db/settings.ts`, `src/notifications/album.ts`):
+  - Nhập số giờ + số phút; 0, số âm, chữ và quá 7 ngày bị từ chối kèm lý do; **không tự đổi** giá trị
+    người dùng đã nhập.
+  - Bỏ mức sàn 5 phút cũ (nó âm thầm biến 7 phút thành 10); lưu trong khoảng 1…10.080 phút.
+  - Bộ lập lịch dùng đúng chu kỳ và trả `coverageHours`; cảnh báo khi chu kỳ < 15 phút rằng iOS không
+    cho app chạy nền nên hàng đợi 48 thông báo chỉ phủ một số giờ nhất định.
+- **Khung nhập danh sách** (`src/wordlist/parse.ts`, `src/lib/lang.ts` mới, `src/ai/prompt.ts`,
+  `src/ai/schema.ts`, `src/ai/types.ts`, `src/ai/cache.ts`, `src/wordlist/types.ts`,
+  `src/wordlist/match.ts` mới, `src/screens/useWordListImport.ts`, `src/screens/AiStudioScreen.tsx`):
+  - Mỗi dòng thật = một mục; cụm chỉ bị xuống dòng trên màn hình **không** bị tách; khoảng trắng bên
+    trong cụm giữ nguyên; hiểu CRLF; giữ nguyên dấu tiếng Việt.
+  - Nhận diện ngôn ngữ **từng mục**; mục tiếng Việt được Groq dịch sang tiếng Anh (giữ nguyên cụm,
+    xét ngữ cảnh với thuật ngữ) rồi mới giải nghĩa; trả thêm `sourceVi`, `englishOptions`, `uncertain`.
+  - Xem trước hiện cụm tiếng Việt gốc, chip chọn cách dịch khác, nhãn “Groq chưa chắc bản dịch”; cụm
+    gốc được lưu trong ghi chú của từ (`Gốc: …`) nên đầu vào gốc không mất.
+  - Câu trả lời được khớp về đúng mục đã hỏi (`src/wordlist/match.ts`): ưu tiên `sourceVi`, rồi `term`,
+    cuối cùng mới theo vị trí và **chỉ** cho mục tiếng Việt; một câu trả lời không bao giờ dùng cho hai
+    mục. Thử lại chỉ gửi lại các mục lỗi.
+- **Tài liệu**: `docs/CLOUD_BACKEND.md` mới (backend chọn Supabase kèm nguồn kiểm chứng, giới hạn gói
+  miễn phí, mô hình dữ liệu dùng chung từ điển + tiến trình riêng, quy tắc đồng bộ từng loại dữ liệu,
+  RLS/phân quyền, quản lý khoá Groq, bảng chi phí, kế hoạch chuyển dữ liệu, việc cần làm và điểm phải
+  kiểm chứng); README, CHECKPOINT, NEXT_SESSION cập nhật.
+
+### Kiểm thử (chạy thật)
+
+- `npx tsc --noEmit` → exit 0, 0 lỗi.
+- `npx jest --runInBand` → **33/33 suite, 323/323 test pass** (thêm 3 suite: `interval`, `lang`,
+  `match`; mở rộng `parse`, `prompt`, `schema`, `settings`).
+- `node scripts/validate-checkpoint.mjs` → hợp lệ; `node scripts/check-migrations.mjs` → OK (schema 5).
+- **Chưa kiểm trên thiết bị**: chu kỳ tự nhập (nhất là dưới 15 phút) và luồng dịch Việt→Anh với Groq thật.
+- **Không có dòng code backend nào**, nên không có gì về tài khoản/đồng bộ/admin panel để kiểm thử.
+
 ## 2026-10-26 — Phiên 14: lịch ôn tùy chỉnh, reset an toàn, Groq tự xếp level, album + thông báo ngẫu nhiên
 
 ### Bối cảnh

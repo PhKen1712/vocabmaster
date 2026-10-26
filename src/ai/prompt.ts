@@ -21,7 +21,9 @@ const TRACK_NOTES: Record<Track, string> = {
 export function buildPrompt(request: AiRequest): string {
   const explain = (request.explainTerms ?? []).map((term) => term.trim()).filter(Boolean);
   if (explain.length > 0) {
-    return buildExplainPrompt(explain, request);
+    return request.translateFromVi
+      ? buildTranslatePrompt(explain, request)
+      : buildExplainPrompt(explain, request);
   }
 
   if (request.lookupTerm && request.lookupTerm.trim()) {
@@ -96,6 +98,45 @@ function buildExplainPrompt(terms: string[], request: AiRequest): string {
     '',
     'JSON shape:',
     '{"words":[{"term":"string","ipa":"/.../","partOfSpeech":"noun|verb|adjective|adverb|phrase|idiom|phrasal verb","meaningVi":"string","definitionEn":"string","exampleEn":"string","exampleVi":"string","synonyms":["string"],"antonyms":["string"],"collocations":["string"],"wordFamily":["string"],"topic":"string","level":0}]}',
+  ].join('\n');
+}
+
+/**
+ * Vietnamese items: translate first, then explain the English term.
+ *
+ * The learner typed Vietnamese, so the dictionary fields must describe the
+ * English term that carries the meaning — not the Vietnamese spelling, and not
+ * a loose association. The model has to copy its source back so the preview can
+ * show both languages side by side.
+ */
+function buildTranslatePrompt(items: string[], request: AiRequest): string {
+  return [
+    `The learner typed ${items.length} item(s) in Vietnamese. Give each one the English term a learner should study, then explain it.`,
+    `Track: ${request.track === 'ielts' ? 'IELTS Vocabulary' : 'General English'}. The learner selected level ${request.level}, but that is only a hint.`,
+    '',
+    'Translation rules — this is the hardest part, do it carefully:',
+    '- Pick the English term or phrase that carries the SAME everyday meaning. Do not pick a loosely related word.',
+    '- A Vietnamese phrase stays a phrase: "bảo vệ môi trường" → "environmental protection", never three separate words.',
+    '- For a specialised term, decide the most likely context first and then use the standard English term for that context ("trách nhiệm dân sự" → "civil liability", not "civil responsibility" unless that is the standard term in that field).',
+    '- Use the same style as a dictionary entry: lowercase, no "to " prefix for verbs unless the item is a verb phrase, no added articles.',
+    '- Never invent a term you are unsure of. If several readings are possible, return the most common one as `term` and list the other acceptable ones in `englishOptions`.',
+    '- `sourceVi` must repeat the learner\'s own text exactly, with its diacritics, unchanged.',
+    '',
+    'Items (keep this order; never split or merge them):',
+    ...items.map((item, index) => `${index + 1}. ${item}`),
+    '',
+    'Then fill the study fields for the ENGLISH term you chose:',
+    '- meaningVi: the most common, everyday Vietnamese meaning of that English term (2–8 words), which must match the learner\'s original meaning.',
+    '- definitionEn: simple A2–B1 English, not dictionary jargon.',
+    '- exampleEn: a natural sentence containing the English term exactly; exampleVi is its natural translation.',
+    '- partOfSpeech must match the English term; omit ipa unless you are confident about it.',
+    '- level: judge the ENGLISH term\'s real CEFR difficulty (0 pre-A1 … 6 C2) by meaning, usage and frequency — never by word length, and never by the Vietnamese spelling. Do not copy the learner\'s selected level; a B1 term stays B1 even when they chose B2.',
+    '- englishOptions: up to 3 acceptable English terms, best first, and `term` must be the first of them. Use an array with just `term` when there is only one good answer.',
+    '- uncertain: true only when you were not confident about the translation. Be honest: a flagged row is reviewed by the learner, a wrong silent row is not.',
+    '- Return valid JSON only, no markdown fences, no commentary.',
+    '',
+    'JSON shape:',
+    '{"words":[{"term":"string","sourceVi":"string","englishOptions":["string"],"uncertain":false,"ipa":"/.../","partOfSpeech":"noun|verb|adjective|adverb|phrase|idiom|phrasal verb","meaningVi":"string","definitionEn":"string","exampleEn":"string","exampleVi":"string","synonyms":["string"],"antonyms":["string"],"collocations":["string"],"wordFamily":["string"],"topic":"string","level":0}]}',
   ].join('\n');
 }
 

@@ -61,3 +61,89 @@ describe('list entries', () => {
     expect(entryToWordInput(failed, { track: 'general', level: 2, topic: '' })).toBeNull();
   });
 });
+
+describe('mixed-language lists', () => {
+  it('makes one item per real newline, whatever the language', () => {
+    const parsed = parseWordList(
+      'criminal\ncivil\nenvironmental protection\nbảo vệ môi trường',
+    );
+
+    expect(parsed.terms).toEqual([
+      'criminal',
+      'civil',
+      'environmental protection',
+      'bảo vệ môi trường',
+    ]);
+    expect(parsed.items.map((item) => item.language)).toEqual(['en', 'en', 'en', 'vi']);
+    expect(parsed.english).toEqual(['criminal', 'civil', 'environmental protection']);
+    expect(parsed.vietnamese).toEqual(['bảo vệ môi trường']);
+  });
+
+  it('never splits a phrase on spaces — a wrapped line is still one item', () => {
+    expect(parseWordList('carry out an investigation').terms).toEqual([
+      'carry out an investigation',
+    ]);
+    expect(parseWordList('bảo vệ môi trường').terms).toEqual(['bảo vệ môi trường']);
+  });
+
+  it('skips blank lines and understands Windows line endings', () => {
+    const parsed = parseWordList('criminal\r\n\r\n  \r\nbảo vệ môi trường\r\n');
+
+    expect(parsed.terms).toEqual(['criminal', 'bảo vệ môi trường']);
+    expect(parsed.vietnamese).toEqual(['bảo vệ môi trường']);
+  });
+
+  it('keeps Vietnamese diacritics exactly as the learner typed them', () => {
+    expect(parseWordList('trách nhiệm dân sự').terms).toEqual(['trách nhiệm dân sự']);
+  });
+
+  it('still accepts a comma-separated line and still removes duplicates', () => {
+    expect(parseWordList('criminal, civil, civil').terms).toEqual(['criminal', 'civil']);
+  });
+
+  it('reports an item that is neither English nor Vietnamese instead of guessing', () => {
+    const parsed = parseWordList('12345');
+    expect(parsed.terms).toEqual([]);
+    expect(parsed.dropped[0]).toEqual({ value: '12345', reason: 'not_a_word' });
+  });
+
+  it('saves the Vietnamese original next to the English term Groq chose', () => {
+    const englishOptions = ['civil liability', 'civil responsibility'];
+    const entry = entryFromSuggestion(
+      'civil liability',
+      {
+        term: 'civil liability',
+        meaningVi: 'trách nhiệm dân sự',
+        partOfSpeech: 'phrase',
+        source: 'ai',
+        aiGenerated: true,
+        confirmed: false,
+        ipa: null,
+        sourceVi: 'trách nhiệm dân sự',
+        englishOptions,
+        uncertain: false,
+      },
+      {
+        level: 4,
+        levelSource: 'ai',
+        cached: false,
+        key: 'trách nhiệm dân sự',
+        language: 'vi',
+        translation: {
+          sourceTerm: 'trách nhiệm dân sự',
+          englishOptions,
+          uncertain: false,
+        },
+      },
+    );
+
+    // The row is addressed by what the learner typed, but saved as English.
+    expect(entry.normalized).toBe('trách nhiệm dân sự');
+    expect(entry.term).toBe('civil liability');
+    expect(entry.englishOptions).toEqual(englishOptions);
+
+    const input = entryToWordInput(entry, { track: 'general', level: 2, topic: '' });
+    expect(input?.term).toBe('civil liability');
+    expect(input?.note).toBe('Gốc: trách nhiệm dân sự');
+  });
+});

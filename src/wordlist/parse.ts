@@ -2,31 +2,45 @@
  * Parsing for the "paste a list of words" input.
  *
  * Rules (all covered by tests):
- * - split on commas, semicolons and newlines, so a pasted column also works;
- * - trim every item and collapse internal whitespace (`civil    law` → `civil law`);
- * - drop empty items from `,,` or a trailing comma;
- * - remove duplicates case-insensitively, keeping the first spelling and order;
- * - keep multi-word items intact: `take into account` is ONE item, never three.
+ * - a real newline the learner typed starts a new item, one item per line;
+ * - a phrase that merely wraps visually on screen is NOT split, because this
+ *   only ever looks at newline characters that exist in the pasted text;
+ * - commas and semicolons still separate items inside one line, so a pasted
+ *   column or a one-line list both work;
+ * - every item is trimmed and internal whitespace is collapsed
+ *   (`civil    law` → `civil law`), while Vietnamese diacritics are untouched;
+ * - empty lines are skipped;
+ * - duplicates are removed case-insensitively, keeping the first spelling;
+ * - multi-word items stay whole: `take into account` is ONE item, never three;
+ * - each item is labelled English or Vietnamese for the importer.
  */
+
+import { detectLanguage, type InputLanguage } from '../lib/lang';
 
 export const MAX_LIST_WORDS = 50;
 const MAX_TERM_LENGTH = 80;
 
+export type DropReason = 'duplicate' | 'too_long' | 'not_a_word';
+
+export interface ParsedListItem {
+  value: string;
+  language: InputLanguage;
+}
+
 export interface ParsedWordList {
-  /** Clean terms in the order the learner typed them. */
+  /** Every accepted item, in the order the learner typed it. */
   terms: string[];
+  /** The same items with their detected language. */
+  items: ParsedListItem[];
+  /** Items the dictionary path should handle. */
+  english: string[];
+  /** Items Groq must turn into an English term first. */
+  vietnamese: string[];
   /** Items that were dropped, with the reason, so nothing disappears silently. */
-  dropped: { value: string; reason: 'duplicate' | 'too_long' | 'not_english' }[];
+  dropped: { value: string; reason: DropReason }[];
   /** True when the input contains more items than the app will process. */
   truncated: boolean;
 }
-
-/**
- * Letters, spaces, apostrophes, hyphens and dots: what a headword or a phrase
- * can contain. Phrases are deliberately allowed here; the AI, not a
- * single-word dictionary, decides what they mean.
- */
-const HEADWORD = /^[a-z][a-z'’.\- ]*[a-z.]$/i;
 
 export function cleanTerm(value: string): string {
   return value
@@ -37,12 +51,18 @@ export function cleanTerm(value: string): string {
 }
 
 export function parseWordList(input: string, max = MAX_LIST_WORDS): ParsedWordList {
+  const items: ParsedListItem[] = [];
   const terms: string[] = [];
   const dropped: ParsedWordList['dropped'] = [];
   const seen = new Set<string>();
   let truncated = false;
 
-  const raw = (input ?? '').split(/[,;\n\r]+/);
+  // Split on real newlines first (CRLF, CR and LF), then on commas/semicolons
+  // inside each line.
+  const raw: string[] = [];
+  for (const line of (input ?? '').split(/\r\n|\r|\n/)) {
+    for (const part of line.split(/[,;]+/)) raw.push(part);
+  }
 
   for (const part of raw) {
     const value = cleanTerm(part);
@@ -57,8 +77,12 @@ export function parseWordList(input: string, max = MAX_LIST_WORDS): ParsedWordLi
       dropped.push({ value: value.slice(0, 24) + '…', reason: 'too_long' });
       continue;
     }
-    if (!HEADWORD.test(value) || !/[a-z]/i.test(value)) {
-      dropped.push({ value, reason: 'not_english' });
+
+    const language = detectLanguage(value);
+    // Vietnamese is accepted here exactly like English: it is translated by
+    // Groq later, not rejected at the door.
+    if (language === 'unknown') {
+      dropped.push({ value, reason: 'not_a_word' });
       continue;
     }
     if (terms.length >= max) {
@@ -68,7 +92,15 @@ export function parseWordList(input: string, max = MAX_LIST_WORDS): ParsedWordLi
 
     seen.add(key);
     terms.push(value);
+    items.push({ value, language });
   }
 
-  return { terms, dropped, truncated };
+  return {
+    terms,
+    items,
+    english: items.filter((item) => item.language === 'en').map((item) => item.value),
+    vietnamese: items.filter((item) => item.language === 'vi').map((item) => item.value),
+    dropped,
+    truncated,
+  };
 }

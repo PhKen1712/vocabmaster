@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { AppText, Banner, Card, PrimaryButton, Screen, SectionHeader } from '../components/ui';
-import { Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
+import { AppText, Banner, Card, Chip, PrimaryButton, Screen, SectionHeader } from '../components/ui';
+import { ChipRow, Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';
 import { generateVocabulary } from '../ai';
 import { providerLabel } from '../ai/provider';
 import { describeAiError, type AiErrorView } from '../ai/errors';
@@ -427,18 +427,19 @@ export function AiStudioScreen() {
         ) : (
           <>
             <AppText variant="caption" color={colors.textMuted}>
-              Danh sách từ tiếng Anh, cách nhau bằng dấu phẩy
+              Mỗi dòng một mục — tiếng Anh hoặc tiếng Việt, Groq tự dịch
             </AppText>
             <Input
               value={wordList.text}
               onChangeText={wordList.setText}
-              placeholder="criminal, take into account, in terms of, carry out an investigation"
+              placeholder={'criminal\ntake into account\nbảo vệ môi trường\ntrách nhiệm dân sự'}
               multiline
               autoCapitalize="none"
               style={{ marginTop: spacing.xs, minHeight: 96, textAlignVertical: 'top' }}
             />
             <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
-              {wordList.parsed.terms.length} từ hợp lệ
+              {wordList.parsed.terms.length} mục hợp lệ
+              {wordList.vietnameseCount > 0 ? ` · ${wordList.vietnameseCount} mục tiếng Việt sẽ được dịch` : ''}
               {wordList.parsed.dropped.filter((item) => item.reason === 'duplicate').length > 0
                 ? ` · bỏ ${wordList.parsed.dropped.filter((item) => item.reason === 'duplicate').length} từ trùng`
                 : ''}
@@ -447,7 +448,7 @@ export function AiStudioScreen() {
             </AppText>
 
             <PrimaryButton
-              label={wordList.running ? 'Groq đang viết nghĩa…' : 'Groq giải nghĩa danh sách'}
+              label={wordList.running ? 'Groq đang xử lý…' : 'Groq giải nghĩa & dịch danh sách'}
               onPress={wordList.lookUp}
               loading={wordList.running}
               disabled={wordList.running || wordList.parsed.terms.length === 0}
@@ -580,6 +581,7 @@ export function AiStudioScreen() {
               entry={entry}
               included={wordList.selected.has(entry.normalized)}
               onToggle={() => wordList.toggle(entry.normalized)}
+              onChooseOption={(term) => wordList.chooseOption(entry.normalized, term)}
             />
           ))}
           {failedCount > 0 ? (
@@ -603,7 +605,8 @@ export function AiStudioScreen() {
             color={colors.textFaint}
             style={{ marginTop: spacing.sm, textAlign: 'center' }}
           >
-            Groq giải nghĩa cả cụm từ như một đơn vị. Mục nào Groq không trả lời được sẽ hiện
+            Groq giải nghĩa cả cụm từ như một đơn vị, và dịch mục tiếng Việt thành từ tiếng Anh
+            tương ứng (bạn đổi được bản dịch nếu có nhiều cách). Mục nào Groq không trả lời được sẽ hiện
             "lỗi" và không bao giờ bị coi là đã lưu.
           </AppText>
         </>
@@ -783,10 +786,12 @@ function ListEntryCard({
   entry,
   included,
   onToggle,
+  onChooseOption,
 }: {
   entry: ListEntry;
   included: boolean;
   onToggle: () => void;
+  onChooseOption: (term: string) => void;
 }) {
   const { colors } = useTheme();
   const selectable = entry.status === 'ready' && Boolean(entry.meaningVi);
@@ -849,6 +854,30 @@ function ListEntryCard({
         <AppText variant="caption" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
           “{entry.exampleEn}”
         </AppText>
+      ) : null}
+
+      {entry.sourceTerm ? (
+        <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
+          Tiếng Việt gốc: “{entry.sourceTerm}”
+          {entry.uncertain ? ' · Groq chưa chắc bản dịch này' : ''}
+        </AppText>
+      ) : null}
+      {entry.englishOptions.length > 1 ? (
+        <>
+          <AppText variant="micro" color={colors.textFaint} style={{ marginTop: spacing.xs }}>
+            Cách dịch khác
+          </AppText>
+          <ChipRow>
+            {entry.englishOptions.map((option) => (
+              <Chip
+                key={option}
+                label={option}
+                active={option === entry.term}
+                onPress={() => onChooseOption(option)}
+              />
+            ))}
+          </ChipRow>
+        </>
       ) : null}
 
       <View style={styles.draftMeta}>
