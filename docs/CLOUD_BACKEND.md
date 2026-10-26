@@ -1,9 +1,10 @@
 # Tài khoản, dữ liệu trực tuyến và web admin — thiết kế
 
-> **Trạng thái: thiết kế, chưa triển khai.** Chưa có project Supabase nào được tạo, chưa có
-> khoá nào được cấu hình và **không có dòng nào trong tài liệu này đã được chạy thật**.
-> Tất cả nội dung dưới đây là thiết kế để chốt trước khi viết code, kèm những điểm bắt buộc
-> phải kiểm chứng bằng một project thật. Xem mục 12 để biết việc cần làm tiếp.
+> **Trạng thái (cập nhật 2026-10-27): backend đã dựng và đã kiểm chứng trên project thật.**
+> Project Supabase `iuplquhrbzmfdmcdfeox` (Free, Singapore) đã có schema + RLS + hàm xu
+> (`supabase/migrations/0001_init.sql`). `npm run verify:cloud` đạt **20/20** với hai tài khoản thật.
+> **Chưa** làm: Edge Function proxy Groq, đồng bộ trong app, web admin panel, bản web.
+> Xem mục 2.2 (sự thật đã kiểm chứng), 11 (tiến độ) và 13 (còn phải kiểm).
 
 ---
 
@@ -55,6 +56,23 @@ chính thức để dùng từ Expo/React Native; xuất dữ liệu bằng `pg_
 | React Native / Expo | Có hướng dẫn chính thức dùng `@supabase/supabase-js` trong Expo. | [Expo + Supabase](https://docs.expo.dev/guides/using-supabase/) |
 | Sao lưu | Gói Free **không tải được** bản sao lưu quản lý sẵn. Xuất dữ liệu bằng CLI `pg_dump`/`psql`; Storage tách riêng. | [Backup & restore](https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore) |
 | Email mặc định | Chất lượng best-effort, giới hạn ~2 email/giờ → không dựa vào email để cấp lại mật khẩu. | [Production checklist](https://supabase.com/docs/guides/platform/going-into-prod) |
+
+### 2.2 Sự thật đã kiểm chứng trên project thật (2026-10-27)
+
+Bốn điều dưới đây chỉ biết được khi chạy thật, tài liệu Supabase không nói:
+
+1. **`apikey` không được là JWT người dùng.** Với khoá kiểu mới `sb_publishable_…`, mọi request gửi
+   JWT vào header `apikey` bị trả **401** dù đăng nhập thành công. Đúng: `apikey` = khoá dự án,
+   `Authorization: Bearer <jwt>` = phiên người dùng.
+2. **Default privileges cấp `ALL` cho `authenticated` trên bảng mới.** Vì vậy `grant update (cột)` là
+   **cộng thêm** quyền, không giới hạn: lần đầu, người dùng `PATCH profiles.role='admin'` **thành công**.
+   Mọi migration phải `revoke all ... from authenticated` **trước** rồi mới `grant`.
+3. **`auth.admin.createUser` chạy được** khi đăng ký công khai **đang bật** (`disable_signup=false`).
+   Trường hợp đã tắt đăng ký **chưa kiểm** — xem mục 13.
+4. **`GET /rest/v1/` (endpoint gốc) trả 401 cho cả khoá thật lẫn khoá giả** — đặc thù đường dẫn, không
+   phải lỗi khoá. Muốn kiểm khoá thì dùng một đường dẫn bảng: khoá thật → 404, khoá sai → 401.
+
+Hai lỗi trên đều do `npm run verify:cloud` bắt được, không phải do đọc code.
 
 ## 3. Mô hình dữ liệu
 
@@ -235,7 +253,7 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 |---|---|---|
 | 1 | Khảo sát repository, kiến trúc, cách lưu dữ liệu | **Xong** (mục 1) |
 | 2 | Thiết kế: kiến trúc, dữ liệu, đồng bộ, phân quyền, Groq, migration | **Xong cho backend đã chọn** (tài liệu này) |
-| 3 | Triển khai backend (DB, Auth, RLS, thao tác, bảo vệ API/xu) | **Chưa** — cần project thật |
+| 3 | Triển khai backend (DB, Auth, RLS, thao tác, bảo vệ API/xu) | **Một phần** — schema + RLS + hàm xu + 20/20 kiểm chứng; chưa có Edge Function |
 | 4 | Tích hợp app (lưu online, đồng bộ tiến trình/Album/cài đặt) | **Chưa** — cần bước 3 |
 | 5 | Admin panel | **Chưa** — cần bước 3 |
 | 6 | Tùy chỉnh chu kỳ Album | **Xong** (tự nhập phút/giờ, không còn danh sách cố định) |
@@ -243,7 +261,13 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 | 8 | Hỗ trợ máy tính | **Chưa** — đã có đánh giá ở mục 7 |
 | 9 | Kiểm thử, sửa lỗi, tài liệu, checkpoint | **Một phần** — chỉ cho phần đã làm (6, 7) |
 
-## 12. Việc người dùng cần làm trước khi triển khai
+## 12. Việc người dùng cần làm
+
+> **Đã xong (27/10/2026):** tạo project Free (Singapore), điền `.env` + `.env.cloud.local`, áp
+> `supabase/migrations/0001_init.sql`. **Còn lại:** (a) tắt *Allow new users to sign up* rồi thử lại
+> `auth.admin.createUser`; (b) thu hồi khoá `service_role` đã lộ trong lịch sử chat và thay bằng khoá
+> mới đặt trong `.env.cloud.local` (không dán vào chat). Các bước dưới giữ lại làm hướng dẫn cho lần
+> dựng project khác.
 
 1. Tạo project Supabase (gói Free) tại supabase.com. Khi tạo, ghi lại xem Supabase **có đòi thẻ hay
    không** (tài liệu không nói rõ) và chọn region gần Việt Nam (Singapore) để giảm độ trễ.
@@ -270,12 +294,20 @@ Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.e
 > `anon` key từ một tài khoản khác — kết quả phải là rỗng khi RLS bật. Đây chính là hành vi mà mục 13
 > yêu cầu phải kiểm.
 
-## 13. Điểm phải kiểm chứng trước khi tin (chưa kiểm được)
+## 13. Điểm phải kiểm chứng trước khi tin
 
-- `auth.admin.createUser` có chạy khi đã tắt đăng ký công khai không (tài liệu không nói rõ).
-- RLS thực sự chặn người dùng A đọc dữ liệu của B (kiểm bằng hai tài khoản thật).
+**Đã kiểm và đạt (2026-10-27, `npm run verify:cloud` 20/20):**
+
+- RLS thực sự chặn A đọc/ghi dữ liệu của B (hai tài khoản thật, cả bảng tiến trình và profile).
+- `award_coins()` không nhân đôi khi gửi cùng `source_id`, kể cả **3 request song song**.
+- Client không chèn trực tiếp được vào `coin_ledger`; không tự `PATCH` `profiles.role` thành admin.
+- Tài khoản `status='locked'` bị chặn ghi ở server (không chỉ ẩn nút).
+- `auth.admin.createUser` chạy được khi đăng ký công khai **đang bật**.
+
+**Chưa kiểm:**
+
+- `auth.admin.createUser` khi **đã tắt** đăng ký công khai (`disable_signup=true`).
 - Request từ origin khác bị từ chối; JWT hết hạn bị từ chối.
-- `award_coins()` không nhân đôi khi gửi cùng `source_id` (kể cả gửi song song).
 - Hành vi khi vượt hạn mức free và khi project bị tạm dừng.
 - Trên web: `expo-sqlite` (WASM/OPFS/COOP-COEP) và thông báo (không hỗ trợ cục bộ).
 

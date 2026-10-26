@@ -240,6 +240,11 @@
       "name": "Pasted list: one item per real newline, Vietnamese and English mixed",
       "status": "tested",
       "evidence": "src/wordlist/parse.ts splits on real newlines then commas, keeps phrases whole, skips blank lines, understands CRLF, keeps Vietnamese diacritics and labels every item with src/lib/lang.ts. Vietnamese items are sent to Groq with translateFromVi: a new prompt (src/ai/prompt.ts buildTranslatePrompt) asks for the English term, sourceVi, englishOptions and uncertain; src/ai/schema.ts validates those fields, warns when the model echoed Vietnamese instead of translating, and src/wordlist/match.ts links each answer back to the row it belongs to (by sourceVi first, then term, then position for Vietnamese rows only, never reusing one answer twice). The preview shows the Vietnamese source, alternative translations as tappable chips and the uncertainty flag, and the original Vietnamese is kept in the word note (\"Gốc: …\"). Tests: parse.test.ts (mixed list, CRLF, phrases, diacritics), lang.test.ts, match.test.ts, prompt.test.ts, schema.test.ts."
+    },
+    {
+      "name": "Supabase backend: shared dictionary, per-user progress, RLS, idempotent coin ledger",
+      "status": "tested",
+      "evidence": "supabase/migrations/0001_init.sql áp trên project iuplquhrbzmfdmcdfeox; npm run verify:cloud 20/20 với hai tài khoản thật: B không đọc/ghi được dữ liệu A, gửi trùng source_id chỉ cộng một lần, 3 request song song tạo 1 giao dịch, client không chèn được vào coin_ledger, không tự PATCH profiles.role=admin (403 sau khi thêm revoke), tài khoản locked bị chặn ghi."
     }
   ],
   "in_progress_features": [
@@ -263,9 +268,9 @@
       "evidence": "scripts/validate-checkpoint.mjs"
     },
     {
-      "name": "Cloud accounts, online sync, web admin panel, web/desktop client",
-      "status": "blocked",
-      "reason": "Thiết kế đã xong trong docs/CLOUD_BACKEND.md (backend chọn Supabase, mô hình dữ liệu dùng chung từ điển + tiến trình riêng, quy tắc đồng bộ từng loại dữ liệu, phân quyền, quản lý khoá Groq, bảng chi phí/giới hạn kèm nguồn, kế hoạch chuyển dữ liệu không mất mát). Chưa viết code backend vì cần project Supabase thật và khoá do người dùng tạo."
+      "name": "App <-> Supabase sync: outbox, merge rules, import local data on first login (phase 4)",
+      "status": "planned",
+      "reason": "Bảng và RLS đã sẵn; cần migration SQLite v6 (outbox, remote_id, last_synced_at) và lớp đẩy/kéo trong app."
     }
   ],
   "pending_features": [
@@ -343,6 +348,16 @@
       "name": "Web client for studying on a computer, optional Electron/Tauri shell later",
       "status": "planned",
       "reason": "Expo hỗ trợ web qua react-native-web; expo-notifications không chạy trên web và expo-sqlite cần WASM/OPFS + header COOP/COEP"
+    },
+    {
+      "name": "Edge Function proxy cho Groq (giữ khoá ở server, hạn mức mỗi ngày)",
+      "status": "planned",
+      "reason": "Khoá Groq hiện nằm trong Keychain trên thiết bị; chuyển lên server cần Edge Function + ai_usage."
+    },
+    {
+      "name": "Web admin panel (React + Vite): tài khoản, xu, cấu hình Groq",
+      "status": "planned",
+      "reason": "Backend đã có admin_adjust_coins + is_admin(); cần giao diện và Edge Function cho thao tác đặc quyền."
     }
   ],
   "known_bugs": [

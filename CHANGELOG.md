@@ -4,6 +4,58 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-27 — Phiên 16: dựng backend Supabase thật, kiểm chứng RLS và sổ xu
+
+### Bối cảnh
+
+- Người dùng chốt backend **Supabase** và tạo project Free (region Singapore, `iuplquhrbzmfdmcdfeox`),
+  đặt khoá vào `.env` / `.env.cloud.local` (đã gitignore).
+- Mục tiêu phiên: có schema + phân quyền + sổ xu **chạy thật**, và phải chứng minh bằng tài khoản thật
+  chứ không dựa vào đọc tài liệu.
+
+### Đã thay đổi
+
+- `supabase/migrations/0001_init.sql` (mới): 12 bảng — `topics`, `terms` (từ điển dùng chung, chuẩn hoá
+  `normalized` tự động), `profiles` (role admin/user, status active/locked, trigger tạo từ `auth.users`),
+  `user_words`, `reviews` (chỉ ghi thêm), `study_cycles`, `daily_activity`, `albums`, `album_items`,
+  `coin_ledger` (`unique (user_id, source_id)`), `ai_usage`, `app_config`. RLS bật trên toàn bộ; hàm
+  `is_admin()`, `is_active_user()`, `award_coins()` (advisory lock + idempotent), `admin_adjust_coins()`,
+  `my_coin_balance()` đều `security definer` với `search_path` cố định.
+- `scripts/check-cloud.mjs` (mới, `npm run check:cloud`): kiểm cấu hình khoá, gọi thử Auth/REST, và có
+  **đối chứng khoá giả** để chắc rằng 401 thật sự là do gateway kiểm khoá. Không in giá trị khoá.
+- `scripts/verify-cloud.mjs` (mới, `npm run verify:cloud`): tạo hai tài khoản thật rồi thử cách ly dữ
+  liệu, idempotent của xu (kể cả 3 request song song), chèn thẳng sổ xu, tự nâng quyền admin, tài khoản
+  bị khoá; tự xoá mọi dữ liệu thử.
+- `.env` / `.env.cloud.local` chỉ nằm trên máy, đã bị gitignore (`git check-ignore` xác nhận).
+
+### Hai lỗi thật do kiểm thử bắt được (không phải suy đoán)
+
+1. **Tự phong admin** — lần chạy đầu, người dùng `PATCH profiles.role='admin'` **thành công**. Nguyên
+   nhân: Supabase cấp default privileges `ALL` cho `authenticated` trên bảng mới, nên `grant update
+   (settings, username)` chỉ là **cộng thêm** quyền chứ không giới hạn. Vá bằng `revoke all ... from
+   authenticated` trước khi grant; chạy lại → **403**.
+2. **Header sai chỗ** — helper ban đầu gửi JWT người dùng vào `apikey`; với khoá kiểu mới
+   (`sb_publishable_…`) gateway trả 401 cho mọi request sau đăng nhập. Sửa: `apikey` luôn là khoá dự
+   án, JWT đi ở `Authorization`.
+
+### Kiểm thử đã chạy
+
+- `npm run check:cloud`: 7/7 — URL, publishable key, secret key, `auth/v1/health` 200,
+  `/auth/v1/admin/users` **200** (khoá có quyền admin thật), đối chứng khoá giả 401.
+- `npm run verify:cloud`: **20/20** — B không đọc/ghi được dữ liệu A, `source_id` trùng chỉ cộng một lần
+  (10 → 10, rồi 3 request song song → 15), client không chèn được vào `coin_ledger` (403), không tự
+  nâng admin (403), tài khoản `locked` bị chặn ghi (403).
+- `npx tsc --noEmit`, `npx jest --runInBand`, `node scripts/validate-checkpoint.mjs`: xem mục kết quả.
+
+### Còn dở / chưa kiểm
+
+- **Chưa tắt** `Allow new users to sign up` (`disable_signup` hiện `false` → người lạ tự đăng ký được bằng
+  anon key nằm trong app). Sau khi tắt phải thử lại `auth.admin.createUser`.
+- Khoá `service_role` đã bị dán vào lịch sử chat → **phải thu hồi trước khi có người dùng thật**.
+- Chưa có Edge Function (proxy Groq), chưa có đồng bộ trong app, chưa có admin panel, chưa có bản web.
+
+---
+
 ## 2026-10-27 — Phiên 15: chu kỳ Album tự nhập, danh sách Việt/Anh (Groq dịch), thiết kế backend
 
 ### Bối cảnh

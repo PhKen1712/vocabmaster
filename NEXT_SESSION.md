@@ -7,13 +7,18 @@
   trị đã nhập, cảnh báo khi dưới 15 phút; và khung nhập danh sách **mỗi dòng một mục** trộn Việt/Anh,
   **Groq dịch mục tiếng Việt sang tiếng Anh** rồi mới giải nghĩa (chip chọn cách dịch khác, cụm gốc lưu
   trong ghi chú `Gốc: …`).
-- **MỚI Ở BƯỚC THIẾT KẾ, chưa có code:** tài khoản do admin tạo, dữ liệu trực tuyến, đồng bộ
-  iPhone ↔ máy tính, web admin panel (tài khoản/xu/Groq), bản web. Toàn bộ thiết kế ở
-  [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md): backend chọn **Supabase**, kèm bảng chi phí/giới hạn
-  có nguồn và danh sách điểm phải kiểm chứng trước khi tin.
-- **Chặn:** chưa có project Supabase và chưa có khoá. Cần người dùng tạo project (gói Free) rồi đặt Project URL + anon key vào `.env` và
-  service-role key vào `.env.cloud.local` (cả hai đã bị gitignore), **không dán khoá vào chat**; tên biến
-  có sẵn trong `.env.example`. Xem mục 12 của tài liệu thiết kế.
+- **MỚI XONG, ĐÃ KIỂM CHỨNG TRÊN PROJECT THẬT (27/10/2026):** backend Supabase — schema, RLS, hàm xu.
+  Project `iuplquhrbzmfdmcdfeox` (Singapore). `npm run check:cloud` 7/7, `npm run verify:cloud` **20/20**
+  bằng hai tài khoản thật (cách ly dữ liệu, xu idempotent kể cả 3 request song song, không tự nâng
+  admin, tài khoản locked bị chặn). Đã bắt và vá 2 lỗi thật: default-privileges làm lộ `profiles.role`,
+  và JWT đặt sai vào header `apikey`.
+- **Chưa làm:** Edge Function proxy Groq, đồng bộ trong app (migration SQLite v6 + outbox), web admin
+  panel, bản web. Thiết kế + quy tắc đồng bộ ở [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md).
+- **Chặn:** (1) `disable_signup` vẫn `false` → ai có app cũng tự đăng ký được; cần tắt trong
+  Authentication → Sign In / Providers rồi **thử lại** `auth.admin.createUser`. (2) Khoá `service_role`
+  đã lộ trong lịch sử chat → thu hồi trước khi có người dùng thật, thay bằng khoá mới đặt trong
+  `.env.cloud.local` (đừng dán vào chat nữa).
+- **Lệnh kiểm nhanh:** `npm run check:cloud` (cấu hình/kết nối) và `npm run verify:cloud` (RLS + xu).
 - **Số liệu mới:** `npx tsc --noEmit` 0 lỗi; `npx jest --runInBand` **323/323 test trong 33 suite**
   (2026-10-27); `node scripts/check-migrations.mjs` OK; `node scripts/validate-checkpoint.mjs` hợp lệ.
 
