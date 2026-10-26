@@ -207,13 +207,16 @@ Phân loại tính năng theo yêu cầu:
 
 ## 9. Biến môi trường (chưa tồn tại — chỉ là tên)
 
-| Tên | Dùng ở đâu | Có bí mật? |
-|---|---|---|
-| `EXPO_PUBLIC_SUPABASE_URL` | App (iOS/web) | Không |
-| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | App (publishable key) | Không (vẫn phải có RLS) |
-| `SUPABASE_SERVICE_ROLE_KEY` | **Chỉ Edge Function** | Có — không bao giờ vào app/repo |
-| `GROQ_API_KEY` | **Chỉ Edge Function** | Có — không bao giờ vào app/repo |
-| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Web admin | Không |
+| Tên | Dùng ở đâu | Đặt trong file nào | Có bí mật? |
+|---|---|---|---|
+| `EXPO_PUBLIC_SUPABASE_URL` | App (iOS/web) | `.env` (đã gitignore) | Không |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | App (publishable key) | `.env` (đã gitignore) | Không (vẫn phải có RLS) |
+| `SUPABASE_SERVICE_ROLE_KEY` | **Chỉ Edge Function** | `.env.cloud.local` (đã gitignore) → nạp vào secret của backend | Có — không bao giờ vào app/repo |
+| `GROQ_API_KEY` | **Chỉ Edge Function** | `.env.cloud.local` (đã gitignore) → nạp vào secret của backend | Có — không bao giờ vào app/repo |
+| `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | Web admin (`.env` của thư mục `admin/`) | `.env` của admin (đã gitignore) | Không |
+
+Tên biến (không kèm giá trị) đã có sẵn trong [`.env.example`](../.env.example). `.gitignore` đã bỏ qua
+`.env`, `.env.*` và `secrets/`, nên `.env.cloud.local` không thể bị commit nhầm.
 
 ## 10. Chuyển dữ liệu từ máy lên tài khoản (không mất dữ liệu)
 
@@ -242,13 +245,30 @@ Phân loại tính năng theo yêu cầu:
 
 ## 12. Việc người dùng cần làm trước khi triển khai
 
-1. Tạo project Supabase (gói Free) và ghi lại: URL, publishable/anon key, service-role key.
-   Xác nhận xem Supabase có đòi thẻ hay không (tài liệu không nói).
-2. Giữ project "thức" (một request mỗi vài ngày là đủ) hoặc chấp nhận nó tự tạm dừng.
-3. Đưa khoá cho tôi qua **một file riêng trong project** (ví dụ `.env.cloud.local`, đã nằm trong
-   `.gitignore`) — không dán khoá vào chat.
-4. Sau đó tôi sẽ: viết migration + RLS + Edge Functions, dựng admin panel, viết lớp đồng bộ,
-   và chạy kiểm thử (xem mục 13).
+1. Tạo project Supabase (gói Free) tại supabase.com. Khi tạo, ghi lại xem Supabase **có đòi thẻ hay
+   không** (tài liệu không nói rõ) và chọn region gần Việt Nam (Singapore) để giảm độ trễ.
+2. Ghi lại 4 giá trị trong Dashboard → Project Settings → API:
+   Project URL, `anon`/publishable key, `service_role` key (bí mật), và bật/tắt "Allow new users to
+   sign up" (mục Authentication → Sign In / Providers) — cần biết trạng thái này vì yêu cầu là **chỉ
+   admin tạo tài khoản**.
+3. Giữ project "thức" (một request mỗi vài ngày là đủ) hoặc chấp nhận nó tự tạm dừng sau ~1 tuần.
+4. Đặt khoá đúng chỗ, **không dán vào chat**:
+
+   | Giá trị | Đặt vào |
+   |---|---|
+   | Project URL | `.env` → `EXPO_PUBLIC_SUPABASE_URL` |
+   | anon / publishable key | `.env` → `EXPO_PUBLIC_SUPABASE_ANON_KEY` |
+   | service_role key | `.env.cloud.local` → `SUPABASE_SERVICE_ROLE_KEY` |
+   | khoá Groq cho backend (tuỳ chọn, sau này) | `.env.cloud.local` → `GROQ_API_KEY` |
+
+   Cả `.env` và `.env.cloud.local` đều đã bị gitignore; `.env.example` chỉ chứa **tên** biến.
+5. Báo lại cho trợ lý rằng file đã có khoá (chỉ cần tên file, không dán giá trị).
+6. Sau đó trợ lý sẽ: viết migration + RLS + Edge Functions, dựng admin panel, viết lớp đồng bộ, và
+   chạy kiểm thử (xem mục 13).
+
+> Nếu bạn muốn tự kiểm trước: trong SQL Editor của Supabase, tạo một bảng rồi thử `select` bằng
+> `anon` key từ một tài khoản khác — kết quả phải là rỗng khi RLS bật. Đây chính là hành vi mà mục 13
+> yêu cầu phải kiểm.
 
 ## 13. Điểm phải kiểm chứng trước khi tin (chưa kiểm được)
 

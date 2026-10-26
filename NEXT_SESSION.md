@@ -11,9 +11,9 @@
   iPhone ↔ máy tính, web admin panel (tài khoản/xu/Groq), bản web. Toàn bộ thiết kế ở
   [`docs/CLOUD_BACKEND.md`](docs/CLOUD_BACKEND.md): backend chọn **Supabase**, kèm bảng chi phí/giới hạn
   có nguồn và danh sách điểm phải kiểm chứng trước khi tin.
-- **Chặn:** chưa có project Supabase và chưa có khoá. Cần người dùng tạo project (gói Free) rồi đưa
-  URL + publishable key + service-role key qua **một file riêng trong project** (không dán vào chat).
-  Xem mục 12 của tài liệu thiết kế.
+- **Chặn:** chưa có project Supabase và chưa có khoá. Cần người dùng tạo project (gói Free) rồi đặt Project URL + anon key vào `.env` và
+  service-role key vào `.env.cloud.local` (cả hai đã bị gitignore), **không dán khoá vào chat**; tên biến
+  có sẵn trong `.env.example`. Xem mục 12 của tài liệu thiết kế.
 - **Số liệu mới:** `npx tsc --noEmit` 0 lỗi; `npx jest --runInBand` **323/323 test trong 33 suite**
   (2026-10-27); `node scripts/check-migrations.mjs` OK; `node scripts/validate-checkpoint.mjs` hợp lệ.
 

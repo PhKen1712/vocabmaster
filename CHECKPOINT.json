@@ -989,7 +989,7 @@
     }
   ],
   "next_steps": [
-    "Tạo project Supabase (gói Free), xác nhận có/không cần thẻ, và đưa URL + publishable key + service-role key qua một file riêng trong project (không dán vào chat).",
+    "Tạo project Supabase (gói Free), xác nhận có/không cần thẻ, và đặt Project URL + anon key vào .env và service-role key vào .env.cloud.local (đều đã bị gitignore), không dán khoá vào chat.",
     "Sau khi có khoá: viết schema + RLS + Edge Functions (award_coins idempotent, proxy Groq), rồi kiểm bằng hai tài khoản rằng A không đọc được dữ liệu của B và tài khoản bị khoá bị chặn ở server.",
     "Dựng web admin panel (tài khoản, xu, cấu hình Groq) và lớp đồng bộ trong app (outbox + quy tắc hợp nhất trong docs/CLOUD_BACKEND.md mục 4, migration v6, nhập dữ liệu máy lên tài khoản).",
     "Build bản 2026-10-27 bằng workflow macOS, cài IPA và chạy checklist thiết bị trong NEXT_SESSION.md.",
