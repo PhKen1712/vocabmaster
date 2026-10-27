@@ -42,3 +42,6 @@ app.json.free-build.bak
 
 # Xcode archive/package output from CI packaging steps
 build/
+
+# Staging bản build web của admin panel khi deploy lên Freebuff Sites (chỉ chứa file đã build)
+admin/.sitebuild/

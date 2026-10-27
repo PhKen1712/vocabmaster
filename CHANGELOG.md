@@ -4,6 +4,52 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-27 — Phiên 19: bản web chạy trên máy tính (Expo web)
+
+### Đã thay đổi
+
+- `app.json`: `platforms` thêm `"web"`. Phần `ios` (bundleIdentifier, infoPlist, plugin widget)
+  **không đổi gì**.
+- `metro.config.js` (mới): thêm `.wasm` vào `resolver.assetExts` và gắn header COOP/COEP qua
+  `server.enhanceMiddleware` — đúng cấu hình `expo-sqlite` yêu cầu cho web. Chỉ bundler dùng tới.
+- `package.json`: thêm `react-dom`, `react-native-web`, `@expo/metro-runtime` (SDK 58).
+- `App.tsx`: gói giao diện trong cột `maxWidth: 560` căn giữa khi web và cửa sổ ≥ 760 px, nền
+  `surfaceAlt`, có viền + đổ bóng nhẹ. Nhánh `Platform.OS === 'web'` nên bản iOS đi đúng đường cũ
+  (khi không `framed` vẫn trả về đúng phần tử như trước). Hook `useWindowDimensions` đặt trước
+  mọi `return` sớm — bản đầu tôi đặt sai sau các nhánh early-return và đã sửa ngay.
+- `src/components/ui.tsx` (`Card`): trên web đổi thẻ của thẻ bấm sang `<div role="link" tabIndex=0>`
+  để hết `<button>` lồng `<button>` (HTML không hợp lệ, React báo lỗi). Nút con 🔊/★ vẫn là
+  `<button>` thật; iOS giữ nguyên `accessibilityRole="button"`.
+
+### Kiểm chứng thật
+
+- `npx tsc --noEmit` → **0 lỗi**; `npm test` → **33/33 suite, 323/323 test pass** (9,8 s).
+- Web chạy ở `localhost:8081`: vào được cả 6 tab, ngân hàng 114 từ hiển thị đủ bộ lọc level/chủ đề
+  và mọi kiểu sắp xếp, chi tiết từ mở ra khi bấm thẻ.
+- **Bền dữ liệu**: đánh dấu ★ `breakfast` → tải lại trang → vẫn ★ (nhãn “Bỏ yêu thích”). SQLite WASM
+  ghi và đọc được thật, không phải dữ liệu RAM.
+- **Bố cục**: viewport 1440 → khung 560 px căn giữa (x = 440), thanh tab nằm trong khung
+  (6 nút × 90 px); viewport 700 → tràn viền. Cả hai đều **không tràn ngang**.
+- Console: **0 lỗi lồng button** sau khi sửa; chỉ còn cảnh báo `expo-notifications` (web không có
+  thông báo cục bộ — dự kiến) và `useNativeDriver` (chuyển sang JS animation trên web).
+
+### Lỗi tôi gây ra và đã sửa trong phiên
+
+- Gọi `useWindowDimensions()` sau các `return` sớm → vi phạm luật hook, có thể “Rendered fewer hooks
+  than expected”. Đã chuyển lên nhóm hook đầu hàm trước khi kiểm tra.
+
+### Việc còn dở
+
+- **Chưa đồng bộ Supabase** (giai đoạn 4): bản web lưu SQLite trong trình duyệt nên chưa dùng chung
+  dữ liệu với điện thoại. Đây là việc bắt buộc nếu muốn một bộ não chung.
+- Chưa bật `crossOriginIsolated` cho **tài liệu HTML** khi chạy dev (chỉ các bundle mới có header).
+  Ứng dụng vẫn chạy và vẫn ghi/đọc bền (đã kiểm chứng), nhưng theo docs `expo-sqlite`,
+  `withExclusiveTransactionAsync()` không dùng được trên web.
+- Chưa kiểm thử Speaking bằng mic trên Chrome, chưa thử bản production (`npx expo export --platform web`),
+  chưa thử cửa sổ thu nhỏ hơn 400 px.
+
+---
+
 ## 2026-10-27 — Phiên 18: chi tiết người dùng + quản lý từ điển trong admin panel
 
 ### Đã thay đổi

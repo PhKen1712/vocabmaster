@@ -473,6 +473,26 @@ Không có test nào gọi Groq/Gemini/iOS thật. **Chưa build iOS**, nên hai
 
 ---
 
+---
+
+## 24. Phiên 2026-10-27 — bản web chạy trên máy tính (Expo web)
+
+| Hạng mục | Trạng thái | Bằng chứng |
+|---|---|---|
+| Chạy được trong trình duyệt | **Xong** | `npx expo start --web` → `localhost:8081`, vào đủ 6 tab, ngân hàng 114 từ hiển thị đủ lọc level/chủ đề và sắp xếp |
+| Dữ liệu web bền vững | **Xong** | ★ `breakfast` → tải lại trang → vẫn ★ (SQLite WASM ghi/đọc thật, không phải RAM) |
+| Bố cục màn hình máy tính | **Xong** | 1440 px → cột 560 căn giữa (x = 440) có viền + bóng, thanh tab nằm trong cột; 700 px → tràn viền; **không tràn ngang** ở cả hai |
+| HTML hợp lệ | **Xong** | `Card` trên web đổi sang `div role="link" tabIndex=0` → 0 lỗi lồng `<button>`; nút 🔊/★ vẫn là `<button>` thật; bấm thẻ vẫn mở chi tiết từ |
+| Nguồn iOS không hỏng | **Xong** | `npx tsc --noEmit` 0 lỗi · `npm test` 33 suite / 323 test pass · `app.json` chỉ thêm `"web"` vào `platforms`, phần `ios` nguyên vẹn |
+| Đồng bộ web ↔ điện thoại | **Chưa** | giai đoạn 4: cần migration `remote_id`/`outbox` + màn hình đăng nhập + push/pull |
+| Thông báo cục bộ trên web | **Không làm được** | web không lên lịch thông báo cục bộ; thay bằng nhắc trong trang |
+| `crossOriginIsolated` ở HTML dev | **Chưa** | header COOP/COEP mới có ở bundle, chưa có ở tài liệu HTML; app vẫn chạy và vẫn ghi/đọc bền (đã kiểm), nhưng `withExclusiveTransactionAsync()` không dùng được trên web |
+
+**Cách chạy:** `npm install` rồi `npx expo start --web`, mở `http://localhost:8081`. Cấu hình web nằm ở
+`metro.config.js` (`.wasm` vào `assetExts` + COOP/COEP) — chỉ bundler dùng tới, không đụng build iOS.
+
+---
+
 **Quy tắc cho AI tiếp theo:** đọc `CHECKPOINT.md` → `NEXT_SESSION.md` → `CHECKPOINT.json` →
 phần mới nhất của `CHANGELOG.md`; kiểm tra thư mục và Git thật; nếu checkpoint lệch code, ưu
 tiên trạng thái thật của code và ghi lại khác biệt trước khi sửa. Không xây lại từ đầu.

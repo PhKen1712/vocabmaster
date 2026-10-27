@@ -7,7 +7,8 @@
     "scheme": "vocabmaster",
     "userInterfaceStyle": "automatic",
     "platforms": [
-      "ios"
+      "ios",
+      "web"
     ],
     "ios": {
       "supportsTablet": false,

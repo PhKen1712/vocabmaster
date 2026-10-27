@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -102,9 +103,15 @@ export function Card({
   ];
 
   if (onPress) {
+    // Trên web một thẻ thường chứa nút con (nút 🔊, nút ★) và <button> lồng
+    // <button> là HTML không hợp lệ nên React báo lỗi. Nhánh web đổi thẻ sang
+    // <div role="link" tabIndex=0> — vẫn bấm được, vẫn focus bằng Tab, và các nút
+    // con bên trong hợp lệ. iOS giữ nguyên accessibilityRole="button" như cũ.
+    const onWeb = Platform.OS === 'web';
     return (
       <Pressable
-        accessibilityRole="button"
+        accessibilityRole={onWeb ? undefined : 'button'}
+        role={onWeb ? 'link' : undefined}
         accessibilityLabel={accessibilityLabel}
         onPress={onPress}
         style={({ pressed }) => [base, pressed && { opacity: 0.82 }]}

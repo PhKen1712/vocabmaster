@@ -413,6 +413,35 @@ VocabMaster/
 └── scripts/                # setup, validate checkpoint
 ```
 
+## Chạy trên máy tính (bản web)
+
+Expo chạy được trên web, nên toàn bộ giao diện học — ngân hàng từ, Học, Ôn tập, Flashcard,
+Album, trò chơi, Thống kê, Cài đặt — mở được trong trình duyệt trên máy tính, dùng chung một
+bộ code với bản iPhone.
+
+```bash
+npm install              # một lần
+npx expo start --web     # mở http://localhost:8081
+```
+
+- Màn hình rộng được gói trong cột **tối đa 560 px, căn giữa**, nên giao diện vẫn giữ tỉ lệ
+  điện thoại thay vì kéo một dòng chữ dài cả mét ngang máy. Cửa sổ dưới 760 px thì chạy tràn viền.
+- Dữ liệu lưu trong trình duyệt bằng SQLite WASM (`expo-sqlite` web) — **riêng biệt**, chưa dùng
+  chung với điện thoại. Đồng bộ Supabase là giai đoạn 4, xem [docs/CLOUD_BACKEND.md](docs/CLOUD_BACKEND.md).
+- `metro.config.js` thêm đuôi `.wasm` vào `assetExts` và gắn header COOP/COEP đúng theo hướng dẫn
+  của `expo-sqlite`. Hai đoạn này chỉ dùng khi bundler chạy, không đổi gì cho build iOS.
+
+### Khác biệt so với bản iPhone
+
+| Tính năng | Trên web |
+|---|---|
+| Thông báo cục bộ (nhắc hằng tuần, thông báo Album) | Không có — thay bằng nhắc trong trang |
+| Widget màn hình chính / màn hình khóa | Không (chỉ iOS) |
+| Rung phản hồi (haptics) | Im lặng, không lỗi |
+| Luyện nói bằng micro (Speaking) | Một phần, phụ thuộc trình duyệt |
+| Lưu khoá AI trong Keychain | Không có Keychain; khoá nhập trong Cài đặt |
+| Giọng đọc từ (TTS) | Có, theo giọng mà trình duyệt hỗ trợ |
+
 ## Giới hạn đã biết
 
 - Widget cần Apple Developer Program trả phí (App Groups) và một lần build native.
@@ -425,8 +454,8 @@ VocabMaster/
 - Chưa có giới hạn số thông báo/ngày riêng, giờ yên tĩnh riêng, chọn ngày trong tuần hay bộ lọc nâng cao
   cho nguồn thông báo album (các mục này là tùy chọn trong yêu cầu).
 - Hiệu ứng âm thanh dùng WAV qua expo-audio; chưa nghe thử trên iPhone thật.
-- Chưa hỗ trợ Android (cấu hình `platforms: ["ios"]`).
-- Chưa có đồng bộ nhiều thiết bị (dữ liệu cục bộ, backup thủ công).
+- Chưa hỗ trợ Android (`platforms` hiện có `ios` và `web`).
+- Chưa có đồng bộ nhiều thiết bị (bản iOS lưu cục bộ, bản web lưu trong trình duyệt, backup thủ công).
 - Chưa chạy các tính năng mới trên iPhone: máy Windows không build iOS; phải build lại qua GitHub Actions/EAS rồi cài.
 
 ## Xử lý lỗi thường gặp

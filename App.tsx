@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
@@ -111,6 +118,12 @@ function RootContent() {
   const { current, goToTab, stack } = useNavigation();
   const { colors } = useTheme();
   const music = useMusic();
+  // Mọi hook phải đứng trước các nhánh return sớm để số lượng hook không đổi giữa các lần render.
+  const { width } = useWindowDimensions();
+  // Web trên cửa sổ rộng: giữ giao diện kiểu điện thoại nhưng gói trong cột giữa màn hình,
+  // thay vì kéo một dòng chữ dài cả mét ngang máy tính. Điều kiện Platform.OS === 'web'
+  // nghĩa là bản iOS không bao giờ đi vào nhánh này.
+  const framed = Platform.OS === 'web' && width >= 760;
 
   if (!ready) return <Splash />;
   if (bootError) return <BootError message={bootError} />;
@@ -182,9 +195,14 @@ function RootContent() {
       content = <TodayScreen />;
   }
 
-  return (
+  const app = (
     <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
+      style={[
+        styles.flex,
+        { backgroundColor: colors.background },
+        framed && styles.frame,
+        framed && { borderColor: colors.border },
+      ]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       onTouchStart={music.beginPlayback}
     >
@@ -193,6 +211,13 @@ function RootContent() {
         <TabBar active={current.name as TabName} onChange={(tab) => goToTab(tab)} />
       ) : null}
     </KeyboardAvoidingView>
+  );
+
+  if (!framed) return app;
+  return (
+    <View style={[styles.flex, styles.stage, { backgroundColor: colors.surfaceAlt }]}>
+      {app}
+    </View>
   );
 }
 
@@ -240,6 +265,21 @@ function ThemeGate() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  // Web màn hình rộng: sân khấu phía sau + khung cột giữ đúng tỉ lệ điện thoại.
+  stage: { flex: 1, alignItems: 'center' },
+  frame: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 560,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#0B1020',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.12,
+    shadowRadius: 24,
+    elevation: 6,
+  },
   splash: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   logo: {
     width: 76,
