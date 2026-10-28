@@ -313,8 +313,8 @@
     },
     {
       "name": "Groq dùng chung cho thành viên qua Edge Function ai-proxy (khoá ở server, hạn mức mỗi ngày)",
-      "status": "implemented",
-      "evidence": "supabase/functions/ai-proxy + 0007_ai_shared_key.sql + src/ai/gateway.ts (key riêng luôn được ưu tiên) + panel Groq/AI. Kiểm được: 401 khi thiếu phiên, khoá lưu dạng che, khoá sai → 401, hạn mức qua ai_take_quota. CHƯA gọi Groq thành công vì chưa có khoá gsk_ thật."
+      "status": "tested",
+      "evidence": "Đã gọi Groq THẬT qua ai-proxy: HTTP 200, model openai/gpt-oss-120b; app (tài khoản chỉ có AI dùng chung, không nhập key) tạo được 3 từ kèm IPA/nghĩa/ví dụ; ai_usage ghi calls=1 errors=0; khoá chỉ hiện dạng che gsk_4B…54oi."
     },
     {
       "name": "Tự động lưu cài đặt lên server (sửa lỗi thiếu dataVersion)",
@@ -460,12 +460,6 @@
       "severity": "low",
       "description": "Bản web dùng SQLite WASM trong OPFS: chỉ một tab mở được database tại một thời điểm. Mở tab thứ hai sẽ thấy \"Không mở được dữ liệu\" (có giải thích và dữ liệu không mất).",
       "workaround": "Đóng tab cũ rồi tải lại; hoặc cài bản PWA/native. Không phải mất dữ liệu."
-    },
-    {
-      "id": "ai-004",
-      "severity": "medium",
-      "description": "Khoá Groq dùng chung chưa được cấu hình (GROQ_API_KEY trong .env.cloud.local đang rỗng, chưa đặt secret cho Edge Function). Đường dùng chung đã kiểm được phần từ chối nhưng chưa gọi thành công lần nào.",
-      "workaround": "Quản trị viên dán khoá gsk_… trong panel Groq/AI (hoặc đặt secret GROQ_API_KEY) rồi bấm Kiểm tra kết nối."
     },
     {
       "id": "build-001",
@@ -656,6 +650,11 @@
       "capability": "Hai chiều dữ liệu giữa hai thiết bị qua Supabase (cùng tài khoản)",
       "verified": true,
       "evidence": "Từ đẩy bằng sync_push với tài khoản thật xuất hiện trong web sau khi mở lại; đổi cài đặt trong web lên server sau ~1,5 giây"
+    },
+    {
+      "capability": "Groq dùng chung qua Edge Function (khoá ở server)",
+      "verified": true,
+      "evidence": "ai-proxy /chat/completions HTTP 200 với model openai/gpt-oss-120b; app tạo 3 từ không có key riêng; ai_usage calls=1 errors=0"
     }
   ],
   "unverified_capabilities": [
@@ -747,7 +746,7 @@
   "test_results": {
     "last_run": "2026-10-29 (Phiên 21)",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npx tsc --noEmit exit 0; npm test: 35/35 suite, 353/353 test (2026-10-29). node scripts/verify-admin.mjs 25/25 trên Supabase thật: thành viên bị chặn 403 ở admin_stats/admin_accounts/admin_streak_info/admin_set_streak/admin_groq_key_status; không đọc được cột app_config.ai_groq_key; app đẩy ngày đạt mục tiêu (goalMet) lên rồi admin đọc được streak=1; admin đặt 5 → đọc lại 5, longest 5, nhật ký có lý do + người thực hiện; my_streak_baseline trả days=5 cho chính người học; streak không sinh giao dịch xu; ai-proxy chặn khi thiếu phiên (401), lưu khoá dạng che, khoá sai → 401; node scripts/verify-sync.mjs 15/15 (thêm goal_met lưu đúng, chống trùng, reset giữ xu). Kiểm thử trình duyệt thật trên bản deploy: chưa đăng nhập chỉ thấy màn đăng nhập; đăng nhập → app; tải lại giữ phiên; đăng xuất → màn đăng nhập (Back và reload không vào lại); mốc streak admin đặt hiện \"🔥 5 NGÀY\" trong app; từ đẩy từ thiết bị khác xuất hiện sau khi mở lại; đổi mục tiêu ngày → profiles.settings.dailyGoal trên server đổi sau ~1,5 giây. CHƯA chạy trên iPhone thật; CHƯA gọi Groq thật bằng khoá dùng chung; CHƯA build IPA trong phiên này.",
+    "reason": "npx tsc --noEmit exit 0; npm test: 35/35 suite, 353/353 test (2026-10-29). node scripts/verify-admin.mjs 25/25 trên Supabase thật: thành viên bị chặn 403 ở admin_stats/admin_accounts/admin_streak_info/admin_set_streak/admin_groq_key_status; không đọc được cột app_config.ai_groq_key; app đẩy ngày đạt mục tiêu (goalMet) lên rồi admin đọc được streak=1; admin đặt 5 → đọc lại 5, longest 5, nhật ký có lý do + người thực hiện; my_streak_baseline trả days=5 cho chính người học; streak không sinh giao dịch xu; ai-proxy chặn khi thiếu phiên (401), lưu khoá dạng che, khoá sai → 401; node scripts/verify-sync.mjs 15/15 (thêm goal_met lưu đúng, chống trùng, reset giữ xu). Kiểm thử trình duyệt thật trên bản deploy: chưa đăng nhập chỉ thấy màn đăng nhập; đăng nhập → app; tải lại giữ phiên; đăng xuất → màn đăng nhập (Back và reload không vào lại); mốc streak admin đặt hiện \"🔥 5 NGÀY\" trong app; từ đẩy từ thiết bị khác xuất hiện sau khi mở lại; đổi mục tiêu ngày → profiles.settings.dailyGoal trên server đổi sau ~1,5 giây. CHƯA chạy trên iPhone thật; CHƯA gọi Groq thật bằng khoá dùng chung; CHƯA build IPA trong phiên này. Groq dùng chung đã kiểm THẬT: ai-proxy trả 200 với khoá của chủ dự án, app tạo bộ từ 3 từ mà không cần key riêng, ai_usage ghi nhận 1 lượt gọi.",
     "typecheck": {
       "command": "npx tsc --noEmit",
       "exit_code": 0,
@@ -1087,7 +1086,7 @@
     }
   ],
   "next_steps": [
-    "Dán khoá Groq (gsk_…) vào panel Groq/AI rồi bấm \"Kiểm tra kết nối\" để chứng minh đường dùng chung chạy thật.",
+    "Xoay khoá Groq vừa dán vào chat (console.groq.com) sau khi build xong, rồi cập nhật lại trong panel Groq/AI.",
     "Xác nhận tài khoản GitHub (tài khoản hiện tại đã hết quota) rồi build IPA từ .github/workflows/ios-unsigned.yml và cài lên iPhone.",
     "Kiểm thử trên iPhone thật: đăng nhập, đồng bộ hai chiều với web, thông báo Album, widget.",
     "Cân nhắc đặt disable_signup = true trên Supabase nếu chỉ muốn quản trị viên tạo tài khoản.",

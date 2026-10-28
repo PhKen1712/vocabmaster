@@ -40,11 +40,23 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
   đổi mục tiêu ngày trong web → `profiles.settings.dailyGoal` trên server đổi sau ~1,5 giây.
 - Mốc streak admin đặt hiện đúng trong app (`🔥 5 NGÀY`) — chứng minh điều chỉnh có tác dụng thật.
 
+### Bổ sung cùng ngày — khoá Groq đã cấu hình và gọi thật
+
+Chủ dự án đã cung cấp khoá `gsk_…`. Khoá được ghi vào `.env.cloud.local` (đã gitignore) và cột
+`app_config.ai_groq_key` (cột này đã thu hồi quyền đọc với `authenticated`). Panel chỉ hiện bản che
+`gsk_4B…54oi`.
+
+- Direct: `GET api.groq.com/openai/v1/models` → **200**.
+- Qua `ai-proxy` (JWT thật): `POST /functions/v1/ai-proxy/chat/completions` → **200**, model
+  `openai/gpt-oss-120b`, `ai_usage` ghi `calls=1, errors=0`.
+- **Trong app**: tài khoản chỉ có AI dùng chung (không nhập key riêng) bấm “✨ Tạo bộ từ” → nhận 3 từ
+  (`walk`, `listen`, `clean`) kèm IPA, nghĩa, ví dụ và lý do level. Đường client → gateway → proxy →
+  Groq chạy thật.
+- **Nên xoay khoá** này sau khi build xong vì nó đã xuất hiện trong chat.
+
 ### Chưa kiểm được
 
-- **Gọi Groq thật bằng khoá dùng chung**: `.env.cloud.local` không có `GROQ_API_KEY` (dòng rỗng),
-  nên chỉ kiểm được đường từ chối (401/429/503). Cần admin dán khoá `gsk_…` trong panel.
-- **Build IPA**: chưa chạy trong phiên này; cần xác nhận tài khoản GitHub trước.
+- **Build IPA**: chưa chạy trong phiên này; cần tài khoản GitHub còn quota (đã có workflow sẵn).
 - Safari trên iPhone thật / Chrome Android thật: vẫn chưa có thiết bị.
 
 ---
