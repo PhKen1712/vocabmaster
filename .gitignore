@@ -44,4 +44,8 @@ app.json.free-build.bak
 build/
 
 # Staging bản build web của admin panel khi deploy lên Freebuff Sites (chỉ chứa file đã build)
-admin/.sitebuild/
+admin/site/
+
+# Bản export web (npm run web:build) và gói deploy lên Freebuff Sites
+dist-web/
+web/site/

@@ -9,6 +9,18 @@ export interface StreakSummary {
 }
 
 /**
+ * Mốc do quản trị viên đặt: "đến hết ngày `date`, chuỗi đang ở `days` ngày".
+ *
+ * Dùng khi hỗ trợ người học (mất máy, đổi múi giờ, lỗi đồng bộ). Đây là dữ liệu
+ * hỗ trợ, không phải một ngày học: không tạo dòng trong `daily_activity`, không
+ * cộng xu, không nhân hệ số xu.
+ */
+export interface StreakBaseline {
+  date: string;
+  days: number;
+}
+
+/**
  * Streak rules (deliberate, documented):
  * - Only days whose goal was actually completed count. Opening the app or
  *   answering one question does not extend a streak.
@@ -18,7 +30,11 @@ export interface StreakSummary {
  * - Dates are local calendar keys (YYYY-MM-DD) supplied by the caller, so
  *   timezone handling lives in one place.
  */
-export function computeStreak(goalDates: readonly string[], todayKey: string): StreakSummary {
+export function computeStreak(
+  goalDates: readonly string[],
+  todayKey: string,
+  baseline: StreakBaseline | null = null,
+): StreakSummary {
   const dates = new Set(goalDates.filter((key) => /^\d{4}-\d{2}-\d{2}$/.test(key)));
   const sorted = [...dates].sort();
 
@@ -38,6 +54,29 @@ export function computeStreak(goalDates: readonly string[], todayKey: string): S
 
   const studiedToday = dates.has(todayKey);
   const yesterdayKey = dateKey(addDays(parseDateKey(todayKey), -1));
+
+  // Mốc quản trị viên: thay thế toàn bộ chuỗi TRƯỚC mốc, còn các ngày hoàn
+  // thành mục tiêu SAU mốc vẫn nối tiếp. Nhờ vậy đặt lại về 0 cũng có tác dụng
+  // (mốc 0 ngày hôm nay), và hôm sau học tiếp thì chuỗi bắt đầu lại từ 1.
+  if (baseline && /^\d{4}-\d{2}-\d{2}$/.test(baseline.date) && baseline.days >= 0) {
+    const baseDate = parseDateKey(baseline.date);
+    let extra = 0;
+    let cursor = addDays(baseDate, 1);
+    while (dates.has(dateKey(cursor))) {
+      extra += 1;
+      cursor = addDays(cursor, 1);
+      if (extra > 10_000) break;
+    }
+    const endKey = dateKey(addDays(baseDate, extra));
+    const alive = endKey === todayKey || endKey === yesterdayKey;
+    const granted = baseline.days + extra;
+    return {
+      current: alive ? granted : 0,
+      best: Math.max(best, granted),
+      lastGoalDate: sorted[sorted.length - 1] ?? null,
+      studiedToday,
+    };
+  }
 
   let cursor = studiedToday ? todayKey : yesterdayKey;
   if (!dates.has(cursor)) {

@@ -15,9 +15,10 @@
  *        multipart: metadata={entrypoint_path,name} + file=<mã nguồn>
  *
  * Chạy:
- *   npm run cloud:apply            # migration rồi tới function
- *   npm run cloud:apply -- --sql   # chỉ migration
- *   npm run cloud:apply -- --functions
+ *   npm run cloud:apply                       # migration rồi tới function
+ *   npm run cloud:apply -- --sql              # chỉ migration
+ *   npm run cloud:apply -- --functions        # chỉ function
+ *   npm run cloud:apply -- --sql --only=0006  # chỉ file migration khớp chuỗi
  */
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -67,8 +68,9 @@ if (!ref) {
 }
 
 const args = new Set(process.argv.slice(2));
-const doSql = args.has('--sql') || args.size === 0;
-const doFunctions = args.has('--functions') || args.size === 0;
+const only = [...args].find((arg) => arg.startsWith('--only='))?.slice('--only='.length) ?? null;
+const doSql = args.has('--sql') || (!args.has('--functions') && !only);
+const doFunctions = args.has('--functions') || (args.size === 0);
 
 const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json' };
 
@@ -128,7 +130,9 @@ async function main() {
   if (doSql) {
     const dir = join(root, 'supabase', 'migrations');
     const files = existsSync(dir)
-      ? readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+      ? readdirSync(dir)
+          .filter((f) => f.endsWith('.sql') && (!only || f.includes(only)))
+          .sort()
       : [];
     if (files.length === 0) console.log('(không có file migration nào)');
     for (const file of files) {

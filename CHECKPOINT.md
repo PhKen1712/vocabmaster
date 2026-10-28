@@ -1,7 +1,7 @@
 # CHECKPOINT — VocabMaster
 
 - **checkpoint_version:** 1
-- **last_updated:** 2026-10-27
+- **last_updated:** 2026-10-29
 - **current_phase:** Giai đoạn 1–6 + **bỏ hẳn API từ điển, Groq xử lý cả cụm từ (2026-10-25)** + **mỗi từ chỉ thưởng xu một lần theo term_key** + **chỉ chặn phiên học từ mới khi còn từ đến hạn — thêm từ không bao giờ bị khoá** + **bài học từ mới nhiều giai đoạn** + **mô tả song ngữ Anh–Việt khi điền từ** + **thiên thạch đục ký tự, giảm mật độ** + **60 giây chơi trọn phút** + **audio session playback khi đọc từ** + **watchdog nhận diện giọng nói** + **(2026-10-26) lịch ôn tùy chỉnh 4 mức, reset tiến độ theo chu kỳ có chống trùng xu, Groq tự xếp level từng mục, điểm ưu tiên từ + “Từ tôi hay quên”, hiệu ứng âm thanh, Album từ vựng với chọn hàng loạt/lọc/sắp xếp và thông báo ngẫu nhiên, chuẩn hoá chủ đề** + **(2026-10-27) chu kỳ thông báo Album do người dùng tự nhập (giờ/phút, không còn danh sách cố định) và khung nhập danh sách mỗi dòng một mục trộn Việt/Anh có Groq dịch sang tiếng Anh; tài khoản trực tuyến + đồng bộ + web admin panel mới ở bước thiết kế (`docs/CLOUD_BACKEND.md`)** — **typecheck 0 lỗi, 323/323 unit test xanh trong 33 suite, schema v5 có migration kiểm tra trên SQLite thật (node:sqlite)**; **Groq đã dùng thật trên iPhone (2026-10-23)**; toàn bộ thay đổi 2026-10-24/25/26 **chưa chạy trên thiết bị**
 - **project_path:** `C:\Users\Lenovo\Desktop\VocabMaster`
 - **current_branch / commit:** `main` · cập nhật 2026-10-27 (chu kỳ Album tự nhập + nhập danh sách Việt/Anh), xem `git log`
@@ -10,6 +10,42 @@
 > Đọc mục 13–14 trước khi tin bất kỳ tính năng nào. Code có mặt + test xanh vẫn không có nghĩa
 > là đã chạy trên iPhone: Groq đã dùng thật (người dùng báo), còn widget, micro, thông báo và
 > Gemini **chưa được kiểm chứng thiết bị**.
+
+---
+
+## 0. PHIÊN 21 — 2026-10-29 (đọc mục này trước)
+
+**Đã chạy thật:** bản web và admin panel đang chạy công khai, cùng một Supabase.
+
+| Thứ | Địa chỉ |
+|---|---|
+| Ứng dụng học (web) | https://site-2fec18316472491faa6991234ac99ad6.freebuff.page |
+| Bảng quản trị | https://site-803d281e336549f99eaf45a04acd4531.freebuff.page |
+
+**Đăng nhập là bắt buộc.** Chưa đăng nhập chỉ thấy màn đăng nhập; không màn hình nội bộ nào
+được render. Đăng xuất xoá phiên, Back và tải lại không mở lại được. Máy đang giữ dữ liệu của
+tài khoản khác thì hiện cảnh báo trước khi xoá dữ liệu **trên máy** (dữ liệu trên server của tài
+khoản cũ vẫn còn).
+
+**Năm lỗi thật đã sửa trong phiên này** (chi tiết ở `CHANGELOG.md`):
+
+1. `Alert` của `react-native-web` là lớp rỗng → nút Đăng xuất và mọi hộp xác nhận im lặng. Đã có
+   `src/lib/alert.ts` dùng `window.confirm` trên web.
+2. `setValueWithKeyAsync is not a function`: `expo-secure-store` trên web là object rỗng → thêm
+   `src/lib/secureStorage.ts` (Keychain trên native, `localStorage` trên web).
+3. Admin panel luôn hiện **streak = 0**: app không gửi cờ “đạt mục tiêu”, cột `streak` không bao
+   giờ được gửi, và panel không đọc bảng `streak_grants`. Đã thêm `goal_met` (migration **0008**),
+   `sync_push/pull` mang theo, `admin_streak_info` tự tính chuỗi + mốc điều chỉnh.
+4. Đổi cài đặt không lên server: `updateSettings` thiếu `dataVersion` nên không có lần gửi nào.
+5. Panel có hai con số streak khác nhau trên cùng trang → bỏ con số cũ, chỉ giữ thẻ Streak.
+
+**Đã kiểm chứng:** `tsc` 0 lỗi; **353/353 test trong 35 suite**; `verify-admin` **25/25** và
+`verify-sync` **15/15** trên Supabase thật; trình duyệt thật: đăng nhập/đăng xuất/tải lại, điều
+chỉnh streak hiện đúng trong app (“🔥 5 NGÀY”), từ đẩy từ “thiết bị khác” xuất hiện sau khi mở
+lại, đổi mục tiêu ngày lên server sau ~1,5 giây.
+
+**Chưa xong:** chưa gọi Groq thật bằng khoá dùng chung (chưa có `gsk_…`); chưa build IPA trong
+phiên này (cần xác nhận tài khoản GitHub); chưa chạy trên iPhone thật.
 
 ---
 
@@ -496,3 +532,40 @@ Không có test nào gọi Groq/Gemini/iOS thật. **Chưa build iOS**, nên hai
 **Quy tắc cho AI tiếp theo:** đọc `CHECKPOINT.md` → `NEXT_SESSION.md` → `CHECKPOINT.json` →
 phần mới nhất của `CHANGELOG.md`; kiểm tra thư mục và Git thật; nếu checkpoint lệch code, ưu
 tiên trạng thái thật của code và ghi lại khác biệt trước khi sửa. Không xây lại từ đầu.
+
+---
+
+## 24. Phiên 2026-10-28 — đăng nhập admin, đồng bộ, giao diện theo thiết bị
+
+### Nguyên nhân "admin panel không đăng nhập được"
+Không phải lỗi kết nối. Đã đo: Auth trả 200, CORS preflight 200, `POST /auth/v1/token` tới được
+Supabase, tài khoản `phambaolam1712` có `role=admin`/`status=active` và đăng nhập được; `admin_stats`
+trả số liệu thật. Vấn đề: tài khoản được dùng để thử (`choccho`, `phu***@gmail.com`) là **user
+thường**, chưa từng đăng nhập — nên panel chặn là đúng. Cách xử lý: `npm run admin:promote`.
+
+### Đã sửa
+- Bỏ lời gọi `supabase.*` bên trong callback `onAuthStateChange` (nguy cơ treo vì khoá phiên).
+- Thêm Quên mật khẩu / đặt mật khẩu mới / tự xử lý phiên hết hạn.
+- `scripts/admin-bootstrap.mjs`: create / reset / promote, hỏi mật khẩu tại máy, tự kiểm đăng nhập.
+- Supabase `uri_allow_list` (trước đó TRỐNG → mọi liên kết email hỏng) + Site URL.
+
+### Đồng bộ
+`supabase/migrations/0004_sync.sql` đã áp: `sync_push`, `sync_pull`, `reset_study_progress`,
+`ensure_term`, `sync_state`, `terms.track` + unique `(normalized, track)`, realtime 6 bảng.
+Trong app: `src/cloud/*`, `src/sync/*`, SQLite v6 (`sync_outbox`, `sync_meta`), mục Tài khoản & đồng
+bộ trong Cài đặt. Chi tiết quy tắc và giới hạn: `docs/SYNC.md`.
+
+### Giao diện
+`src/components/layout.ts` + `SideNav.tsx` + `App.tsx`: máy tính có thanh bên và phím tắt 1–6;
+tablet cột 760px; điện thoại một cột với tab đáy.
+
+### Bằng chứng
+- tsc 0 lỗi · jest 34/34 suite, 334/334 test · check-migrations 1→6 đạt.
+- `npm run verify:sync` 14/14 trên project thật, tự dọn dữ liệu.
+- Trình duyệt: 1440×900 (sidebar, 6 tab, không tràn), 820×1180 (tab đáy), 390×844 (scrollWidth 390).
+- Admin: đăng nhập OK, reload giữ phiên, logout 204, user thường bị chặn ở UI **và** DB (42501).
+
+### Chưa xong
+- Deploy lại admin panel (build đã có trong `admin/dist`).
+- Chạy trên iPhone thật.
+- Xoay khoá `service_role` / `sbp_…` đã lộ trong chat.

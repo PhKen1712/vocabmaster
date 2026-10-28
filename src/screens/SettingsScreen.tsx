@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
+
+import { Alert } from '../lib/alert';
 
 import {
   AppText,
@@ -20,6 +22,7 @@ import {
   saveProviderKey,
 } from '../ai';
 import type { KeyCheck } from '../ai/types';
+import { describeGroqAccess } from '../ai/gateway';
 import {
   clearDiagnostics,
   formatDiagnostic,
@@ -31,6 +34,8 @@ import { exportBackupFile, exportCsvFile, importCsvWords, pickTextFile, restoreB
 import { getCounts } from '../db/words';
 import { resetDatabase } from '../db/database';
 import { resetStudyProgress } from '../db/reset';
+import { syncResetProgress } from '../sync/engine';
+import { AccountSection } from './AccountSection';
 import { newId } from '../lib/ids';
 import { playSfx } from '../sound/sfx';
 import {
@@ -82,6 +87,10 @@ export function SettingsScreen() {
   const [keyError, setKeyError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<KeyCheck | null>(null);
+  const [sharedAi, setSharedAi] = useState<{ available: boolean; model: string | null }>({
+    available: false,
+    model: null,
+  });
   const [notificationStatus, setNotificationStatus] = useState<string>('…');
   const [busy, setBusy] = useState<string | null>(null);
   const [diagnostics, setDiagnostics] = useState<AiDiagnostic[]>(() => getDiagnostics());
@@ -133,6 +142,22 @@ export function SettingsScreen() {
   }, [provider]);
 
   useEffect(() => {
+    let alive = true;
+    if (provider === 'groq') {
+      void describeGroqAccess()
+        .then((info) => {
+          if (alive) setSharedAi({ available: info.shared, model: info.model });
+        })
+        .catch(() => undefined);
+    } else {
+      setSharedAi({ available: false, model: null });
+    }
+    return () => {
+      alive = false;
+    };
+  }, [provider, keyStatus]);
+
+  useEffect(() => {
     void refreshKeyStatus();
     void getNotificationPermission().then((status) => {
       setNotificationStatus(
@@ -162,7 +187,7 @@ export function SettingsScreen() {
       await refreshKeyStatus();
       Alert.alert(
         'Đã lưu API key',
-        `Key ${providerInfo.label} được lưu trong Keychain của iPhone và không nằm trong mã nguồn hay file sao lưu.`,
+        `Key ${providerInfo.label} được lưu trong kho bảo mật của thiết bị (Keychain trên iPhone, localStorage trên trình duyệt) và không nằm trong mã nguồn hay file sao lưu.`,
       );
     } catch (error) {
       setKeyError(error instanceof Error ? error.message : 'Không lưu được key.');
@@ -370,6 +395,17 @@ export function SettingsScreen() {
           style: 'destructive',
           onPress: async () => {
             if (!db) return;
+            // Nếu đang đăng nhập, reset ở server TRƯỚC: server xong mới xoá dữ
+            // liệu trên máy, nếu không thì lần đồng bộ sau sẽ kéo tiến độ cũ về
+            // và người học tưởng nút reset không có tác dụng.
+            const remote = await syncResetProgress(db, 'reset từ ứng dụng');
+            if (!remote.ok) {
+              Alert.alert(
+                'Chưa reset được',
+                `${remote.error ?? 'Không gọi được máy chủ.'}\n\nDữ liệu trên máy vẫn nguyên. Hãy kiểm tra mạng rồi thử lại.`,
+              );
+              return;
+            }
             const result = await resetStudyProgress(db);
             // A new cycle lets the first correct re-learning earn once more,
             // while the old ledger stays visible for audit.
@@ -419,6 +455,9 @@ export function SettingsScreen() {
     <Screen>
       <ScreenHeader title="Cài đặt" subtitle="Dữ liệu, AI, nhắc nhở và widget" onBack={pop} />
 
+      <SectionHeader title="Tài khoản" />
+      <AccountSection />
+
       <SectionHeader title="AI" />
       <Card>
         <AppText variant="bodyStrong">Nhà cung cấp</AppText>
@@ -451,19 +490,26 @@ export function SettingsScreen() {
           })}
         </View>
         <AppText variant="micro" color={colors.textFaint} style={{ marginBottom: spacing.md }}>
-          {providerInfo.keyHint} Key nằm trong Keychain của máy và không đi qua máy chủ nào khác.
+          {providerInfo.keyHint} Key nằm trên máy này và không đi qua máy chủ nào khác.
         </AppText>
 
         <View style={styles.rowBetween}>
           <AppText variant="bodyStrong">API key</AppText>
           <AppText variant="caption" color={keyStatus === 'saved' ? colors.success : colors.warning}>
-            {keyStatus === 'saved' ? 'Đã lưu trong Keychain' : keyStatus === 'loading' ? '…' : 'Chưa có'}
+            {keyStatus === 'saved' ? 'Đã lưu trên máy' : keyStatus === 'loading' ? '…' : 'Chưa có'}
           </AppText>
         </View>
         <AppText variant="caption" color={colors.textMuted} style={{ marginTop: spacing.xs }}>
-          Key chỉ dùng để gọi {providerInfo.label} từ iPhone. Ứng dụng không ghi key vào log, không
-          gửi key tới máy chủ nào khác. Học và ôn tập luôn hoạt động khi không có key.
+          Key chỉ dùng để gọi {providerInfo.label} từ thiết bị này. Ứng dụng không ghi key vào log,
+          không gửi key tới máy chủ nào khác. Học và ôn tập luôn hoạt động khi không có key.
         </AppText>
+        {provider === 'groq' && sharedAi.available ? (
+          <AppText variant="micro" color={colors.success} style={{ marginTop: spacing.xs }}>
+            AI dùng chung đang bật
+            {sharedAi.model ? ` · ${sharedAi.model}` : ''} — không cần nhập key riêng. Key riêng (nếu có) vẫn
+            được ưu tiên và không bị trừ hạn mức chung.
+          </AppText>
+        ) : null}
         <Input
           value={keyInput}
           onChangeText={setKeyInput}

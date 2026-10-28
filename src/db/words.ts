@@ -10,6 +10,7 @@ import type {
 } from '../types';
 import { nowIso, newId } from '../lib/ids';
 import { normalizeTerm } from '../lib/text';
+import { enqueue } from '../sync/outbox';
 import {
   WORD_COLUMNS,
   rowToWord,
@@ -342,6 +343,12 @@ export async function updateWord(
         : (current.dictSource ?? null),
     missingFields: patch.missingFields ?? current.missingFields ?? [],
     isFavorite: patch.isFavorite ?? current.isFavorite,
+    // Chỉ đóng mốc thời gian khi trạng thái yêu thích thực sự đổi trong lần sửa
+    // này — sửa nghĩa của từ không phải là một lần bấm yêu thích.
+    favoriteAt:
+      patch.isFavorite !== undefined && patch.isFavorite !== current.isFavorite
+        ? nowIso()
+        : (current.favoriteAt ?? null),
     learningState: patch.learningState ?? current.learningState,
     aiGenerated: patch.aiGenerated ?? current.aiGenerated,
     confirmed: patch.confirmed ?? current.confirmed,
@@ -355,7 +362,7 @@ export async function updateWord(
       collocations = ?, word_family = ?, topic = ?, track = ?, level = ?,
       source = ?, ai_generated = ?, confirmed = ?, note = ?, audio_url = ?,
       dict_source = ?, missing_fields = ?,
-      is_favorite = ?, learning_state = ?, updated_at = ?
+      is_favorite = ?, favorite_at = ?, learning_state = ?, updated_at = ?
      WHERE id = ?;`,
     [
       next.term,
@@ -381,6 +388,7 @@ export async function updateWord(
       next.dictSource ?? null,
       JSON.stringify(next.missingFields ?? []),
       next.isFavorite ? 1 : 0,
+      next.favoriteAt ?? null,
       next.learningState,
       next.updatedAt,
       id,
@@ -391,6 +399,16 @@ export async function updateWord(
 }
 
 export async function deleteWord(db: SQLiteDatabase, id: string): Promise<void> {
+  // Ghi lại sự kiện xoá trước khi dòng biến mất: nếu không, tài khoản trên máy
+  // chủ vẫn giữ từ này và nó sẽ quay lại ở lần đồng bộ sau.
+  const removed = await db.getFirstAsync<{ term: string; track: string }>(
+    'SELECT term, track FROM words WHERE id = ?;',
+    [id],
+  );
+  if (removed) {
+    await enqueue(db, 'word_removed', { id, term: removed.term, track: removed.track });
+  }
+
   await db.withTransactionAsync(async () => {
     await db.runAsync('DELETE FROM reviews WHERE word_id = ?;', [id]);
     // Explicit as well as the FK cascade: an old install may have been opened
@@ -406,9 +424,13 @@ export async function setFavorite(
   id: string,
   favorite: boolean,
 ): Promise<void> {
-  await db.runAsync('UPDATE words SET is_favorite = ?, updated_at = ? WHERE id = ?;', [
+  // Ghi cả `favorite_at`: đây là bằng chứng "người dùng đã thao tác". Thiếu nó,
+  // lần đồng bộ từ một máy khác (chưa từng bấm gì) sẽ xoá mất lựa chọn này.
+  const now = nowIso();
+  await db.runAsync('UPDATE words SET is_favorite = ?, favorite_at = ?, updated_at = ? WHERE id = ?;', [
     favorite ? 1 : 0,
-    nowIso(),
+    now,
+    now,
     id,
   ]);
 }

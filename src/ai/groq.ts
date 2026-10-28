@@ -1,7 +1,7 @@
 import { DEFAULT_GROQ_MODEL } from '../types';
 import { recordDiagnostic } from './diagnostics';
 import { parseRetryAfter, redactSecrets } from './errors';
-import { loadProviderKey } from './provider';
+import { resolveGroqAccess, type GroqAccess } from './gateway';
 import { buildPrompt, SYSTEM_INSTRUCTION } from './prompt';
 import { DEFAULT_ATTEMPTS, DEFAULT_BASE_DELAY_MS, DEFAULT_MAX_DELAY_MS, retryAsync } from './retry';
 import { extractJson, looksTruncated, parseSuggestions } from './schema';
@@ -37,8 +37,6 @@ import { assertRequest } from './validate';
  * tokens/ngày for gpt-oss (xem console.groq.com/docs/rate-limits). That is a
  * budget per minute, so a big batch can be limited once, not because of a bug.
  */
-
-const API_BASE = 'https://api.groq.com/openai/v1';
 
 export const REQUEST_TIMEOUT_MS = 25_000;
 const LIST_TIMEOUT_MS = 15_000;
@@ -127,14 +125,14 @@ function readHeader(response: Response, name: string): string | null {
 }
 
 /** Ask Groq which models this key may use. Returns [] when the call fails. */
-async function listGroqModels(apiKey: string, signal?: AbortSignal): Promise<string[]> {
+async function listGroqModels(access: GroqAccess, signal?: AbortSignal): Promise<string[]> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), LIST_TIMEOUT_MS);
   const forwardAbort = () => controller.abort();
   signal?.addEventListener('abort', forwardAbort);
   try {
-    const response = await fetch(`${API_BASE}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const response = await fetch(`${access.baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${access.token}` },
       signal: controller.signal,
     });
     if (!response.ok) return [];
@@ -234,7 +232,7 @@ interface PostResult {
 
 interface ChatInput {
   model: string;
-  apiKey: string;
+  access: GroqAccess;
   system: string;
   user: string;
   maxCompletionTokens: number;
@@ -289,11 +287,11 @@ async function postChat(input: ChatInput): Promise<PostResult> {
   const reasoning = isReasoningModel(input.model);
 
   const perform = async (): Promise<PostResult> => {
-    const response = await fetch(`${API_BASE}/chat/completions`, {
+    const response = await fetch(`${input.access.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${input.apiKey}`,
+        Authorization: `Bearer ${input.access.token}`,
       },
       body: JSON.stringify({
         model: input.model,
@@ -382,7 +380,7 @@ async function postChat(input: ChatInput): Promise<PostResult> {
  * estimation. Callers treat a failure as "unknown", never as a dead end.
  */
 export async function requestGroqJson(input: {
-  apiKey: string;
+  access: GroqAccess;
   model: string;
   system: string;
   user: string;
@@ -392,7 +390,7 @@ export async function requestGroqJson(input: {
 }): Promise<string> {
   const call = await postChat({
     model: input.model,
-    apiKey: input.apiKey,
+    access: input.access,
     system: input.system,
     user: input.user,
     maxCompletionTokens: input.maxCompletionTokens ?? 1_024,
@@ -441,11 +439,16 @@ function requestSignature(request: AiRequest, model: string): string {
 
 async function runGenerate(
   request: AiRequest,
-  apiKey: string,
+  access: GroqAccess,
   options: GenerateOptions,
 ): Promise<AiResult> {
   const startedAt = Date.now();
-  let model = normalizeGroqModel(options.model ?? defaultGroqModel()) || DEFAULT_GROQ_MODEL;
+  // Ở chế độ chung, server quyết định model và có quyền ghi đè giá trị gửi
+  // lên — client không tự chọn model của khoá dùng chung.
+  let model =
+    access.mode === 'shared'
+      ? access.model
+      : normalizeGroqModel(options.model ?? defaultGroqModel()) || DEFAULT_GROQ_MODEL;
   let fallbackFrom: string | null = null;
   let fallbackReason: AiResult['fallbackReason'] = null;
   let switched = false;
@@ -455,7 +458,7 @@ async function runGenerate(
   async function callModel(activeModel: string): Promise<AiResult> {
     const call = await postChat({
       model: activeModel,
-      apiKey,
+      access,
       system: SYSTEM_INSTRUCTION,
       user: buildPrompt(request),
       maxCompletionTokens: tokenBudgetGroq(request.count),
@@ -487,7 +490,7 @@ async function runGenerate(
       // the best replacement, once, without spending an extra attempt.
       if (failure.code === 'model_unavailable' && !switched) {
         const replacement = rankGroqModels(
-          await listGroqModels(apiKey, options.signal),
+          await listGroqModels(access, options.signal),
           activeModel,
         )[0];
         if (replacement) {
@@ -666,18 +669,18 @@ export async function generateVocabularyGroq(
 ): Promise<AiResult> {
   assertRequest(request);
 
-  const apiKey = await loadProviderKey('groq');
-  if (!apiKey) {
+  const access = await resolveGroqAccess(options.model ?? defaultGroqModel());
+  if (!access) {
     throw new AiError(
       'missing_key',
-      'Chưa có Groq API key. Mở Cài đặt → AI → Groq để thêm key.',
+      'Chưa có Groq API key cho máy này và quản trị viên chưa bật AI dùng chung. Mở Cài đặt → AI → Groq để thêm key.',
       { stage: 'config' },
     );
   }
 
   const signature = requestSignature(
     request,
-    normalizeGroqModel(options.model ?? defaultGroqModel()),
+    access.mode === 'shared' ? `shared:${access.model}` : access.model,
   );
   if (inFlight) {
     if (inFlight.signature === signature) return inFlight.promise;
@@ -688,7 +691,7 @@ export async function generateVocabularyGroq(
     );
   }
 
-  const promise = runGenerate(request, apiKey, options);
+  const promise = runGenerate(request, access, options);
   inFlight = { signature, promise };
   try {
     return await promise;
@@ -702,9 +705,13 @@ export async function generateVocabularyGroq(
  * liệt kê model để biết key có hợp lệ và model đang cấu hình có thật không.
  */
 export async function checkGroqKey(model = defaultGroqModel()): Promise<KeyCheck> {
-  const apiKey = await loadProviderKey('groq');
-  if (!apiKey) {
-    return { ok: false, detail: 'Chưa có API key Groq. Dán key rồi bấm "Lưu key".' };
+  const access = await resolveGroqAccess(model);
+  if (!access) {
+    return {
+      ok: false,
+      detail:
+        'Chưa có API key Groq và quản trị viên chưa bật AI dùng chung. Dán key rồi bấm "Lưu key".',
+    };
   }
 
   const controller = new AbortController();
@@ -712,8 +719,8 @@ export async function checkGroqKey(model = defaultGroqModel()): Promise<KeyCheck
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}/models`, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    response = await fetch(`${access.baseUrl}/models`, {
+      headers: { Authorization: `Bearer ${access.token}` },
       signal: controller.signal,
     });
   } catch {

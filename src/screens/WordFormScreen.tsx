@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Switch, View } from 'react-native';
+
+import { Alert } from '../lib/alert';
 
 import { AppText, Banner, Card, PrimaryButton, Screen } from '../components/ui';
 import { Input, LevelPicker, ScreenHeader, TrackSwitcher } from '../components/patterns';

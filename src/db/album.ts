@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { nowIso } from '../lib/ids';
+import { enqueue } from '../sync/outbox';
 import type { Level, Word } from '../types';
 import { rowToWord, type WordRow } from './schema';
 
@@ -58,6 +59,18 @@ export async function removeWordsFromAlbum(
 ): Promise<number> {
   const ids = [...new Set(wordIds.filter(Boolean))];
   if (ids.length === 0) return 0;
+
+  // Xoá là ngoại lệ duy nhất mà mốc thời gian không phát hiện được: dòng biến
+  // mất thì không còn gì để quét. Nên phải ghi lại sự kiện này kèm từ và track
+  // TRƯỚC khi xoá, để thiết bị khác cũng bỏ từ khỏi album.
+  const removed = await db.getAllAsync<{ id: string; term: string; track: string }>(
+    `SELECT id, term, track FROM words WHERE id IN (${ids.map(() => '?').join(', ')});`,
+    ids,
+  );
+  for (const word of removed) {
+    await enqueue(db, 'album_item_removed', { id: word.id, term: word.term, track: word.track });
+  }
+
   const placeholders = ids.map(() => '?').join(', ');
   const result = await db.runAsync(
     `DELETE FROM album_words WHERE word_id IN (${placeholders});`,

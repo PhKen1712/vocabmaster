@@ -7,6 +7,9 @@
     "setup": "node scripts/setup.mjs",
     "start": "expo start --dev-client",
     "start:go": "expo start",
+    "start:web": "expo start --web",
+    "web:build": "expo export --platform web --output-dir dist-web && node scripts/build-web-site.mjs",
+    "admin:build": "npm --prefix admin run build && node scripts/build-admin-site.mjs",
     "prebuild:ios": "expo prebuild --platform ios --clean",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
@@ -16,6 +19,9 @@
     "check:cloud": "node scripts/check-cloud.mjs",
     "verify:cloud": "node scripts/verify-cloud.mjs",
     "cloud:apply": "node scripts/apply-cloud.mjs",
+    "admin:create": "node scripts/admin-bootstrap.mjs",
+    "admin:reset": "node scripts/admin-bootstrap.mjs --reset-password",
+    "admin:promote": "node scripts/admin-bootstrap.mjs --promote",
     "verify": "node scripts/verify.mjs",
     "free:strip": "node scripts/prepare-free-build.mjs",
     "free:restore": "node scripts/prepare-free-build.mjs --restore"
@@ -23,6 +29,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~58.0.15",
     "@expo/ui": "~58.0.21",
+    "@supabase/supabase-js": "^2.118.0",
     "babel-preset-expo": "~58.0.0",
     "expo": "~58.0.16",
     "expo-audio": "~58.0.10",

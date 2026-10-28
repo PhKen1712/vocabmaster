@@ -62,4 +62,48 @@ describe('streak', () => {
     expect(goalProgress(2, 3, 10)).toMatchObject({ completed: 5, goal: 10, met: false });
     expect(goalProgress(9, 9, 10)).toMatchObject({ ratio: 1, met: true });
   });
+
+  describe('mốc do quản trị viên đặt', () => {
+    it('dùng số ngày được đặt thay cho chuỗi cũ', () => {
+      // Quản trị viên đặt 12 ngày hôm nay; lịch sử thật chỉ có 2 ngày.
+      const summary = computeStreak(['2026-10-18', '2026-10-19'], '2026-10-19', {
+        date: '2026-10-19',
+        days: 12,
+      });
+      expect(summary.current).toBe(12);
+      expect(summary.best).toBe(12);
+    });
+
+    it('vẫn tăng tiếp khi người học hoàn thành mục tiêu ngày hôm sau', () => {
+      const summary = computeStreak(
+        ['2026-10-18', '2026-10-19', '2026-10-20'],
+        '2026-10-20',
+        { date: '2026-10-19', days: 12 },
+      );
+      expect(summary.current).toBe(13);
+    });
+
+    it('đặt 0 để huỷ chuỗi, và không cộng ngày học trước mốc', () => {
+      const summary = computeStreak(
+        ['2026-10-16', '2026-10-17', '2026-10-18', '2026-10-19'],
+        '2026-10-19',
+        { date: '2026-10-19', days: 0 },
+      );
+      expect(summary.current).toBe(0);
+      expect(summary.best).toBe(4);
+    });
+
+    it('mốc cũ hơn hôm qua thì chuỗi đã đứt', () => {
+      const summary = computeStreak([], '2026-10-19', { date: '2026-10-15', days: 30 });
+      expect(summary.current).toBe(0);
+    });
+
+    it('mốc không hợp lệ bị bỏ qua, không làm mất chuỗi thật', () => {
+      const summary = computeStreak(['2026-10-18', '2026-10-19'], '2026-10-19', {
+        date: 'hôm qua',
+        days: 99,
+      });
+      expect(summary.current).toBe(2);
+    });
+  });
 });

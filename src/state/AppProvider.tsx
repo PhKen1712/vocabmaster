@@ -126,6 +126,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const saved = await saveSettings(database, merged);
         setSettings(saved);
         settingsRef.current = saved;
+        // Báo cho tầng đồng bộ biết có thay đổi: saveSettings chỉ ghi hàng đợi,
+        // không tự đẩy. Thiếu dòng này, đổi cài đặt xong đóng ứng dụng là mất
+        // thay đổi (đã tái hiện được: dailyGoal trên server vẫn là giá trị cũ).
+        setDataVersion((value) => value + 1);
         configureSfx({ enabled: saved.sfxEnabled, volume: saved.sfxVolume });
         if (
           'albumNotifyEnabled' in patch ||

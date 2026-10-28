@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -20,6 +20,13 @@ import {
   type TabName,
 } from './src/navigation/NavigationProvider';
 import { AppProvider, useApp } from './src/state/AppProvider';
+import { AuthProvider, useAuth } from './src/cloud/AuthProvider';
+import { AccountSwitchScreen, LoginScreen } from './src/screens/LoginScreen';
+import { readAccountOwner, switchLocalAccountTo, writeAccountOwner, type AccountOwner } from './src/db/account';
+import { Alert } from './src/lib/alert';
+import { SyncProvider } from './src/sync/SyncProvider';
+import { useDeviceLayout } from './src/components/layout';
+import { SideNav } from './src/components/SideNav';
 import { ThemeProvider, useTheme } from './src/theme/ThemeProvider';
 import { spacing } from './src/theme/tokens';
 import { configureNotificationHandler } from './src/notifications/reminders';
@@ -119,11 +126,30 @@ function RootContent() {
   const { colors } = useTheme();
   const music = useMusic();
   // Mọi hook phải đứng trước các nhánh return sớm để số lượng hook không đổi giữa các lần render.
-  const { width } = useWindowDimensions();
-  // Web trên cửa sổ rộng: giữ giao diện kiểu điện thoại nhưng gói trong cột giữa màn hình,
-  // thay vì kéo một dòng chữ dài cả mét ngang máy tính. Điều kiện Platform.OS === 'web'
-  // nghĩa là bản iOS không bao giờ đi vào nhánh này.
-  const framed = Platform.OS === 'web' && width >= 760;
+  // Bố cục theo thiết bị: điện thoại giữ thanh tab đáy, máy tính bảng nới rộng
+  // cột nội dung, máy tính dùng thanh điều hướng bên trái. Xem components/layout.ts.
+  const { device } = useDeviceLayout();
+  const desktop = Platform.OS === 'web' && device === 'desktop';
+  const framed = Platform.OS === 'web' && device === 'tablet';
+
+  // Phím tắt chỉ có trên web: 1–6 chuyển nhanh giữa các mục, giống mọi ứng dụng
+  // desktop. Bỏ qua khi con trỏ đang ở ô nhập để không cướp phím gõ văn bản.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !desktop || typeof window === 'undefined') return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || target?.isContentEditable) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const index = Number(event.key) - 1;
+      if (Number.isInteger(index) && index >= 0 && index < TAB_NAMES.length) {
+        event.preventDefault();
+        goToTab(TAB_NAMES[index]);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [desktop, goToTab]);
 
   if (!ready) return <Splash />;
   if (bootError) return <BootError message={bootError} />;
@@ -132,7 +158,9 @@ function RootContent() {
     return <OnboardingScreen />;
   }
 
-  const showTabBar = isTabRoute(current.name) && stack.length === 1;
+  // Máy tính đã có thanh điều hướng bên trái, nên thanh tab đáy chỉ dành cho
+  // cảm ứng. Hiện cả hai cùng lúc là hai chỗ điều hướng trùng nhau.
+  const showTabBar = !desktop && isTabRoute(current.name) && stack.length === 1;
 
   let content: React.ReactNode = null;
   switch (current.name) {
@@ -213,6 +241,16 @@ function RootContent() {
     </KeyboardAvoidingView>
   );
 
+  // Máy tính: điều hướng dọc luôn hiện, nội dung không kéo rộng hết màn hình.
+  if (desktop) {
+    return (
+      <View style={[styles.flex, styles.desktop, { backgroundColor: colors.background }]}>
+        <SideNav active={current.name as TabName} onChange={(tab) => goToTab(tab)} />
+        <View style={styles.desktopContent}>{app}</View>
+      </View>
+    );
+  }
+
   if (!framed) return app;
   return (
     <View style={[styles.flex, styles.stage, { backgroundColor: colors.surfaceAlt }]}>
@@ -222,8 +260,11 @@ function RootContent() {
 }
 
 function ThemedApp() {
-  const { settings } = useApp();
+  const { settings, db } = useApp();
   const { isDark } = useTheme();
+  const auth = useAuth();
+  const [owner, setOwner] = useState<AccountOwner | null | undefined>(undefined);
+  const [switching, setSwitching] = useState(false);
 
   // Every screen speaks through the shared module, so one sync keeps the
   // accent and male/female choice consistent everywhere.
@@ -231,13 +272,91 @@ function ThemedApp() {
     configureSpeech({ accent: settings.ttsAccent, voice: settings.ttsVoice });
   }, [settings.ttsAccent, settings.ttsVoice]);
 
-  return (
-    <>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
-      <NavigationProvider>
+  // Đọc chủ sở hữu dữ liệu cục bộ mỗi khi phiên đăng nhập đổi.
+  useEffect(() => {
+    let cancelled = false;
+    if (!db || auth.status !== 'signedIn') {
+      setOwner(undefined);
+      return;
+    }
+    readAccountOwner(db)
+      .then((value) => {
+        if (!cancelled) setOwner(value);
+      })
+      .catch(() => {
+        if (!cancelled) setOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, auth.status, auth.userId]);
+
+  // Lần đầu đăng nhập trên máy này: nhận dữ liệu đang có làm của tài khoản này.
+  // Đây là bước chuyển đổi cho người đã học trước khi ứng dụng bắt buộc đăng
+  // nhập — không xoá từ nào.
+  useEffect(() => {
+    if (!db || auth.status !== 'signedIn' || !auth.userId) return;
+    if (owner !== null) return;
+    const next = { id: auth.userId, email: auth.email };
+    void writeAccountOwner(db, next).then(() => setOwner(next));
+  }, [db, auth.status, auth.userId, auth.email, owner]);
+
+  const takeOver = async () => {
+    if (!db || !auth.userId) return;
+    setSwitching(true);
+    try {
+      const next = { id: auth.userId, email: auth.email };
+      await switchLocalAccountTo(db, next);
+      setOwner(next);
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  const confirmTakeOver = () => {
+    Alert.alert(
+      'Xoá dữ liệu học trên máy này?',
+      'Từ vựng, tiến độ, album và lịch sử xu lưu trên máy sẽ bị xoá. Dữ liệu của tài khoản cũ vẫn nằm trên máy chủ của tài khoản đó.',
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        { text: 'Xoá và tiếp tục', style: 'destructive', onPress: () => void takeOver() },
+      ],
+    );
+  };
+
+  let content: React.ReactNode;
+  if (!auth.available) {
+    content = <LoginScreen />;
+  } else if (auth.status === 'checking') {
+    content = <Splash />;
+  } else if (auth.status !== 'signedIn') {
+    // Chưa đăng nhập: không có màn hình nội bộ nào được render.
+    content = <LoginScreen />;
+  } else if (db && owner === undefined) {
+    content = <Splash />;
+  } else if (db && owner && owner.id !== auth.userId) {
+    content = (
+      <AccountSwitchScreen
+        ownerEmail={owner.email}
+        email={auth.email}
+        busy={switching}
+        onSignOut={() => void auth.signOut()}
+        onConfirm={confirmTakeOver}
+      />
+    );
+  } else {
+    content = (
+      <NavigationProvider key={auth.userId ?? 'signed-in'}>
         <NotificationRouter />
         <RootContent />
       </NavigationProvider>
+    );
+  }
+
+  return (
+    <>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      {content}
     </>
   );
 }
@@ -246,7 +365,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <AppProvider>
-        <ThemeGate />
+        <AuthProvider>
+          <SyncProvider>
+            <ThemeGate />
+          </SyncProvider>
+        </AuthProvider>
       </AppProvider>
     </SafeAreaProvider>
   );
@@ -267,10 +390,12 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   // Web màn hình rộng: sân khấu phía sau + khung cột giữ đúng tỉ lệ điện thoại.
   stage: { flex: 1, alignItems: 'center' },
+  desktop: { flex: 1, flexDirection: 'row' },
+  desktopContent: { flex: 1, alignItems: 'center' },
   frame: {
     flex: 1,
     width: '100%',
-    maxWidth: 560,
+    maxWidth: 760,
     borderLeftWidth: 1,
     borderRightWidth: 1,
     overflow: 'hidden',

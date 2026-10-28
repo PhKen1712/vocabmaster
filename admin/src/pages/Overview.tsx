@@ -60,7 +60,7 @@ export default function Overview() {
             ) : (
               <p className="muted small">
                 Chưa ghi nhận lỗi. Lưu ý: bảng này chỉ có dữ liệu khi tính năng AI chạy qua backend —
-                hiện app còn gọi Groq trực tiếp từ thiết bị nên chưa ghi vào đây.
+                các lượt gọi Groq qua Edge Function <span className="mono">ai-proxy</span> sẽ được ghi vào đây.
               </p>
             )}
           </div>

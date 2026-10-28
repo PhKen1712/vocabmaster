@@ -52,6 +52,11 @@ h3 { font-size: 14px; }
   min-height: 100vh;
 }
 
+/* Grid/flex item mặc định có min-width:auto, nên một bảng rộng bên trong có thể
+   kéo cả cột vượt màn hình (đã đo được trên điện thoại: tràn 39px). Cho phép co
+   lại; phần bảng rộng vẫn tự cuộn trong .table-wrap. */
+.shell > * { min-width: 0; }
+
 .sidebar {
   background: var(--panel);
   border-right: 1px solid var(--line);
@@ -172,7 +177,15 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .small { font-size: 12px; }
 .error { color: var(--danger); margin: 0; }
 .ok { color: var(--ok); margin: 0; }
-.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+/* `overflow-wrap: anywhere` là bắt buộc: chuỗi lỗi JSON dài không có khoảng trắng
+   từng làm cả trang rộng 482px trên điện thoại 390px (đo thật trên bản deploy).
+   Không có nó, người dùng phải kéo ngang để đọc. */
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
 
 .table-wrap { overflow-x: auto; }
 

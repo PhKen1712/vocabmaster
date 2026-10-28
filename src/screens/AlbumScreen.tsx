@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Switch, View } from 'react-native';
+
+import { Alert } from '../lib/alert';
 
 import { AppText, Card, Chip, EmptyState, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, ScreenHeader, Stepper } from '../components/patterns';

@@ -4,6 +4,7 @@ import { dateKey, lastNDays } from '../lib/date';
 import { computeStreak, type StreakSummary } from '../streak/streak';
 import type { DailyActivity, DailyStats, Settings, Track } from '../types';
 import { rowToActivity, type ActivityRow } from './schema';
+import { loadStreakBaseline } from './streakBaseline';
 import { getCounts } from './words';
 
 export async function getActivity(
@@ -39,15 +40,19 @@ export async function getActivityForDate(
 }
 
 export async function getStreak(db: SQLiteDatabase, today = dateKey()): Promise<StreakSummary> {
-  const rows = await db.getAllAsync<{ date: string }>(
-    `SELECT date FROM daily_activity WHERE goal_met = 1
-     UNION
-     SELECT date FROM streak_restores
-     ORDER BY date ASC;`,
-  );
+  const [rows, baseline] = await Promise.all([
+    db.getAllAsync<{ date: string }>(
+      `SELECT date FROM daily_activity WHERE goal_met = 1
+       UNION
+       SELECT date FROM streak_restores
+       ORDER BY date ASC;`,
+    ),
+    loadStreakBaseline(db),
+  ]);
   return computeStreak(
     rows.map((row) => row.date),
     today,
+    baseline,
   );
 }
 

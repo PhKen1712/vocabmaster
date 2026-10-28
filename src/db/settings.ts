@@ -1,6 +1,7 @@
 import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DEFAULT_MUSIC_TRACK_ID, isMusicTrackId } from '../music/catalog';
+import { enqueue } from '../sync/outbox';
 import {
   MAX_ALBUM_INTERVAL_MINUTES,
   MIN_ALBUM_INTERVAL_MINUTES,
@@ -171,5 +172,9 @@ export async function saveSettings(db: SQLiteDatabase, settings: Settings): Prom
      ON CONFLICT(key) DO UPDATE SET value = excluded.value;`,
     [SETTINGS_KEY, JSON.stringify(clean)],
   );
+  // Cài đặt lưu ngay tại đây nên không có cột mốc thời gian nào để quét: phải
+  // đánh dấu tường minh. Cài đặt album cũng là cài đặt album bên server.
+  await enqueue(db, 'settings');
+  await enqueue(db, 'album');
   return clean;
 }

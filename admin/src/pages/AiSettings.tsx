@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { loadAiConfig, loadAiUsage, saveAiConfig, type AiConfig, type AiUsageRow } from '../lib/api';
+import {
+  loadAiConfig,
+  loadAiUsage,
+  loadGroqKeyStatus,
+  saveAiConfig,
+  saveGroqKey,
+  testGroqProxy,
+  type AiConfig,
+  type AiUsageRow,
+  type GroqKeyStatus,
+} from '../lib/api';
 import { dateTime, num, shortId } from '../lib/format';
 
 const MODELS = ['openai/gpt-oss-120b', 'llama-3.1-8b-instant', 'gemini-3.8-flash'];
@@ -11,13 +21,23 @@ export default function AiSettings() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [keyStatus, setKeyStatus] = useState<GroqKeyStatus | null>(null);
+  const [keyInput, setKeyInput] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
 
   const refresh = useCallback(async () => {
     setError(null);
     try {
-      const [cfg, rows] = await Promise.all([loadAiConfig(), loadAiUsage()]);
+      const [cfg, rows, status] = await Promise.all([
+        loadAiConfig(),
+        loadAiUsage(),
+        loadGroqKeyStatus(),
+      ]);
       setConfig(cfg);
       setUsage(rows);
+      setKeyStatus(status);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không đọc được cấu hình');
     }
@@ -64,6 +84,39 @@ export default function AiSettings() {
     }
   }
 
+  async function submitKey(event: FormEvent) {
+    event.preventDefault();
+    setError(null);
+    setNotice(null);
+    setTestResult(null);
+    const value = keyInput.trim();
+    if (value && !value.startsWith('gsk_')) {
+      setError('Khoá Groq bắt đầu bằng "gsk_".');
+      return;
+    }
+    setKeyBusy(true);
+    try {
+      const status = await saveGroqKey(value);
+      setKeyStatus(status);
+      setKeyInput('');
+      setNotice(status.configured ? 'Đã lưu khoá Groq trên server.' : 'Đã xoá khoá Groq khỏi server.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Không lưu được khoá');
+    } finally {
+      setKeyBusy(false);
+    }
+  }
+
+  async function runTest() {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      setTestResult(await testGroqProxy());
+    } finally {
+      setTesting(false);
+    }
+  }
+
   if (!config) {
     return (
       <section>
@@ -86,11 +139,43 @@ export default function AiSettings() {
       </div>
 
       <div className="note" style={{ marginTop: 16 }}>
-        <strong>API key không nằm ở đây.</strong> Khoá Groq/Gemini phải là secret của backend (Edge Function),
-        không bao giờ lưu trong bảng hay gửi xuống trình duyệt. Hiện app vẫn gọi Groq trực tiếp từ thiết bị bằng
-        khoá trong Keychain, nên trang này chỉ quản lý model, bật/tắt và hạn mức. Khi có Edge Function proxy AI,
-        nút “Kiểm tra kết nối” mới có việc để làm.
+        <strong>Thành viên không cần tự nhập key.</strong> App gọi Edge Function <span className="mono">ai-proxy</span>;
+        function giữ khoá Groq, kiểm tra tài khoản và hạn mức rồi mới gọi Groq. Khoá không bao giờ đi xuống
+        trình duyệt hay điện thoại, và cột khoá trong database đã bị thu hồi quyền đọc qua API. Đổi khoá ở đây
+        có hiệu lực ngay, không phải build lại IPA.
       </div>
+
+      <form className="card" style={{ marginTop: 16 }} onSubmit={submitKey}>
+        <h2>Khoá Groq dùng chung</h2>
+        <p className="muted small" style={{ marginTop: 6 }}>
+          Trạng thái: {keyStatus?.configured ? <strong>đã cấu hình</strong> : <strong>chưa có</strong>}
+          {keyStatus?.configured && keyStatus.masked ? (
+            <>
+              {' '}· <span className="mono">{keyStatus.masked}</span>
+            </>
+          ) : null}
+        </p>
+        <div className="row" style={{ marginTop: 10 }}>
+          <label className="field" style={{ flex: 1, minWidth: 240 }}>
+            <span>Khoá mới (để trống và bấm Lưu để xoá khoá)</span>
+            <input
+              type="password"
+              value={keyInput}
+              onChange={(event) => setKeyInput(event.target.value)}
+              placeholder="gsk_..."
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </label>
+          <button className="btn primary" type="submit" disabled={keyBusy} style={{ alignSelf: 'flex-end' }}>
+            {keyBusy ? 'Đang lưu…' : 'Lưu khoá'}
+          </button>
+        </div>
+        <p className="muted small" style={{ marginTop: 8 }}>
+          Nếu project đã đặt secret <span className="mono">GROQ_API_KEY</span> cho function, secret đó được ưu tiên
+          hơn khoá lưu trong database. Khoá chỉ hiển thị dạng che, không đọc lại được.
+        </p>
+      </form>
 
       <form className="card" style={{ marginTop: 16 }} onSubmit={submit}>
         <h2>Cấu hình</h2>
@@ -153,15 +238,16 @@ export default function AiSettings() {
           <button className="btn primary" type="submit" disabled={busy}>
             {busy ? 'Đang lưu…' : 'Lưu cấu hình'}
           </button>
-          <button
-            className="btn"
-            type="button"
-            disabled
-            title="Chưa có Edge Function proxy AI nên không có khoá phía server để kiểm tra."
-          >
-            Kiểm tra kết nối (chưa khả dụng)
+          <button className="btn" type="button" disabled={testing} onClick={() => void runTest()}>
+            {testing ? 'Đang kiểm tra…' : 'Kiểm tra kết nối'}
           </button>
         </div>
+        {testResult && (
+          <p className={testResult.ok ? 'ok' : 'error'} style={{ marginTop: 10 }}>
+            {testResult.ok ? '✓ ' : '✗ '}
+            {testResult.detail}
+          </p>
+        )}
 
         {notice && <p className="ok" style={{ marginTop: 10 }}>{notice}</p>}
         {error && <p className="error" style={{ marginTop: 10 }}>{error}</p>}
@@ -179,8 +265,9 @@ export default function AiSettings() {
         <h2>Mức sử dụng</h2>
         {usage.length === 0 ? (
           <p className="muted small" style={{ marginTop: 8 }}>
-            Chưa có số liệu. Bảng `ai_usage` chỉ được ghi khi AI gọi qua backend; app hiện gọi trực tiếp từ
-            thiết bị nên chưa có dòng nào.
+            Chưa có số liệu. Bảng `ai_usage` chỉ được ghi khi người học dùng khoá dùng chung (đi qua
+            Edge Function `ai-proxy`). Người đã tự nhập khoá riêng thì gọi thẳng Groq từ thiết bị, không
+            đi qua đây — và cũng không tiêu hạn mức chung.
           </p>
         ) : (
           <div className="table-wrap" style={{ marginTop: 10 }}>

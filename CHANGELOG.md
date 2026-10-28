@@ -4,6 +4,51 @@ Mỗi mục là một phiên làm việc. Ghi ngày, file, lý do, kết quả k
 
 ---
 
+## 2026-10-29 — Phiên 21: đăng nhập bắt buộc, sửa đăng xuất, streak có dữ liệu thật, Groq dùng chung
+
+### Lỗi thật đã tìm ra và sửa (không phải sửa giao diện cho có)
+
+| Triệu chứng | Nguyên nhân thật | Cách sửa |
+|---|---|---|
+| Panel luôn hiện streak = 0 cho mọi tài khoản | `activityFromRow` gửi `new_words/reviews/answered/correct` nhưng **không** gửi cờ “đã đạt mục tiêu”, còn cột `daily_activity.streak` không bao giờ được gửi (luôn 0). `admin_streak_info` đọc đúng cột rỗng đó | thêm `goal_met` (app gửi `goalMet`), `sync_push/pull` mang theo, `admin_streak_info` **tự tính** chuỗi từ các ngày đạt mục tiêu + mốc admin đặt |
+| Đặt streak = 5 nhưng thẻ vẫn hiện 0 | `admin_streak_info` không đọc bảng `streak_grants` | tính theo đúng quy tắc `computeStreak()` của app: mốc thay chuỗi trước mốc, ngày sau mốc nối tiếp, còn sống khi ngày cuối là hôm nay/hôm qua |
+| Đổi cài đặt không lên server | `saveSettings` chỉ ghi hàng đợi; `updateSettings` **không** tăng `dataVersion` nên `SyncProvider` không kích hoạt lần gửi nào | tăng `dataVersion` sau khi lưu → gửi sau 1,5 giây |
+| `setValueWithKeyAsync is not a function` | `expo-secure-store` trên web là object rỗng | lớp `src/lib/secureStorage.ts` chọn Keychain (native) / `localStorage` (web); có test |
+| Nút Đăng xuất im lặng trên web | `Alert` của `react-native-web` là lớp rỗng | `src/lib/alert.ts` dùng `window.confirm/alert` trên web, `Alert` native trên iOS |
+
+### Đã thêm
+
+- `supabase/migrations/0008_streak_truth.sql`: cột `goal_met`, `sync_push`/`sync_pull` mang cờ này,
+  `admin_streak_info` tính chuỗi thật (kèm `lastGoalDay`, `grant`). Có backfill bảo thủ cho dữ liệu cũ.
+- `scripts/verify-admin.mjs`: kiểm chứng quyền + streak + khoá Groq + `ai-proxy` trên database thật.
+- `src/sync/__tests__/map.test.ts`: 2 test cho `activityFromRow`.
+- Giao diện panel: thẻ Streak hiện thêm “Ngày đạt mục tiêu cuối” và ghi chú mốc đang áp; bỏ con số
+  streak cũ ở hàng thống kê để không còn hai số khác nhau trên cùng trang.
+
+### Kiểm chứng thật
+
+- `npx tsc --noEmit` → 0 lỗi. `npm test` → **35/35 suite, 353/353 test**.
+- `node scripts/verify-admin.mjs` → **25/25** trên Supabase thật (thành viên bị chặn 403 ở cả 5 hàm
+  quản trị, không đọc được cột khoá Groq, admin đặt streak đọc lại đúng, app nhận mốc qua
+  `my_streak_baseline`, không sinh giao dịch xu, `ai-proxy` chặn người lạ và báo lỗi khoá sai).
+- `node scripts/verify-sync.mjs` → **15/15** (thêm kiểm tra `goal_met` được lưu).
+- Trình duyệt thật trên bản đã deploy: chưa đăng nhập chỉ thấy màn đăng nhập; đăng nhập → app;
+  tải lại vẫn giữ phiên; Đăng xuất → về màn đăng nhập, Back và tải lại không vào lại được.
+- Admin panel: đăng nhập bằng tài khoản tạo qua script thật, dashboard đọc số liệu thật, đặt streak
+  5 ngày → thẻ hiện 5 và có nhật ký; tải lại trang vẫn đăng nhập.
+- Đồng bộ hai chiều: từ đẩy từ “thiết bị khác” qua `sync_push` xuất hiện trong web sau khi mở lại;
+  đổi mục tiêu ngày trong web → `profiles.settings.dailyGoal` trên server đổi sau ~1,5 giây.
+- Mốc streak admin đặt hiện đúng trong app (`🔥 5 NGÀY`) — chứng minh điều chỉnh có tác dụng thật.
+
+### Chưa kiểm được
+
+- **Gọi Groq thật bằng khoá dùng chung**: `.env.cloud.local` không có `GROQ_API_KEY` (dòng rỗng),
+  nên chỉ kiểm được đường từ chối (401/429/503). Cần admin dán khoá `gsk_…` trong panel.
+- **Build IPA**: chưa chạy trong phiên này; cần xác nhận tài khoản GitHub trước.
+- Safari trên iPhone thật / Chrome Android thật: vẫn chưa có thiết bị.
+
+---
+
 ## 2026-10-27 — Phiên 19: bản web chạy trên máy tính (Expo web)
 
 ### Đã thay đổi
@@ -1218,3 +1263,52 @@ Key còn hợp lệ; chỉ tên model đã bị Google ngừng cấp cho key m�
 
 - Chưa gọi Gemini thật bằng key của người dùng với `gemini-3.8-flash`; cần build mới và
   thử "Tạo bộ từ" trên iPhone.
+
+---
+
+## 2026-10-28 — Phiên 20: sửa đăng nhập admin, đồng bộ dữ liệu, giao diện theo thiết bị
+
+### Sửa lỗi bảng quản trị
+- **Nguyên nhân thật** của "không đăng nhập được": tài khoản thử (`choccho`) có `role = user` và
+  chưa từng đăng nhập. Panel chặn đúng theo thiết kế; kết nối Supabase và tài khoản admin đều tốt
+  (đã chứng minh bằng lệnh và bằng trình duyệt thật).
+- Không gọi `supabase.from()` ngay trong callback `onAuthStateChange` — lỗi này làm hỏng/treo màn
+  "Cẩn thẩm định quyền…" khi supabase-js đang giữ khoá phiên.
+- Thêm luồng **Quên mật khẩu** và **đặt mật khẩu mới**; phiên hết hạn tự đưa về màn đăng nhập.
+- `scripts/admin-bootstrap.mjs` + `npm run admin:create|admin:reset|admin:promote`: tạo tài khoản,
+  đặt lại mật khẩu (hỏi tại máy, không lộ khoá), cấp/thu quyền admin, tự đăng nhập thử sau khi làm.
+- Cấu hình Supabase: `uri_allow_list` trước đây **trống** nên mọi liên kết trong email đều bị chặn.
+  Đã đặt Site URL + danh sách redirect cho panel, web dev và deep link của app.
+
+### Đồng bộ hai chiều (migration `0004_sync.sql`)
+- `sync_push` / `sync_pull` / `reset_study_progress` / `ensure_term`, bảng `sync_state`, cột
+  `terms.track` và khoá duy nhất `(normalized, track)` để từ General và IELTS không nuốt nhau.
+- Idempotent theo khoá tự nhiên; bộ đếm chỉ tăng; lịch ôn theo bản mới hơn; xoá mềm được đồng bộ;
+  xu chỉ đi qua `award_coins`; realtime bật cho 6 bảng.
+- Trong app: `src/cloud/*` (client Supabase, AuthProvider dùng SecureStore trên máy và
+  localStorage trên web), `src/sync/*` (map, outbox, engine, SyncProvider), SQLite schema v6 với
+  `sync_outbox` và `sync_meta`.
+- Tự động lưu sau mỗi thao tác (gộp 1,5 giây), kéo về khi mở lại ứng dụng; mất mạng không mất dữ
+  liệu. Reset tiến độ gọi server trước rồi mới xoá dữ liệu máy.
+- Mục **Tài khoản & đồng bộ** trong Cài đặt: đăng nhập/đăng xuất, trạng thái, số thay đổi chờ, nút
+  gửi dữ liệu máy này lên tài khoản.
+
+### Giao diện theo thiết bị
+- `src/components/layout.ts` chia ba nhóm theo nội dung (điện thoại < 700, tablet < 1080, máy tính).
+- Máy tính: thanh điều hướng bên trái (`SideNav`), phím 1–6 chuyển mục, không thanh tab đáy.
+- Tablet: cột nội dung 760px căn giữa. Điện thoại: một cột, thanh tab đáy.
+- Lắng nghe `resize` bằng listener riêng vì bộ theo dõi của react-native-web không bắn ổn định.
+
+### Kiểm thử
+- `npx tsc --noEmit`: 0 lỗi.
+- `npx jest --runInBand`: **34/34 suite, 334/334 test** (thêm 11 test cho `src/sync/map.ts`).
+- `node scripts/check-migrations.mjs`: đạt cho schema 1→6.
+- `npm run verify:sync`: **14/14** trên Supabase thật (chống trùng, xu do server tính, reset giữ xu,
+  cách ly giữa hai tài khoản), tự xoá dữ liệu kiểm thử.
+- Trình duyệt thật: 1440×900, 820×1180, 390×844 — không tràn ngang, đúng bố cục từng nhóm.
+- Bảng quản trị: đăng nhập, tải lại giữ phiên, đăng xuất, user thường bị chặn, khôi phục mật khẩu.
+
+### Còn lại
+- Chưa deploy lại bản build mới của admin panel (công cụ deploy trong phiên từ chối đường dẫn).
+- Chưa chạy trên iPhone: đồng bộ, thông báo, widget vẫn chờ một bản IPA mới.
+- Nên xoay `service_role` và Personal Access Token từng bị dán vào chat.

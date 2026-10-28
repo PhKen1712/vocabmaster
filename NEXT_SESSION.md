@@ -1,6 +1,39 @@
 # NEXT SESSION — bắt đầu từ đây
 
-## 0. Việc mới nhất (2026-10-27)
+## 0. Việc mới nhất (2026-10-29, Phiên 21)
+
+**Đang chạy công khai, dùng chung một Supabase:**
+
+- Ứng dụng học: https://site-2fec18316472491faa6991234ac99ad6.freebuff.page
+- Bảng quản trị: https://site-803d281e336549f99eaf45a04acd4531.freebuff.page
+
+**Đã xong và đã kiểm chứng thật:**
+
+1. **Đăng nhập bắt buộc** — chưa đăng nhập chỉ thấy màn đăng nhập; Back/reload sau đăng xuất không
+   mở lại app; máy đang giữ dữ liệu tài khoản khác thì cảnh báo trước khi xoá dữ liệu **trên máy**.
+2. **Đăng xuất hoạt động** — gốc lỗi là `Alert` của `react-native-web` rỗng; đã dùng
+   `window.confirm` qua `src/lib/alert.ts`.
+3. **`setValueWithKeyAsync is not a function`** — `expo-secure-store` không có trên web; đã có
+   `src/lib/secureStorage.ts` (Keychain native / localStorage web) + test.
+4. **Streak trong admin panel có dữ liệu thật** — migration `0008` thêm `goal_met`, `sync_push/pull`
+   mang theo, `admin_streak_info` tự tính chuỗi + mốc điều chỉnh. Trước đó luôn hiện 0.
+5. **Cài đặt tự lưu** — `updateSettings` thiếu `dataVersion` nên không có lần gửi nào.
+6. **Groq dùng chung** — Edge Function `ai-proxy` + bảng cấu hình + panel; khoá ở server, hạn mức
+   mỗi ngày, key riêng của người học vẫn được ưu tiên.
+
+**Kiểm thử:** tsc 0 lỗi; 353/353 unit test (35 suite); `node scripts/verify-admin.mjs` 25/25 và
+`node scripts/verify-sync.mjs` 15/15 trên Supabase thật; trình duyệt thật cho đăng nhập/đăng xuất/
+tải lại, điều chỉnh streak (app hiện “🔥 5 NGÀY”), sync từ “thiết bị khác” và tự lưu cài đặt.
+
+**Việc tiếp theo (đúng thứ tự):**
+
+1. Dán khoá `gsk_…` trong panel **Groq / AI** → **Kiểm tra kết nối** (chưa có khoá thật nên chưa
+   chứng minh được lời gọi AI thành công).
+2. **Build IPA** — hỏi người dùng về tài khoản GitHub (tài khoản hiện tại đã hết quota) rồi chạy
+   `.github/workflows/ios-unsigned.yml`, cài lên iPhone và kiểm đồng bộ hai chiều với web.
+3. Cân nhắc `disable_signup = true`; xoay `service_role` và Supabase PAT từng bị dán vào chat.
+
+## 0.1. Việc mới nhất (2026-10-27)
 
 - **Đã xong, đã kiểm thử (chưa chạy trên iPhone):** chu kỳ thông báo Album **do người dùng tự nhập**
   (`src/notifications/interval.ts`) — nhập giờ/phút, từ chối 0/âm/chữ/quá 7 ngày, **không tự đổi** giá

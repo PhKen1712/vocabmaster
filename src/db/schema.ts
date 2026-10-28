@@ -10,7 +10,7 @@ import type {
   WordSource,
 } from '../types';
 
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 7;
 
 /**
  * Forward-only migrations. Every entry runs exactly once, inside a transaction.
@@ -255,6 +255,53 @@ export const MIGRATIONS: { version: number; statements: string[] }[] = [
        ) WHERE topic IS NOT NULL AND TRIM(topic) <> '';`,
     ],
   },
+  {
+    version: 6,
+    statements: [
+      // Changes waiting to go up to the account. Writing to SQLite first and
+      // queueing here means learning never depends on the network: if the push
+      // fails, the row stays queued and is retried, and the learner never sees
+      // a lost answer.
+      `CREATE TABLE IF NOT EXISTS sync_outbox (
+        id TEXT PRIMARY KEY NOT NULL,
+        entity TEXT NOT NULL,
+        op TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT
+      );`,
+      `CREATE INDEX IF NOT EXISTS idx_sync_outbox_created ON sync_outbox (created_at);`,
+      // Small key/value store for sync bookkeeping: pull watermark, stable
+      // device id, last result. Kept out of app_settings so restoring settings
+      // cannot rewind the watermark and re-download everything.
+      `CREATE TABLE IF NOT EXISTS sync_meta (
+        key TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );`,
+      // Which account this device last pushed to. Used to keep local data when
+      // someone signs into a different account by mistake: we never upload a
+      // previous account's queue silently.
+      `CREATE INDEX IF NOT EXISTS idx_sync_outbox_entity ON sync_outbox (entity, created_at);`,
+    ],
+  },
+  {
+    version: 7,
+    statements: [
+      // Thời điểm người dùng THẬT SỰ bật/tắt yêu thích.
+      //
+      // Vì sao cần: `is_favorite` một mình không phân biệt được "người dùng vừa
+      // bỏ yêu thích" với "máy này chưa từng biết gì về từ đó". Khi thử hai
+      // phiên trình duyệt cùng một tài khoản, máy thứ hai (vừa cài, có 114 từ
+      // nhưng chưa ai bấm yêu thích) đã đẩy lên và xoá mất dấu yêu thích mà máy
+      // thứ nhất vừa đặt. Có mốc thời gian thao tác thì chỉ máy nào thực sự bấm
+      // mới đổi được giá trị này.
+      `ALTER TABLE words ADD COLUMN favorite_at TEXT;`,
+      // Dữ liệu cũ: coi lần sửa gần nhất là lúc bấm yêu thích, để không mất dấu
+      // đã có và vẫn bỏ yêu thích được về sau.
+      `UPDATE words SET favorite_at = updated_at WHERE is_favorite = 1 AND favorite_at IS NULL;`,
+    ],
+  },
 ];
 
 export interface WordRow {
@@ -282,6 +329,8 @@ export interface WordRow {
   dict_source?: string | null;
   missing_fields?: string | null;
   is_favorite: number;
+  /** Lúc người dùng bấm yêu thích/bỏ yêu thích; null nghĩa là chưa ai bấm. */
+  favorite_at?: string | null;
   learning_state: string;
   due_at: string | null;
   stability: number;
@@ -389,6 +438,7 @@ export function rowToWord(row: WordRow): Word {
     dictSource: row.dict_source ?? null,
     missingFields: parseList(row.missing_fields ?? null) as WordField[],
     isFavorite: row.is_favorite === 1,
+    favoriteAt: row.favorite_at ?? null,
     learningState: asLearningState(row.learning_state),
     dueAt: row.due_at,
     stability: row.stability,
@@ -478,6 +528,7 @@ export const WORD_COLUMNS = [
   'last_reviewed_at',
   'created_at',
   'updated_at',
+  'favorite_at',
 ] as const;
 
 export function wordInsertValues(word: Word): (string | number | null)[] {
@@ -521,5 +572,6 @@ export function wordInsertValues(word: Word): (string | number | null)[] {
     word.lastReviewedAt,
     word.createdAt,
     word.updatedAt,
+    word.favoriteAt ?? null,
   ];
 }

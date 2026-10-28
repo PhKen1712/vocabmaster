@@ -11,8 +11,19 @@ phụ thuộc API từ điển), **bài học từ mới có giới thiệu trư
 **Dev: Phạm Bảo Lâm**
 
 - Đường dẫn dự án: `C:\Users\Lenovo\Desktop\VocabMaster`
-- Nền tảng: iOS 18+ (iPhone), phát triển trên Windows
-- Dữ liệu: SQLite trên máy, không có server
+- Nền tảng: iOS 18+ (iPhone) và **trình duyệt web** (máy tính, Android, iPhone/iPad), phát triển trên Windows
+- Dữ liệu: SQLite trên máy **+ Supabase** (tài khoản, đồng bộ tự động), xem mục [Tài khoản và đồng bộ](#tài-khoản-và-đồng-bộ)
+
+## Đang chạy công khai
+
+| Thứ | Địa chỉ |
+|---|---|
+| Ứng dụng học (bản web) | https://site-2fec18316472491faa6991234ac99ad6.freebuff.page |
+| Bảng quản trị | https://site-803d281e336549f99eaf45a04acd4531.freebuff.page |
+
+Hai bản dùng **cùng một Supabase**: đăng nhập một tài khoản trên iPhone, máy tính hay điện thoại là
+thấy cùng một dữ liệu. **Bắt buộc đăng nhập** — chưa đăng nhập chỉ thấy màn đăng nhập, không màn
+hình học nào được mở.
 
 ## Đọc trước
 
@@ -50,6 +61,53 @@ npm start
 
 - Cần **development build** đã cài trên iPhone (không dùng Expo Go cho widget/nhận diện giọng nói).
 - Metro chạy trên Windows; điện thoại cùng mạng Wi-Fi.
+
+## Tài khoản và đồng bộ
+
+### Chạy bản web trên máy
+
+```bash
+npm run start:web      # http://localhost:8081
+npm run web:build      # xuất bản tĩnh vào web/site để deploy
+```
+
+Chi tiết deploy, header COOP/COEP và những gì **không** chạy trên web: [docs/DEPLOY_WEB.md](docs/DEPLOY_WEB.md).
+
+### Quy tắc đăng nhập
+
+- Mở app khi chưa đăng nhập → chỉ có màn đăng nhập.
+- Đăng xuất → xoá phiên trên máy và về màn đăng nhập; nút Back và tải lại trang **không** mở lại app.
+- Máy đang giữ dữ liệu của tài khoản khác → cảnh báo trước khi xoá dữ liệu **trên máy**. Dữ liệu của
+  tài khoản cũ vẫn nằm trên server và tải lại khi đăng nhập lại.
+- Số dư xu, chuỗi ngày và mọi dữ liệu cá nhân được bảo vệ bằng RLS ở server, không phải chỉ ẩn ở giao diện.
+
+### Tạo tài khoản
+
+- Quản trị viên tạo trong panel **Tài khoản → Tạo tài khoản** (đi qua Edge Function `admin-users`,
+  hàm này kiểm tra người gọi là admin rồi mới dùng quyền server).
+- Hoặc trên máy: `npm run admin:create` / `npm run admin:promote -- --email …` (xem
+  [docs/ADMIN_ACCESS.md](docs/ADMIN_ACCESS.md)). Không có mật khẩu nào được hardcode.
+
+### Tự động lưu
+
+Mọi thay đổi (thêm từ, trả lời, đổi cài đặt, sửa album, nhận xu) được đẩy sau ~1,5 giây, gộp nhiều
+thao tác liên tiếp thành một request. Không có nút Upload. Mất mạng thì thay đổi nằm lại trên máy và
+tự gửi lại khi có mạng; trạng thái nhỏ trong **Cài đặt → Tài khoản** cho biết Đang đồng bộ / Đã đồng bộ
+/ lỗi kèm lý do. Trường văn bản không gửi theo từng ký tự — chỉ lưu khi xác nhận.
+
+Hai chiều: máy khác thêm từ thì mở lại app (hoặc quay lại app) sẽ thấy; cùng tài khoản trên hai thiết bị
+luôn hội tụ về một dữ liệu. Gửi lại cùng một gói không sinh bản ghi trùng và không cộng xu hai lần.
+
+### Admin: điều chỉnh streak và Groq dùng chung
+
+- **Streak**: trong chi tiết tài khoản, thẻ **Chuỗi ngày học** hiện streak hiện tại, streak dài nhất,
+  ngày hoạt động/ngày đạt mục tiêu gần nhất và lịch sử điều chỉnh. Đặt streak bắt buộc nhập lý do và
+  qua hộp xác nhận; thay đổi ghi vào bảng `streak_grants` (có người thực hiện + thời điểm), **không**
+  sửa lịch sử học và **không** cộng xu. App đọc mốc này qua `my_streak_baseline` nên có tác dụng trên
+  mọi thiết bị ở lần đồng bộ kế tiếp.
+- **Groq dùng chung**: panel **Groq / AI** đặt khoá `gsk_…` ở server. App gọi Edge Function `ai-proxy`;
+  khoá không đi xuống trình duyệt/điện thoại và có hạn mức mỗi ngày cho từng tài khoản. Ai đã tự nhập
+  khoá riêng vẫn dùng khoá riêng (ưu tiên) và không tiêu hạn mức chung.
 
 ## Cấu hình AI (Gemini hoặc Groq)
 
@@ -514,3 +572,70 @@ Trạng thái thật của các lần chạy nằm trong `CHECKPOINT.json → te
 - `docs/FEASIBILITY.md`, `docs/ARCHITECTURE.md`, `docs/BUILD_AND_INSTALL.md`, `docs/TEST_PLAN.md`
 - `docs/CLOUD_BACKEND.md` — thiết kế tài khoản, dữ liệu trực tuyến, đồng bộ và web admin panel
   (chưa triển khai), kèm bảng chi phí/giới hạn và các điểm phải kiểm chứng
+
+---
+
+## Tài khoản, đồng bộ và bảng quản trị (2026-10-28)
+
+Chi tiết đầy đủ: [docs/ADMIN_ACCESS.md](docs/ADMIN_ACCESS.md) và [docs/SYNC.md](docs/SYNC.md).
+
+### Chạy trên máy tính / điện thoại qua trình duyệt
+
+```bash
+cd Desktop/VocabMaster
+npx expo start --web          # mở http://localhost:8081
+```
+
+Cùng một mã nguồn với bản iOS. Dữ liệu vẫn là SQLite trên máy (web dùng SQLite WASM), nên ứng dụng
+học được cả khi chưa đăng nhập.
+
+Bố cục đổi theo thiết bị (đo trên trình duyệt thật):
+
+| Bề rộng | Bố cục | Đã kiểm |
+|---|---|---|
+| ≥ 1080px | thanh điều hướng bên trái, phím 1–6 chuyển mục, không thanh tab đáy | 1440×900 |
+| 700–1079px | thanh tab đáy, cột nội dung hẹp 760px căn giữa | 820×1180 |
+| < 700px | một cột, thanh tab đáy, không tràn ngang | 390×844 |
+
+### Đăng nhập và đồng bộ
+
+Mở **Cài đặt → Tài khoản & đồng bộ**. Đăng nhập là tuỳ chọn: không đăng nhập vẫn học đầy đủ.
+
+- Thay đổi được gửi lên tài khoản **tự động** sau mỗi thao tác (gộp trong 1,5 giây), không có nút
+  Upload.
+- Mất mạng thì thay đổi nằm lại trên máy và tự gửi tiếp.
+- Lần đăng nhập đầu tiên có nút **“Gửi dữ liệu máy này lên tài khoản”** — người dùng chủ động bấm,
+  không tự đẩy dữ liệu cũ lên.
+- Số dư xu luôn do server tính; client không bao giờ gửi số dư.
+
+### Lệnh quản trị tài khoản
+
+```bash
+npm run admin:create     # tạo tài khoản quản trị
+npm run admin:reset      # đặt lại mật khẩu (hỏi ngay trên máy, không qua chat)
+npm run admin:promote    # cấp quyền admin cho tài khoản đã có (thêm --demote để thu quyền)
+npm run verify:sync      # kiểm chứng đồng bộ trên project thật rồi tự dọn dữ liệu kiểm thử
+```
+
+### Cấu hình Supabase cần có
+
+`.env` (đã gitignore):
+
+```
+EXPO_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=<publishable/anon key>
+```
+
+`admin/.env` dùng `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` cùng giá trị.
+
+Supabase → Authentication → URL Configuration cần có **Site URL** và **Redirect URLs** (nếu để
+trống, mọi liên kết trong email đều bị chặn). Đã đặt sẵn:
+
+```
+https://site-803d281e336549f99eaf45a04acd4531.freebuff.page
+https://*.freebuff.page
+http://localhost:5180
+http://localhost:8081
+http://localhost:3000
+vocabmaster://auth-callback
+```

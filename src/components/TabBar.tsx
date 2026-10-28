@@ -7,13 +7,17 @@ import { radius, spacing } from '../theme/tokens';
 import type { TabName } from '../navigation/NavigationProvider';
 import { AppText } from './ui';
 
-const TABS: { name: TabName; label: string; icon: string }[] = [
-  { name: 'today', label: 'Hôm nay', icon: '☀' },
-  { name: 'study', label: 'Học', icon: '◎' },
-  { name: 'arcade', label: 'Chơi', icon: '◈' },
-  { name: 'words', label: 'Bộ từ', icon: '▤' },
-  { name: 'stats', label: 'Tiến độ', icon: '◔' },
-  { name: 'settings', label: 'Cài đặt', icon: '⚙' },
+/**
+ * Danh sách tab dùng chung cho thanh đáy (điện thoại) và thanh bên (máy tính).
+ * Một nguồn duy nhất để hai bố cục không bao giờ lệch nhau về thứ tự hay nhãn.
+ */
+export const TABS: { name: TabName; label: string; icon: string; hint: string }[] = [
+  { name: 'today', label: 'Hôm nay', icon: '☀', hint: 'Tổng quan ngày học' },
+  { name: 'study', label: 'Học', icon: '◎', hint: 'Phiên học và ôn tập' },
+  { name: 'arcade', label: 'Chơi', icon: '◈', hint: 'Trò chơi ôn từ' },
+  { name: 'words', label: 'Bộ từ', icon: '▤', hint: 'Ngân hàng từ vựng' },
+  { name: 'stats', label: 'Tiến độ', icon: '◔', hint: 'Thống kê và streak' },
+  { name: 'settings', label: 'Cài đặt', icon: '⚙', hint: 'Tùy chọn, tài khoản, dữ liệu' },
 ];
 
 export function TabBar({

@@ -120,6 +120,8 @@ export interface Word {
   /** Fields the lookup could not fill; empty means complete. */
   missingFields?: WordField[];
   isFavorite: boolean;
+  /** Lúc người dùng bấm yêu thích/bỏ yêu thích; null = chưa ai bấm trên máy nào. */
+  favoriteAt?: string | null;
   learningState: LearningState;
   /** ISO timestamp of the next scheduled review. Null for never-reviewed words. */
   dueAt: string | null;

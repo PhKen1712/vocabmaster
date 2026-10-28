@@ -1,9 +1,13 @@
 const mockGetItem = jest.fn();
 
 jest.mock('expo-secure-store', () => ({
-  getItemAsync: (...args: unknown[]) => mockGetItem(...args),
-  setItemAsync: jest.fn(),
-  deleteItemAsync: jest.fn(),
+  // Lớp lưu trữ chung ghi/đọc một khoá thử trước khi tin Keychain. Mock phải trả
+  // đúng như Keychain thật, nếu không lớp đó sẽ chuyển sang kho dự phòng.
+  isAvailableAsync: async () => true,
+  getItemAsync: (key: string) =>
+    key === '__vm_storage_probe__' ? Promise.resolve('ok') : mockGetItem(key),
+  setItemAsync: jest.fn(async () => undefined),
+  deleteItemAsync: jest.fn(async () => undefined),
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'whenUnlockedThisDeviceOnly',
 }));
 

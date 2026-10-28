@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+
+import { Alert } from '../lib/alert';
 
 import { AppText, Banner, Card, Chip, PrimaryButton, Screen, SectionHeader } from '../components/ui';
 import { ChipRow, Input, LevelPicker, ScreenHeader, Stepper, TrackSwitcher } from '../components/patterns';

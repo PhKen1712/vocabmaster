@@ -3,8 +3,8 @@
   "project_path": "C:\\Users\\Lenovo\\Desktop\\VocabMaster",
   "tool_workspace": "C:\\Users\\Lenovo\\Desktop\\App TANH",
   "checkpoint_version": 1,
-  "last_updated": "2026-10-27",
-  "current_phase": "Giai đoạn 1–7 + (2026-10-27) chu kỳ thông báo Album do người dùng tự nhập (phút/giờ, không còn danh sách cố định, có kiểm tra và cảnh báo giới hạn iOS) và khung nhập danh sách \"mỗi dòng một mục\" trộn tiếng Việt/Anh với Groq dịch mục tiếng Việt sang tiếng Anh rồi mới giải nghĩa. Tài khoản trực tuyến, đồng bộ dữ liệu, web admin panel và bản web/máy tính MỚI Ở BƯỚC THIẾT KẾ (docs/CLOUD_BACKEND.md, backend chọn Supabase) — chưa có project backend, chưa có khoá, chưa có dòng code backend nào. Typecheck 0 lỗi, 323 test trong 33 suite, schema v5 kiểm tra trên SQLite thật. Toàn bộ thay đổi 2026-10-24/25/26/27 CHƯA chạy trên iPhone. BƯỚC MỚI (2026-10-27, Phiên 19): bản web chạy được trên máy tính bằng expo start --web (react-dom/react-native-web/@expo/metro-runtime), cột 560px căn giữa cho màn hình rộng, SQLite WASM ghi/đọc bền, Card đổi sang div role=link trên web để hết button lồng button. Chưa đồng bộ Supabase (giai đoạn 4) nên dữ liệu web và điện thoại CHƯA dùng chung.",
+  "last_updated": "2026-10-29",
+  "current_phase": "Giai đoạn 1–8 (2026-10-29, Phiên 21): tài khoản trực tuyến + đồng bộ đã CHẠY THẬT trên web. Đăng nhập là bắt buộc (không còn dùng app khi chưa xác thực), đăng xuất hoạt động trên web và iOS, dữ liệu tách theo tài khoản trên cùng máy. Admin panel: quản lý tài khoản, xu, từ điển dùng chung, ĐIỀU CHỈNH STREAK có nhật ký, cấu hình Groq dùng chung. Streak đã có dữ liệu thật: migration 0008 thêm goal_met + sync_push/pull mang cờ này + admin_streak_info tự tính chuỗi (trước đó luôn trả 0 vì app không gửi gì và panel không đọc streak_grants). Groq dùng chung qua Edge Function ai-proxy (giữ khoá ở server, hạn mức mỗi ngày) — CHƯA gọi thật vì chưa có khoá gsk_ trong .env.cloud.local. Typecheck 0 lỗi, 353/353 unit test trong 35 suite; verify-admin 25/25 và verify-sync 15/15 trên Supabase thật. CHƯA build IPA trong phiên này và CHƯA chạy trên iPhone thật.",
   "current_branch": "main",
   "current_commit": "main · xem git log (2026-10-27)",
   "tech_stack": [
@@ -26,6 +26,41 @@
     "Jest + jest-expo (tests written, not run)"
   ],
   "completed_features": [
+    {
+      "name": "Đăng nhập admin panel + quên/đặt lại mật khẩu",
+      "status": "verified_on_device",
+      "evidence": "Kiểm thử trên trình duyệt thật: đăng nhập admin → dashboard đọc admin_stats; tải lại vẫn giữ phiên; user thường bị chặn; luồng PASSWORD_RECOVERY đặt mật khẩu mới rồi đăng nhập lại được"
+    },
+    {
+      "name": "Script quản trị tài khoản (tạo admin, đặt lại mật khẩu, cấp/thu quyền)",
+      "status": "tested",
+      "evidence": "scripts/admin-bootstrap.mjs + npm run admin:create|admin:reset|admin:promote; tự đăng nhập thử sau khi tạo và tự kiểm hồ sơ qua RLS"
+    },
+    {
+      "name": "Migration 0004_sync.sql: đồng bộ hai chiều idempotent",
+      "status": "tested",
+      "evidence": "sync_push/sync_pull/reset_study_progress, ensure_term(track), cột terms.track, sync_state, realtime 6 bảng; scripts/verify-sync.mjs đạt 14/14 trên Supabase thật rồi tự dọn dữ liệu kiểm thử"
+    },
+    {
+      "name": "Tầng cloud trong app (Supabase client + AuthProvider dùng chung iOS/web)",
+      "status": "implemented",
+      "evidence": "src/cloud/config.ts, client.ts (SecureStore trên máy, localStorage trên web), AuthProvider.tsx"
+    },
+    {
+      "name": "Tầng đồng bộ trong app (outbox, push theo mốc thời gian, pull và trộn)",
+      "status": "implemented",
+      "evidence": "src/sync/map.ts + outbox.ts + engine.ts + SyncProvider.tsx; migration SQLite v6 (sync_outbox, sync_meta); 11 test mới cho quy tắc trộn"
+    },
+    {
+      "name": "Mục \"Tài khoản & đồng bộ\" trong Cài đặt + reset đồng bộ hai phía",
+      "status": "implemented",
+      "evidence": "src/screens/AccountSection.tsx; nút reset tiến độ gọi server trước rồi mới xoá dữ liệu máy"
+    },
+    {
+      "name": "Giao diện theo thiết bị (máy tính / điện thoại / tablet)",
+      "status": "tested",
+      "evidence": "src/components/layout.ts + SideNav.tsx + App.tsx; đo thật trên trình duyệt ở 1440x900, 820x1180, 390x844: không tràn ngang, sidebar chỉ ở máy tính, tab đáy ở điện thoại/tablet, phím 1–6 chuyển mục"
+    },
     {
       "name": "SQLite schema, migration transaction, seed 40 words",
       "status": "implemented",
@@ -260,6 +295,31 @@
       "name": "Bản web chạy trên máy tính (Expo web) — giao diện giữ tỉ lệ điện thoại, cột 560px căn giữa trên màn hình rộng",
       "status": "tested",
       "evidence": "expo start --web chạy thật tại localhost:8081; 6 tab vào được, ngân hàng 114 từ đủ lọc/sắp xếp; ★ một từ rồi reload vẫn giữ (SQLite WASM ghi/đọc bền); viewport 1440 → khung 560 căn giữa x=440, tab trong khung; viewport 700 không tràn ngang; console 0 lỗi lồng button. tsc 0 lỗi, jest 323/323 trong 33 suite → nguồn iOS không đổi hành vi."
+    },
+    {
+      "name": "Bắt buộc đăng nhập: chỉ màn đăng nhập khi chưa xác thực; chuyển tài khoản có cảnh báo xoá dữ liệu máy",
+      "status": "tested",
+      "evidence": "App.tsx chặn mọi màn hình nội bộ khi auth.status !== \"signedIn\"; AccountSwitchScreen khi máy đang giữ dữ liệu của tài khoản khác. Trên bản deploy: chưa đăng nhập chỉ thấy màn đăng nhập; đăng nhập tài khoản khác hiện cảnh báo \"Máy này đang có dữ liệu của tài khoản khác\" trước khi xoá dữ liệu máy."
+    },
+    {
+      "name": "Đăng xuất hoạt động thật (nguyên nhân: Alert của react-native-web là lớp rỗng)",
+      "status": "tested",
+      "evidence": "src/lib/alert.ts dùng window.confirm/alert trên web. Kiểm thử trình duyệt: bấm Đăng xuất → về màn đăng nhập; tải lại vẫn ở màn đăng nhập; history.back() không mở lại app; đăng nhập lại được."
+    },
+    {
+      "name": "Streak của admin panel có dữ liệu thật (migration 0008: goal_met + admin_streak_info tự tính)",
+      "status": "tested",
+      "evidence": "Trước: panel luôn hiện 0. Sau: verify-admin 25/25 trên Supabase thật (đẩy ngày đạt mục tiêu → admin đọc 1; đặt 5 → đọc 5, longest 5, nhật ký đủ lý do + người thực hiện); trình duyệt: thẻ Streak hiện 5 và app hiện \"🔥 5 NGÀY\"."
+    },
+    {
+      "name": "Groq dùng chung cho thành viên qua Edge Function ai-proxy (khoá ở server, hạn mức mỗi ngày)",
+      "status": "implemented",
+      "evidence": "supabase/functions/ai-proxy + 0007_ai_shared_key.sql + src/ai/gateway.ts (key riêng luôn được ưu tiên) + panel Groq/AI. Kiểm được: 401 khi thiếu phiên, khoá lưu dạng che, khoá sai → 401, hạn mức qua ai_take_quota. CHƯA gọi Groq thành công vì chưa có khoá gsk_ thật."
+    },
+    {
+      "name": "Tự động lưu cài đặt lên server (sửa lỗi thiếu dataVersion)",
+      "status": "tested",
+      "evidence": "src/state/AppProvider.tsx updateSettings tăng dataVersion → SyncProvider gửi sau 1,5 giây. Đo thật: đổi mục tiêu ngày trong web → profiles.settings.dailyGoal trên server đổi (before/after khác nhau, updated_at mới)."
     }
   ],
   "in_progress_features": [
@@ -394,6 +454,24 @@
       "severity": "medium",
       "description": "The 2026-10-26 features are covered by typecheck, migration checks and unit tests only: custom review intervals, reset + cycle coin rewards, per-item Groq levels, priority/forgettable words, SFX, Album bulk UI, and album notifications. No IPA containing them has been built or installed.",
       "workaround": "Build with .github/workflows/ios-unsigned.yml, install, then follow NEXT_SESSION.md section 4 items 2e-2i. In particular check that notifications are cancelled when disabled, that the body includes meaning/context, and that a tap opens the word detail."
+    },
+    {
+      "id": "web-001",
+      "severity": "low",
+      "description": "Bản web dùng SQLite WASM trong OPFS: chỉ một tab mở được database tại một thời điểm. Mở tab thứ hai sẽ thấy \"Không mở được dữ liệu\" (có giải thích và dữ liệu không mất).",
+      "workaround": "Đóng tab cũ rồi tải lại; hoặc cài bản PWA/native. Không phải mất dữ liệu."
+    },
+    {
+      "id": "ai-004",
+      "severity": "medium",
+      "description": "Khoá Groq dùng chung chưa được cấu hình (GROQ_API_KEY trong .env.cloud.local đang rỗng, chưa đặt secret cho Edge Function). Đường dùng chung đã kiểm được phần từ chối nhưng chưa gọi thành công lần nào.",
+      "workaround": "Quản trị viên dán khoá gsk_… trong panel Groq/AI (hoặc đặt secret GROQ_API_KEY) rồi bấm Kiểm tra kết nối."
+    },
+    {
+      "id": "build-001",
+      "severity": "medium",
+      "description": "Chưa tạo được file IPA trong phiên này; cần xác nhận tài khoản GitHub trước khi chạy workflow ios-unsigned.",
+      "workaround": "Chạy .github/workflows/ios-unsigned.yml bằng tài khoản GitHub còn quota, hoặc dùng tài khoản khác đã được người dùng đồng ý."
     }
   ],
   "resolved_bugs": [
@@ -548,6 +626,36 @@
       "capability": "Bundled word packs contain valid, non-duplicated content",
       "verified": true,
       "evidence": "src/data/__tests__/packs.test.ts asserts no duplicate (term, track), no overlap with SEED_WORDS, real Vietnamese meanings, valid levels inside the pack band, examples containing the target term, and 2500 targets that decrease by level"
+    },
+    {
+      "capability": "Admin panel đăng nhập được và đọc dữ liệu thật",
+      "verified": true,
+      "evidence": "Trình duyệt thật: POST /auth/v1/token 200 → đọc profiles → rpc admin_stats trả số liệu thật; đăng xuất 204; tải lại giữ phiên; user thường hiện \"Tài khoản này không có quyền quản trị\""
+    },
+    {
+      "capability": "Backend chặn user thường ở tầng database, không chỉ ở giao diện",
+      "verified": true,
+      "evidence": "JWT user thường: admin_stats và admin_accounts trả 42501; PATCH profiles.role bị \"permission denied for table profiles\"; admin_adjust_coins trả 42501"
+    },
+    {
+      "capability": "Đồng bộ hai chiều chống trùng trên Supabase thật",
+      "verified": true,
+      "evidence": "scripts/verify-sync.mjs: gửi lại y hệt không nhân đôi (từ=2, lượt ôn=1, xu=1, ngày=1, album_items=2, album=1), số dư xu do server tính, reset giữ nguyên xu, tài khoản khác thấy 0 dòng"
+    },
+    {
+      "capability": "Bố cục theo thiết bị trên web",
+      "verified": true,
+      "evidence": "1440x900: sidebar trái + 6 tab, không tab đáy, không tràn ngang. 820x1180: tab đáy, cột nội dung hẹp. 390x844: tab đáy, scrollWidth = 390. Phím 1–6 chuyển mục ở chế độ máy tính"
+    },
+    {
+      "capability": "Điều chỉnh streak từ admin panel có tác dụng thật trên app",
+      "verified": true,
+      "evidence": "verify-admin.mjs 25/25; trình duyệt thật: app hiện \"🔥 5 NGÀY\" sau khi admin đặt streak = 5 qua my_streak_baseline"
+    },
+    {
+      "capability": "Hai chiều dữ liệu giữa hai thiết bị qua Supabase (cùng tài khoản)",
+      "verified": true,
+      "evidence": "Từ đẩy bằng sync_push với tài khoản thật xuất hiện trong web sau khi mở lại; đổi cài đặt trong web lên server sau ~1,5 giây"
     }
   ],
   "unverified_capabilities": [
@@ -618,126 +726,42 @@
     {
       "capability": "Anything about accounts, online storage, sync or the admin panel — nothing backend exists yet",
       "how_to_verify": "Không kiểm được: phải tạo project Supabase trước (docs/CLOUD_BACKEND.md mục 12–13)"
+    },
+    {
+      "capability": "Đồng bộ trên iPhone thật",
+      "how_to_verify": "Build IPA mới rồi đăng nhập cùng tài khoản trên điện thoại và trên web, kiểm tra tiến độ hai chiều"
+    },
+    {
+      "capability": "Bản admin panel mới đã deploy",
+      "how_to_verify": "Bấm Publish trong Freebuff Sites (bản build đã nằm ở admin/dist và admin/.sitebuild), rồi mở lại trang để thấy nút \"Quên mật khẩu?\""
+    },
+    {
+      "capability": "Email đặt lại mật khẩu đến hộp thư",
+      "how_to_verify": "Dùng một email thật (không phải @example.com) bấm \"Quên mật khẩu?\" và kiểm tra hộp thư, kể cả spam"
+    },
+    {
+      "capability": "SQLite WASM với crossOriginIsolated trên bản build tĩnh",
+      "how_to_verify": "Phục vụ thư mục export bằng web server có header COOP/COEP rồi kiểm tra window.crossOriginIsolated === true"
     }
   ],
   "test_results": {
-    "last_run": "2026-10-27 (Phiên 19)",
+    "last_run": "2026-10-29 (Phiên 21)",
     "status": "typecheck_and_unit_tests_pass",
-    "reason": "npx tsc --noEmit exit 0; npx jest --runInBand: 33/33 suites, 323/323 tests (2026-10-27). node scripts/check-migrations.mjs passed for schema 1->5 (fresh install, v3/v4 upgrades, reward cycles, album, topic merge). No test calls Gemini, Groq or iOS speech; all external calls are mocked fakes. No iOS build was possible on this Windows machine, so notifications, the typed album cycle, the Vietnamese translation flow, SFX and the album UI were not exercised on a device.",
+    "reason": "npx tsc --noEmit exit 0; npm test: 35/35 suite, 353/353 test (2026-10-29). node scripts/verify-admin.mjs 25/25 trên Supabase thật: thành viên bị chặn 403 ở admin_stats/admin_accounts/admin_streak_info/admin_set_streak/admin_groq_key_status; không đọc được cột app_config.ai_groq_key; app đẩy ngày đạt mục tiêu (goalMet) lên rồi admin đọc được streak=1; admin đặt 5 → đọc lại 5, longest 5, nhật ký có lý do + người thực hiện; my_streak_baseline trả days=5 cho chính người học; streak không sinh giao dịch xu; ai-proxy chặn khi thiếu phiên (401), lưu khoá dạng che, khoá sai → 401; node scripts/verify-sync.mjs 15/15 (thêm goal_met lưu đúng, chống trùng, reset giữ xu). Kiểm thử trình duyệt thật trên bản deploy: chưa đăng nhập chỉ thấy màn đăng nhập; đăng nhập → app; tải lại giữ phiên; đăng xuất → màn đăng nhập (Back và reload không vào lại); mốc streak admin đặt hiện \"🔥 5 NGÀY\" trong app; từ đẩy từ thiết bị khác xuất hiện sau khi mở lại; đổi mục tiêu ngày → profiles.settings.dailyGoal trên server đổi sau ~1,5 giây. CHƯA chạy trên iPhone thật; CHƯA gọi Groq thật bằng khoá dùng chung; CHƯA build IPA trong phiên này.",
     "typecheck": {
-      "command": "npx tsc --noEmit (TypeScript 6.0.3)",
+      "command": "npx tsc --noEmit",
       "exit_code": 0,
       "errors": 0
     },
-    "unit_tests": "323/323 pass trong 33 suite (jest, 9,8 s)",
-    "expo_doctor": {
-      "command": "npx expo-doctor",
-      "exit_code": 0,
-      "result": "20/20 checks passed"
-    },
-    "config_plugins": {
-      "command": "npx expo config --type prebuild --json",
-      "exit_code": 0,
-      "result": "expo-widgets plugin composes: groupIdentifier group.com.vocabmaster.personal, widgets DailyWordWidget (systemSmall/Medium/Large) and ReviewGlanceWidget (accessoryCircular/Rectangular/Inline), initialLayout widgets/*.tsx"
-    },
-    "commands_pending": [
-      "Build the 2026-10-27 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md",
-      "Device verification: type a 7-minute and a 2 giờ 30 phút album cycle, try 0/−5/chữ, and confirm the queue covers the stated hours",
-      "Device verification: paste a mixed list (criminal / bảo vệ môi trường / take into account / trách nhiệm dân sự) and confirm 4 rows, the Vietnamese source line, the alternative-translation chips and the saved note",
-      "Cloud work (Supabase, sync, admin panel, web client) cannot start until a real project and its keys exist"
-    ],
-    "suites_written": [
-      "src/ai/__tests__/errors.test.ts",
-      "src/ai/__tests__/gemini.test.ts",
-      "src/ai/__tests__/groq.test.ts",
-      "src/ai/__tests__/prompt.test.ts",
-      "src/ai/__tests__/retry.test.ts",
-      "src/ai/__tests__/schema.test.ts",
-      "src/coins/__tests__/coins.test.ts",
-      "src/coins/__tests__/ledger.test.ts",
-      "src/data/__tests__/packs.test.ts",
-      "src/db/__tests__/reset.test.ts",
-      "src/db/__tests__/settings.test.ts",
-      "src/db/__tests__/words.test.ts",
-      "src/games/__tests__/asteroid-blank.test.ts",
-      "src/games/__tests__/games.test.ts",
-      "src/lib/__tests__/lang.test.ts",
-      "src/lib/__tests__/text.test.ts",
-      "src/music/__tests__/catalog.test.ts",
-      "src/notifications/__tests__/interval.test.ts",
-      "src/notifications/__tests__/selection.test.ts",
-      "src/quiz/__tests__/description.test.ts",
-      "src/quiz/__tests__/placement.test.ts",
-      "src/quiz/__tests__/quiz.test.ts",
-      "src/sound/__tests__/sfx.test.ts",
-      "src/speech/__tests__/pronunciation.test.ts",
-      "src/speech/__tests__/recognition.test.ts",
-      "src/speech/__tests__/voices.test.ts",
-      "src/srs/__tests__/fsrs.test.ts",
-      "src/streak/__tests__/restore.test.ts",
-      "src/streak/__tests__/streak.test.ts",
-      "src/study/__tests__/gate.test.ts",
-      "src/study/__tests__/priority.test.ts",
-      "src/wordlist/__tests__/match.test.ts",
-      "src/wordlist/__tests__/parse.test.ts"
-    ],
-    "device_tests": {
-      "status": "user_reported_fail_then_code_changed_unverified",
-      "reason": "The pronunciation check and 60-second mode were changed on 2026-10-25 but no new IPA has been built or installed. The 2026-10-26 features (custom intervals, reset, per-item levels, SFX, Album, random notifications) are also unverified on a device; iOS notification timing/limits need a real build."
-    },
-    "build_tests": {
-      "status": "not_run",
-      "reason": "No EAS project or Apple credentials configured; iOS prebuild cannot run on Windows"
-    },
-    "ai_checks": {
-      "status": "mocked_only",
-      "covered": [
-        "503 then success retries once (attempts = 2)",
-        "401 invalid key is not retried",
-        "daily quota 429 is not retried",
-        "truncated MAX_TOKENS answer reports json_parse and retries once",
-        "request validation rejects count > 20 before any network call",
-        "identical concurrent requests share one HTTP call; a different one gets busy",
-        "diagnostics never include the API key",
-        "backoff growth, jitter band, Retry-After cap, abort during wait",
-        "classification of 400/401/403/404/429/5xx + unknown",
-        "truncated JSON salvage keeps complete items",
-        "a hanging fetch is cancelled instantly when the learner leaves,",
-        "a hanging fetch reports timeout at the per-attempt deadline instead of freezing",
-        "a timeout is not retried: one call, then the timeout message",
-        "Groq request shape (Bearer key, json_object, hidden reasoning, max_completion_tokens)",
-        "Groq per-minute 429 honours retry-after; a daily 429 is not retried",
-        "Groq retired model is replaced once from GET /openai/v1/models",
-        "Groq key + model check without spending content tokens"
-      ],
-      "not_covered": [
-        "any live Gemini call with a real key",
-        "behaviour of the real Gemini 429 body for per-minute vs per-day quota",
-        "on-device React Native AbortController behaviour"
-      ],
-      "live": {
-        "status": "user_reported_pass",
-        "date": "2026-10-23",
-        "provider": "groq",
-        "model": "openai/gpt-oss-120b (default)",
-        "evidence": "The user reported in chat: \"groq chạy cực mượt và tốt\" after using it in the app. No build number, screenshot or log was supplied, so this is a user report, not an inspection.",
-        "still_unverified": "A live Gemini call with the user key; latency and quota use were not measured."
-      }
-    },
-    "dictionary_checks": {
-      "status": "removed",
-      "reason": "The dictionary pipeline was deleted on 2026-10-25. Pasted lists, including multi-word phrases, are now handled by Groq and no external dictionary endpoint is called anywhere in the app."
-    },
-    "migration_checks": {
-      "command": "node scripts/check-migrations.mjs (node:sqlite, rerun 2026-10-26)",
-      "result": "OK",
-      "details": [
-        "schema 1->5 applies on a fresh database",
-        "v3/v4 upgrades keep coins, reviews and word rows intact",
-        "v5 backfills correct/wrong counters and creates album_words",
-        "reward uniqueness is per (term_key, cycle_id); duplicate source_id is rejected",
-        "case/space topic duplicates are merged without losing word links"
-      ]
+    "unit_tests": "353/353 pass trong 35 suite (jest)",
+    "browser": {
+      "device": "Chromium trên Windows (công cụ preview)",
+      "viewports": "390×844 (điện thoại), 820×1180 (máy tính bảng), 1440×900 (máy tính) — kiểm tràn ngang",
+      "sites": {
+        "app": "https://site-2fec18316472491faa6991234ac99ad6.freebuff.page",
+        "admin": "https://site-803d281e336549f99eaf45a04acd4531.freebuff.page"
+      },
+      "note": "Trình duyệt thật nhưng không phải thiết bị thật: Safari iOS và Chrome Android vẫn chưa kiểm."
     }
   },
   "important_files": [
@@ -1008,11 +1032,69 @@
     {
       "path": "metro.config.js",
       "role": "Cấu hình web: assetExts += wasm + header COOP/COEP cho expo-sqlite; không ảnh hưởng build iOS"
+    },
+    {
+      "path": "src/cloud/config.ts",
+      "role": "Đọc cấu hình Supabase công khai, tự tắt khi thiếu .env"
+    },
+    {
+      "path": "src/cloud/client.ts",
+      "role": "Client Supabase dùng chung, lưu phiên theo nền tảng"
+    },
+    {
+      "path": "src/cloud/AuthProvider.tsx",
+      "role": "Trạng thái đăng nhập và các hàm sign in/up/out"
+    },
+    {
+      "path": "src/sync/map.ts",
+      "role": "Quy tắc chuyển đổi và trộn dữ liệu (hàm thuần, có test)"
+    },
+    {
+      "path": "src/sync/outbox.ts",
+      "role": "Hàng đợi thay đổi cần gửi + mốc đồng bộ"
+    },
+    {
+      "path": "src/sync/engine.ts",
+      "role": "Vòng đẩy/kéo và reset tiến độ hai phía"
+    },
+    {
+      "path": "src/sync/SyncProvider.tsx",
+      "role": "Tự động đồng bộ sau thao tác, trạng thái hiển thị"
+    },
+    {
+      "path": "src/screens/AccountSection.tsx",
+      "role": "Mục tài khoản & đồng bộ trong Cài đặt"
+    },
+    {
+      "path": "src/components/layout.ts",
+      "role": "Bố cục theo thiết bị (điện thoại/tablet/máy tính)"
+    },
+    {
+      "path": "src/components/SideNav.tsx",
+      "role": "Điều hướng bên trái cho màn hình máy tính"
+    },
+    {
+      "path": "supabase/migrations/0004_sync.sql",
+      "role": "Migration đồng bộ hai chiều idempotent"
+    },
+    {
+      "path": "scripts/admin-bootstrap.mjs",
+      "role": "Tạo/khôi phục tài khoản quản trị, không lộ khoá"
+    },
+    {
+      "path": "scripts/verify-sync.mjs",
+      "role": "Kiểm chứng tầng đồng bộ trên project thật rồi tự dọn"
     }
   ],
   "next_steps": [
-    "Tạo project Supabase (gói Free), xác nhận có/không cần thẻ, và đặt Project URL + anon key vào .env và service-role key vào .env.cloud.local (đều đã bị gitignore), không dán khoá vào chat.",
-    "Sau khi có khoá: viết schema + RLS + Edge Functions (award_coins idempotent, proxy Groq), rồi kiểm bằng hai tài khoản rằng A không đọc được dữ liệu của B và tài khoản bị khoá bị chặn ở server.",
+    "Dán khoá Groq (gsk_…) vào panel Groq/AI rồi bấm \"Kiểm tra kết nối\" để chứng minh đường dùng chung chạy thật.",
+    "Xác nhận tài khoản GitHub (tài khoản hiện tại đã hết quota) rồi build IPA từ .github/workflows/ios-unsigned.yml và cài lên iPhone.",
+    "Kiểm thử trên iPhone thật: đăng nhập, đồng bộ hai chiều với web, thông báo Album, widget.",
+    "Cân nhắc đặt disable_signup = true trên Supabase nếu chỉ muốn quản trị viên tạo tài khoản.",
+    "Xoay (rotate) service_role key và Supabase Personal Access Token từng bị dán vào chat.",
+    "Build IPA mới rồi kiểm thử đồng bộ hai chiều giữa iPhone và web bằng cùng một tài khoản.",
+    "Cân nhắc tắt tự đăng ký trên Supabase (hiện disable_signup=false) nếu chỉ muốn quản trị viên tạo tài khoản.",
+    "Xoay khoá service_role và Personal Access Token đã bị dán vào chat.",
     "Dựng web admin panel (tài khoản, xu, cấu hình Groq) và lớp đồng bộ trong app (outbox + quy tắc hợp nhất trong docs/CLOUD_BACKEND.md mục 4, migration v6, nhập dữ liệu máy lên tài khoản).",
     "Build bản 2026-10-27 bằng workflow macOS, cài IPA và chạy checklist thiết bị trong NEXT_SESSION.md.",
     "Build the 2026-10-26 tree with the macOS workflow, install the IPA and run the device checklist in NEXT_SESSION.md.",
