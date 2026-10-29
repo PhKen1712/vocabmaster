@@ -22,9 +22,30 @@ jobs:
     runs-on: macos-26
     timeout-minutes: 90
 
+    # URL và publishable/anon key của Supabase là CÔNG KHAI (mọi quyền do RLS
+    # quyết định) nhưng vẫn KHÔNG commit vào mã nguồn: chúng nằm trong
+    # Settings → Secrets and variables → Actions → Variables.
+    # Thiếu hai biến này thì app build ra sẽ không có đăng nhập/đồng bộ
+    # (cloudConfigured = false), nên job dừng ngay nếu chúng rỗng.
+    env:
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # Dừng trong vài giây thay vì đốt ~20 phút macOS để tạo ra bản app
+      # không đăng nhập được.
+      - name: Require Supabase build config
+        run: |
+          set -euo pipefail
+          if [ -z "${EXPO_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${EXPO_PUBLIC_SUPABASE_ANON_KEY:-}" ]; then
+            echo "Thiếu repository variable SUPABASE_URL / SUPABASE_ANON_KEY." >&2
+            echo "Settings → Secrets and variables → Actions → Variables → New repository variable." >&2
+            exit 1
+          fi
+          echo "Có cấu hình Supabase: URL ${#EXPO_PUBLIC_SUPABASE_URL} ký tự, key ${#EXPO_PUBLIC_SUPABASE_ANON_KEY} ký tự."
 
       - name: Setup Node 24
         uses: actions/setup-node@v4
@@ -119,6 +140,14 @@ jobs:
           rm -rf build/ipa
           mkdir -p build/ipa/Payload
           cp -R "$APP_PATH" build/ipa/Payload/
+
+          # Bản build không có cấu hình Supabase thì app mở ra là màn hình
+          # đăng nhập báo "chưa cấu hình" — không được ship nhầm.
+          if ! grep -qa "supabase\\.co" "$APP_PATH/main.jsbundle"; then
+            echo "main.jsbundle không chứa URL Supabase — cấu hình build bị thiếu." >&2
+            exit 1
+          fi
+          echo "Đã xác nhận main.jsbundle có cấu hình Supabase."
 
           (
             cd build/ipa

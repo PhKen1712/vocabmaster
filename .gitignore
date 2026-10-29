@@ -25,6 +25,9 @@ secrets/
 backups/
 exports/
 
+# Gói .ipa tải từ GitHub Actions về máy (13 MB, không thuộc mã nguồn)
+artifacts/
+
 # Tests / tooling
 coverage/
 tools/verify-report.txt
