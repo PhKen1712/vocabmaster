@@ -63,25 +63,66 @@ Không được thấy `.env`, `node_modules/`, `ios/`, `tools/verify-report.txt
 Tạo repo trống trên github.com trước khi `git remote add` (đừng tick
 "Add a README" để tránh commit rác).
 
+> **Đổi sang tài khoản GitHub khác (đã gặp thật):** Git Credential Manager lưu token
+theo cặp `host` + `username`. Nếu máy còn token của tài khoản cũ, `git push` sang repo
+của tài khoản mới sẽ báo `Repository not found` dù repo **có thật** (GitHub trả 404 để
+không tiết lộ repo private). Cách xử lý: đặt remote **có kèm username** để Git lấy đúng
+credential —
+>
+> ```powershell
+> git remote set-url origin https://<TÊN-MỚI>@github.com/<TÊN-MỚI>/vocabmaster.git
+> ```
+>
+> hoặc xoá mục `git:https://github.com` trong **Windows Credential Manager** rồi push lại
+> để Git mở cửa sổ đăng nhập. Hạn mức Actions tính cho **chủ repo**, nên thêm tài khoản
+> khác làm collaborator **không** giải quyết được quota — phải là repo của tài khoản mới.
+
 ---
 
-## 3. Chạy build
+## 3. Thêm 2 repository variable (bắt buộc, làm một lần)
+
+`.env` bị gitignore nên **máy GitHub không có** URL/anon key của Supabase. Thiếu hai
+biến này thì app vẫn build ra nhưng mở lên là màn hình đăng nhập báo “Chưa cấu hình
+Supabase” — không đăng nhập, không đồng bộ được. Hai giá trị này **công khai** (anon/
+publishable key, mọi quyền do RLS quyết định), nên để ở **Variables**, không phải Secrets.
+
+1. Repo → **Settings** → **Secrets and variables** → **Actions** → tab **Variables**.
+2. **New repository variable**:
+   | Name | Value |
+   |---|---|
+   | `SUPABASE_URL` | `https://<ref>.supabase.co` (lấy từ `EXPO_PUBLIC_SUPABASE_URL` trong `.env`) |
+   | `SUPABASE_ANON_KEY` | `sb_publishable_...` (lấy từ `EXPO_PUBLIC_SUPABASE_ANON_KEY`) |
+
+Workflow có 2 lớp chặn để không ship nhầm bản không đăng nhập được:
+
+- Bước **“Require Supabase build config”** dừng job trong vài giây nếu thiếu biến.
+- Bước **“Package unsigned IPA”** giải nén `main.jsbundle` và **fail** nếu không tìm
+  thấy `supabase.co` trong bundle.
+
+---
+
+## 4. Chạy build
 
 1. Vào repo → tab **Actions**.
 2. Chọn workflow **“iOS unsigned IPA (free Apple ID)”** → **Run workflow** → chọn
-   nhánh `main` → **Run workflow**.
-3. Đợi khoảng **20–40 phút**. Workflow tự chạy:
-   `npm ci` → `typecheck` + `npm test` → bỏ widget → Xcode 26.6 trên `macos-26`
-   → `expo prebuild` → `pod install` → `xcodebuild archive` không ký → đóng gói `.ipa`.
+   nhánh `main` → **Run workflow**. (Push lên `main` cũng tự chạy, trừ khi chỉ sửa file `.md`.)
+3. Workflow tự chạy: `npm ci` → `typecheck` + `npm test` → bỏ widget → Xcode trên
+   `macos-26` → `expo prebuild` → `pod install` → `xcodebuild archive` không ký →
+   đóng gói `.ipa`. Lần đo thật gần nhất: **3–4 phút** (run 40796335529).
 4. Khi job xanh, tải artifact **`VocabMaster-unsigned-ipa`** (giữ 14 ngày, nên tải ngay).
 5. Giải nén được `VocabMaster-unsigned.ipa`.
 
 Nếu bước nào fail, đọc log của đúng bước đó; phần lớn lỗi là do prebuild/pod hoặc
 Xcode không khớp, không phải do code app.
 
+> **Bẫy đã gặp thật:** khi đẩy nhánh phụ lên repo **trống** trước `main`, GitHub lấy
+> nhánh đó làm **default branch** và workflow chưa được đăng ký (`Actions` trống trơn,
+> API trả 404). Sửa: **Settings → General → Default branch → `main`**, hoặc push `main`
+> trước. Kiểm tra bằng `git ls-remote --symref origin HEAD`.
+
 ---
 
-## 4. Cài bằng Sideloadly
+## 5. Cài bằng Sideloadly
 
 1. Mở Sideloadly, cắm iPhone bằng cáp.
 2. Kéo `VocabMaster-unsigned.ipa` vào ô IPA.
@@ -96,7 +137,7 @@ Xcode không khớp, không phải do code app.
 
 ---
 
-## 5. Hết hạn sau 7 ngày — cách gia hạn
+## 6. Hết hạn sau 7 ngày — cách gia hạn
 
 Profile của Apple ID miễn phí chỉ sống **7 ngày**. Hết hạn, app báo “không thể mở”.
 Cách gia hạn: cài lại chính `.ipa` đó bằng Sideloadly (không cần build lại, vì file
@@ -108,23 +149,26 @@ và iPhone kết nối được.
 
 ---
 
-## 6. Kiểm tra sau khi cài
+## 7. Kiểm tra sau khi cài
 
 | Việc | Kỳ vọng |
 |---|---|
-| Mở app lần đầu | Onboarding → chọn track + mục tiêu ngày |
+| Mở app lần đầu | Màn hình **đăng nhập** (bắt buộc từ bản này), không vào thẳng phần học |
+| Đăng nhập | Tài khoản tạo trên admin panel; sai mật khẩu phải báo lỗi rõ, không treo |
+| Đồng bộ | Thêm từ trên iPhone → mở bản web cùng tài khoản → thấy từ đó (không cần nút upload) |
+| Onboarding | Sau khi đăng nhập: chọn track + mục tiêu ngày |
 | Thêm từ | Lưu được, hiện trong danh sách, không trùng |
 | Học | 9 dạng câu hỏi, chấm đúng/sai, đánh giá 4 mức |
 | Tắt app, mở lại | Dữ liệu còn (SQLite), streak giữ nguyên |
 | Phát âm | Nghe được en-US/en-GB |
 | Luyện nói | Xin quyền micro, hiện transcript + cảnh báo “chỉ so khớp từ” |
-| Gemini | Cần dán API key trong Cài đặt (key lưu Keychain) |
+| AI (Groq/Gemini) | Không cần dán key: admin đã cấu hình key dùng chung ở server qua `ai-proxy`. Member chỉ dán key riêng nếu muốn |
 | Backup | Xuất JSON/CSV, chia sẻ ra Files |
 | Widget | **Không có** trong bản miễn phí (xem mục 8) |
 
 ---
 
-## 7. Giới hạn của Apple ID miễn phí
+## 8. Giới hạn của Apple ID miễn phí
 
 | Giới hạn | Giá trị | Nguồn |
 |---|---|---|
@@ -138,7 +182,7 @@ và iPhone kết nối được.
 
 ---
 
-## 8. Khi nào quay lại bản có widget
+## 9. Khi nào quay lại bản có widget
 
 Khi có Apple Developer Program (99 USD/năm):
 
@@ -153,7 +197,7 @@ Lock Screen đọc dữ liệu học thật.
 
 ---
 
-## 9. Sự cố thường gặp
+## 10. Sự cố thường gặp
 
 | Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
 |---|---|---|
